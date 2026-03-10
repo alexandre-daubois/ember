@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
@@ -65,6 +66,76 @@ func TestSortThreads_PreservesOriginal(t *testing.T) {
 
 	if threads[0].Index != 3 {
 		t.Error("original slice should not be modified")
+	}
+}
+
+func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:         0,
+		IsBusy:        true,
+		CurrentMethod: "POST",
+		CurrentURI:    "/api/v1/users",
+		MemoryUsage:   18 * 1024 * 1024,
+		RequestCount:  4201,
+	}
+	row := formatThreadRow(thread, 120, renderOpts{}, false)
+
+	if !strings.Contains(row, "POST") {
+		t.Error("row should contain method POST")
+	}
+	if !strings.Contains(row, "/api/v1/users") {
+		t.Error("row should contain URI")
+	}
+	if !strings.Contains(row, "18 MB") {
+		t.Error("row should contain memory")
+	}
+	if !strings.Contains(row, "4201") {
+		t.Error("row should contain request count")
+	}
+}
+
+func TestFormatThreadRow_IdleShowsDashes(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:     1,
+		IsWaiting: true,
+	}
+	row := formatThreadRow(thread, 120, renderOpts{}, false)
+
+	// method and URI should be dashes for idle threads
+	if !strings.Contains(row, "—") {
+		t.Error("idle row should contain dash placeholders")
+	}
+}
+
+func TestFormatThreadRow_URITruncation(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:      0,
+		IsBusy:     true,
+		CurrentURI: "/api/v1/very/long/path/that/exceeds/limit",
+	}
+	row := formatThreadRow(thread, 120, renderOpts{}, false)
+
+	if strings.Contains(row, "exceeds/limit") {
+		t.Error("long URI should be truncated")
+	}
+	if !strings.Contains(row, "…") {
+		t.Error("truncated URI should end with ellipsis")
+	}
+}
+
+func TestSortThreads_ByRequests(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, RequestCount: 100},
+		{Index: 1, RequestCount: 500},
+		{Index: 2, RequestCount: 250},
+	}
+	sorted := sortThreads(threads, model.SortByRequests)
+
+	if sorted[0].RequestCount != 500 {
+		t.Errorf("first should have highest requests, got %d", sorted[0].RequestCount)
+	}
+	if sorted[2].RequestCount != 100 {
+		t.Errorf("last should have lowest requests, got %d", sorted[2].RequestCount)
 	}
 }
 
