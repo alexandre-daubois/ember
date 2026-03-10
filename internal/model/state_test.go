@@ -198,12 +198,12 @@ func TestFormatUptime(t *testing.T) {
 func TestSortField_Next(t *testing.T) {
 	s := SortByIndex
 	seen := make(map[SortField]bool)
-	for range 5 {
+	for range 7 {
 		seen[s] = true
 		s = s.Next()
 	}
-	if len(seen) != 5 {
-		t.Errorf("Next() should cycle through 5 values, got %d", len(seen))
+	if len(seen) != 7 {
+		t.Errorf("Next() should cycle through 7 values, got %d", len(seen))
 	}
 	if s != SortByIndex {
 		t.Errorf("Next() should cycle back to SortByIndex, got %v", s)

@@ -12,17 +12,23 @@ type SortField int
 const (
 	SortByIndex SortField = iota
 	SortByState
+	SortByMethod
+	SortByURI
 	SortByTime
 	SortByMemory
 	SortByRequests
 )
 
-var sortFieldOrder = []SortField{SortByIndex, SortByState, SortByTime, SortByMemory, SortByRequests}
+var sortFieldOrder = []SortField{SortByIndex, SortByState, SortByMethod, SortByURI, SortByTime, SortByMemory, SortByRequests}
 
 func (s SortField) String() string {
 	switch s {
 	case SortByState:
 		return "state"
+	case SortByMethod:
+		return "method"
+	case SortByURI:
+		return "uri"
 	case SortByTime:
 		return "time"
 	case SortByMemory:
@@ -38,6 +44,15 @@ func (s SortField) Next() SortField {
 	for i, f := range sortFieldOrder {
 		if f == s {
 			return sortFieldOrder[(i+1)%len(sortFieldOrder)]
+		}
+	}
+	return SortByIndex
+}
+
+func (s SortField) Prev() SortField {
+	for i, f := range sortFieldOrder {
+		if f == s {
+			return sortFieldOrder[(i-1+len(sortFieldOrder))%len(sortFieldOrder)]
 		}
 	}
 	return SortByIndex

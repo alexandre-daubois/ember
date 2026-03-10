@@ -124,6 +124,44 @@ func TestFormatThreadRow_URITruncation(t *testing.T) {
 	}
 }
 
+func TestSortThreads_ByMethod(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, CurrentMethod: "POST"},
+		{Index: 1, CurrentMethod: "GET"},
+		{Index: 2, CurrentMethod: ""},
+	}
+	sorted := sortThreads(threads, model.SortByMethod)
+
+	if sorted[0].CurrentMethod != "" {
+		t.Errorf("first should be empty method, got %q", sorted[0].CurrentMethod)
+	}
+	if sorted[1].CurrentMethod != "GET" {
+		t.Errorf("second should be GET, got %q", sorted[1].CurrentMethod)
+	}
+	if sorted[2].CurrentMethod != "POST" {
+		t.Errorf("third should be POST, got %q", sorted[2].CurrentMethod)
+	}
+}
+
+func TestSortThreads_ByURI(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, CurrentURI: "/api/z"},
+		{Index: 1, CurrentURI: "/api/a"},
+		{Index: 2, CurrentURI: ""},
+	}
+	sorted := sortThreads(threads, model.SortByURI)
+
+	if sorted[0].CurrentURI != "" {
+		t.Errorf("first should be empty URI, got %q", sorted[0].CurrentURI)
+	}
+	if sorted[1].CurrentURI != "/api/a" {
+		t.Errorf("second should be /api/a, got %q", sorted[1].CurrentURI)
+	}
+	if sorted[2].CurrentURI != "/api/z" {
+		t.Errorf("third should be /api/z, got %q", sorted[2].CurrentURI)
+	}
+}
+
 func TestSortThreads_ByRequests(t *testing.T) {
 	threads := []fetcher.ThreadDebugState{
 		{Index: 0, RequestCount: 100},

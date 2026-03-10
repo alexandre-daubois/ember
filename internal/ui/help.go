@@ -18,7 +18,7 @@ func renderHelp(sortBy model.SortField, paused bool, leakEnabled bool) string {
 	}
 
 	return helpStyle.Render(fmt.Sprintf(
-		" ↑/↓ navigate · s sort (%s) · %s · %s · r restart · / filter · q quit",
+		" ↑/↓ navigate · s/S sort (%s) · %s · %s · r restart · / filter · q quit",
 		sortBy, pauseLabel, leakLabel,
 	))
 }

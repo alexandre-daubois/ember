@@ -35,8 +35,8 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 	header := fmt.Sprintf(" %s %s %s %s %s %s %s",
 		colHead("#", model.SortByIndex, 4, false),
 		colHead("State", model.SortByState, 10, false),
-		fmt.Sprintf("%-7s", "Method"),
-		fmt.Sprintf("%-24s", "URI"),
+		colHead("Method", model.SortByMethod, 7, false),
+		colHead("URI", model.SortByURI, 24, false),
 		colHead("Time", model.SortByTime, 10, true),
 		colHead("Mem", model.SortByMemory, 8, true),
 		colHead("Reqs", model.SortByRequests, 8, true),
@@ -198,6 +198,10 @@ func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetch
 		switch by {
 		case model.SortByState:
 			return stateOrder(sorted[i]) < stateOrder(sorted[j])
+		case model.SortByMethod:
+			return sorted[i].CurrentMethod < sorted[j].CurrentMethod
+		case model.SortByURI:
+			return sorted[i].CurrentURI < sorted[j].CurrentURI
 		case model.SortByMemory:
 			return sorted[i].MemoryUsage > sorted[j].MemoryUsage
 		case model.SortByRequests:

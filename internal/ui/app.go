@@ -227,6 +227,8 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.clampCursor()
 	case "s":
 		a.sortBy = a.sortBy.Next()
+	case "S":
+		a.sortBy = a.sortBy.Prev()
 	case "p":
 		a.paused = !a.paused
 	case "enter":
