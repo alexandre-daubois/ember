@@ -167,13 +167,23 @@ func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetch
 		case model.SortByRequests:
 			return sorted[i].RequestCount > sorted[j].RequestCount
 		case model.SortByTime:
-			return sorted[i].WaitingSinceMilliseconds < sorted[j].WaitingSinceMilliseconds
+			return threadElapsedMs(sorted[i]) > threadElapsedMs(sorted[j])
 		default:
 			return sorted[i].Index < sorted[j].Index
 		}
 	})
 
 	return sorted
+}
+
+func threadElapsedMs(t fetcher.ThreadDebugState) int64 {
+	if t.IsBusy && t.RequestStartedAt > 0 {
+		return time.Since(time.UnixMilli(t.RequestStartedAt)).Milliseconds()
+	}
+	if t.IsWaiting {
+		return t.WaitingSinceMilliseconds
+	}
+	return 0
 }
 
 func stateOrder(t fetcher.ThreadDebugState) int {

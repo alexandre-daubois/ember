@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
@@ -166,5 +167,73 @@ func TestFormatTime_NoInfo(t *testing.T) {
 	got := formatTime(thread)
 	if got != "—" {
 		t.Errorf("expected '—', got %q", got)
+	}
+}
+
+func TestSortThreads_ByTime(t *testing.T) {
+	now := time.Now()
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsBusy: true, RequestStartedAt: now.Add(-100 * time.Millisecond).UnixMilli()},
+		{Index: 1, IsWaiting: true, WaitingSinceMilliseconds: 5000},
+		{Index: 2, IsBusy: true, RequestStartedAt: now.Add(-3 * time.Second).UnixMilli()},
+		{Index: 3, State: "inactive"},
+	}
+	sorted := sortThreads(threads, model.SortByTime)
+
+	if sorted[0].Index != 1 {
+		t.Errorf("first should be idle thread with 5000ms, got index %d", sorted[0].Index)
+	}
+	if sorted[1].Index != 2 {
+		t.Errorf("second should be busy thread running 3s, got index %d", sorted[1].Index)
+	}
+	if sorted[2].Index != 0 {
+		t.Errorf("third should be busy thread running 100ms, got index %d", sorted[2].Index)
+	}
+	if sorted[3].Index != 3 {
+		t.Errorf("last should be inactive thread, got index %d", sorted[3].Index)
+	}
+}
+
+func TestThreadElapsedMs_Busy(t *testing.T) {
+	started := time.Now().Add(-2 * time.Second).UnixMilli()
+	thread := fetcher.ThreadDebugState{IsBusy: true, RequestStartedAt: started}
+	elapsed := threadElapsedMs(thread)
+	if elapsed < 1900 || elapsed > 2500 {
+		t.Errorf("expected ~2000ms, got %d", elapsed)
+	}
+}
+
+func TestThreadElapsedMs_Idle(t *testing.T) {
+	thread := fetcher.ThreadDebugState{IsWaiting: true, WaitingSinceMilliseconds: 4200}
+	elapsed := threadElapsedMs(thread)
+	if elapsed != 4200 {
+		t.Errorf("expected 4200, got %d", elapsed)
+	}
+}
+
+func TestThreadElapsedMs_Inactive(t *testing.T) {
+	thread := fetcher.ThreadDebugState{State: "inactive"}
+	elapsed := threadElapsedMs(thread)
+	if elapsed != 0 {
+		t.Errorf("expected 0, got %d", elapsed)
+	}
+}
+
+func TestFormatNumber(t *testing.T) {
+	tests := []struct {
+		input int64
+		want  string
+	}{
+		{0, "0"},
+		{42, "42"},
+		{999, "999"},
+		{1000, "1,000"},
+		{1234567, "1,234,567"},
+	}
+	for _, tt := range tests {
+		got := formatNumber(tt.input)
+		if got != tt.want {
+			t.Errorf("formatNumber(%d): expected %q, got %q", tt.input, tt.want, got)
+		}
 	}
 }
