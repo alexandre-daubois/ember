@@ -1,12 +1,13 @@
 package ui
 
 import (
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSortThreads_ByIndex(t *testing.T) {
@@ -17,9 +18,7 @@ func TestSortThreads_ByIndex(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByIndex)
 	for i, s := range sorted {
-		if s.Index != i+1 {
-			t.Errorf("position %d: expected index %d, got %d", i, i+1, s.Index)
-		}
+		assert.Equal(t, i+1, s.Index, "position %d", i)
 	}
 }
 
@@ -31,15 +30,9 @@ func TestSortThreads_ByState(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByState)
 
-	if !sorted[0].IsBusy {
-		t.Error("first should be busy")
-	}
-	if !sorted[1].IsWaiting {
-		t.Error("second should be idle")
-	}
-	if sorted[2].IsBusy || sorted[2].IsWaiting {
-		t.Error("third should be inactive")
-	}
+	assert.True(t, sorted[0].IsBusy, "first should be busy")
+	assert.True(t, sorted[1].IsWaiting, "second should be idle")
+	assert.False(t, sorted[2].IsBusy || sorted[2].IsWaiting, "third should be inactive")
 }
 
 func TestSortThreads_ByMemory(t *testing.T) {
@@ -50,12 +43,8 @@ func TestSortThreads_ByMemory(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByMemory)
 
-	if sorted[0].MemoryUsage != 300 {
-		t.Errorf("first should have highest memory, got %d", sorted[0].MemoryUsage)
-	}
-	if sorted[2].MemoryUsage != 100 {
-		t.Errorf("last should have lowest memory, got %d", sorted[2].MemoryUsage)
-	}
+	assert.Equal(t, int64(300), sorted[0].MemoryUsage, "first should have highest memory")
+	assert.Equal(t, int64(100), sorted[2].MemoryUsage, "last should have lowest memory")
 }
 
 func TestSortThreads_PreservesOriginal(t *testing.T) {
@@ -65,9 +54,7 @@ func TestSortThreads_PreservesOriginal(t *testing.T) {
 	}
 	sortThreads(threads, model.SortByIndex)
 
-	if threads[0].Index != 3 {
-		t.Error("original slice should not be modified")
-	}
+	assert.Equal(t, 3, threads[0].Index, "original slice should not be modified")
 }
 
 func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
@@ -81,18 +68,10 @@ func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
 	}
 	row := formatThreadRow(thread, 120, renderOpts{}, false)
 
-	if !strings.Contains(row, "POST") {
-		t.Error("row should contain method POST")
-	}
-	if !strings.Contains(row, "/api/v1/users") {
-		t.Error("row should contain URI")
-	}
-	if !strings.Contains(row, "18 MB") {
-		t.Error("row should contain memory")
-	}
-	if !strings.Contains(row, "4,201") {
-		t.Error("row should contain formatted request count")
-	}
+	assert.Contains(t, row, "POST")
+	assert.Contains(t, row, "/api/v1/users")
+	assert.Contains(t, row, "18 MB")
+	assert.Contains(t, row, "4,201")
 }
 
 func TestFormatThreadRow_IdleShowsDashes(t *testing.T) {
@@ -102,10 +81,7 @@ func TestFormatThreadRow_IdleShowsDashes(t *testing.T) {
 	}
 	row := formatThreadRow(thread, 120, renderOpts{}, false)
 
-	// method and URI should be dashes for idle threads
-	if !strings.Contains(row, "—") {
-		t.Error("idle row should contain dash placeholders")
-	}
+	assert.Contains(t, row, "—", "idle row should contain dash placeholders")
 }
 
 func TestFormatThreadRow_URITruncation(t *testing.T) {
@@ -116,12 +92,8 @@ func TestFormatThreadRow_URITruncation(t *testing.T) {
 	}
 	row := formatThreadRow(thread, 120, renderOpts{}, false)
 
-	if strings.Contains(row, "exceeds/limit") {
-		t.Error("long URI should be truncated")
-	}
-	if !strings.Contains(row, "…") {
-		t.Error("truncated URI should end with ellipsis")
-	}
+	assert.NotContains(t, row, "exceeds/limit", "long URI should be truncated")
+	assert.Contains(t, row, "…", "truncated URI should end with ellipsis")
 }
 
 func TestSortThreads_ByMethod(t *testing.T) {
@@ -132,15 +104,9 @@ func TestSortThreads_ByMethod(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByMethod)
 
-	if sorted[0].CurrentMethod != "" {
-		t.Errorf("first should be empty method, got %q", sorted[0].CurrentMethod)
-	}
-	if sorted[1].CurrentMethod != "GET" {
-		t.Errorf("second should be GET, got %q", sorted[1].CurrentMethod)
-	}
-	if sorted[2].CurrentMethod != "POST" {
-		t.Errorf("third should be POST, got %q", sorted[2].CurrentMethod)
-	}
+	assert.Equal(t, "", sorted[0].CurrentMethod, "first should be empty method")
+	assert.Equal(t, "GET", sorted[1].CurrentMethod, "second should be GET")
+	assert.Equal(t, "POST", sorted[2].CurrentMethod, "third should be POST")
 }
 
 func TestSortThreads_ByURI(t *testing.T) {
@@ -151,15 +117,9 @@ func TestSortThreads_ByURI(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByURI)
 
-	if sorted[0].CurrentURI != "" {
-		t.Errorf("first should be empty URI, got %q", sorted[0].CurrentURI)
-	}
-	if sorted[1].CurrentURI != "/api/a" {
-		t.Errorf("second should be /api/a, got %q", sorted[1].CurrentURI)
-	}
-	if sorted[2].CurrentURI != "/api/z" {
-		t.Errorf("third should be /api/z, got %q", sorted[2].CurrentURI)
-	}
+	assert.Equal(t, "", sorted[0].CurrentURI, "first should be empty URI")
+	assert.Equal(t, "/api/a", sorted[1].CurrentURI, "second should be /api/a")
+	assert.Equal(t, "/api/z", sorted[2].CurrentURI, "third should be /api/z")
 }
 
 func TestSortThreads_ByRequests(t *testing.T) {
@@ -170,12 +130,8 @@ func TestSortThreads_ByRequests(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByRequests)
 
-	if sorted[0].RequestCount != 500 {
-		t.Errorf("first should have highest requests, got %d", sorted[0].RequestCount)
-	}
-	if sorted[2].RequestCount != 100 {
-		t.Errorf("last should have lowest requests, got %d", sorted[2].RequestCount)
-	}
+	assert.Equal(t, int64(500), sorted[0].RequestCount, "first should have highest requests")
+	assert.Equal(t, int64(100), sorted[2].RequestCount, "last should have lowest requests")
 }
 
 func TestFormatTime_Idle(t *testing.T) {
@@ -183,10 +139,7 @@ func TestFormatTime_Idle(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 3200,
 	}
-	got := formatTime(thread)
-	if got != "3.2s idle" {
-		t.Errorf("expected '3.2s idle', got %q", got)
-	}
+	assert.Equal(t, "3.2s idle", formatTime(thread))
 }
 
 func TestFormatTime_IdleSubSecond(t *testing.T) {
@@ -194,18 +147,12 @@ func TestFormatTime_IdleSubSecond(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 500,
 	}
-	got := formatTime(thread)
-	if got != "500ms idle" {
-		t.Errorf("expected '500ms idle', got %q", got)
-	}
+	assert.Equal(t, "500ms idle", formatTime(thread))
 }
 
 func TestFormatTime_NoInfo(t *testing.T) {
 	thread := fetcher.ThreadDebugState{State: "inactive"}
-	got := formatTime(thread)
-	if got != "—" {
-		t.Errorf("expected '—', got %q", got)
-	}
+	assert.Equal(t, "—", formatTime(thread))
 }
 
 func TestSortThreads_ByTime(t *testing.T) {
@@ -218,43 +165,27 @@ func TestSortThreads_ByTime(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByTime)
 
-	if sorted[0].Index != 1 {
-		t.Errorf("first should be idle thread with 5000ms, got index %d", sorted[0].Index)
-	}
-	if sorted[1].Index != 2 {
-		t.Errorf("second should be busy thread running 3s, got index %d", sorted[1].Index)
-	}
-	if sorted[2].Index != 0 {
-		t.Errorf("third should be busy thread running 100ms, got index %d", sorted[2].Index)
-	}
-	if sorted[3].Index != 3 {
-		t.Errorf("last should be inactive thread, got index %d", sorted[3].Index)
-	}
+	assert.Equal(t, 1, sorted[0].Index, "first should be idle thread with 5000ms")
+	assert.Equal(t, 2, sorted[1].Index, "second should be busy thread running 3s")
+	assert.Equal(t, 0, sorted[2].Index, "third should be busy thread running 100ms")
+	assert.Equal(t, 3, sorted[3].Index, "last should be inactive thread")
 }
 
 func TestThreadElapsedMs_Busy(t *testing.T) {
 	started := time.Now().Add(-2 * time.Second).UnixMilli()
 	thread := fetcher.ThreadDebugState{IsBusy: true, RequestStartedAt: started}
 	elapsed := threadElapsedMs(thread)
-	if elapsed < 1900 || elapsed > 2500 {
-		t.Errorf("expected ~2000ms, got %d", elapsed)
-	}
+	assert.InDelta(t, 2000, elapsed, 500)
 }
 
 func TestThreadElapsedMs_Idle(t *testing.T) {
 	thread := fetcher.ThreadDebugState{IsWaiting: true, WaitingSinceMilliseconds: 4200}
-	elapsed := threadElapsedMs(thread)
-	if elapsed != 4200 {
-		t.Errorf("expected 4200, got %d", elapsed)
-	}
+	assert.Equal(t, int64(4200), threadElapsedMs(thread))
 }
 
 func TestThreadElapsedMs_Inactive(t *testing.T) {
 	thread := fetcher.ThreadDebugState{State: "inactive"}
-	elapsed := threadElapsedMs(thread)
-	if elapsed != 0 {
-		t.Errorf("expected 0, got %d", elapsed)
-	}
+	assert.Equal(t, int64(0), threadElapsedMs(thread))
 }
 
 func TestFormatNumber(t *testing.T) {
@@ -269,10 +200,7 @@ func TestFormatNumber(t *testing.T) {
 		{1234567, "1,234,567"},
 	}
 	for _, tt := range tests {
-		got := formatNumber(tt.input)
-		if got != tt.want {
-			t.Errorf("formatNumber(%d): expected %q, got %q", tt.input, tt.want, got)
-		}
+		assert.Equal(t, tt.want, formatNumber(tt.input), "formatNumber(%d)", tt.input)
 	}
 }
 
@@ -291,10 +219,7 @@ func TestSortThreads_GroupsByScript(t *testing.T) {
 	}
 
 	for i := 1; i < len(groups); i++ {
-		if groups[i] < groups[i-1] {
-			t.Errorf("groups not contiguous: %v", groups)
-			break
-		}
+		require.GreaterOrEqual(t, groups[i], groups[i-1], "groups not contiguous: %v", groups)
 	}
 }
 
@@ -309,8 +234,6 @@ func TestThreadGroup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := threadGroup(fetcher.ThreadDebugState{Name: tt.name})
-		if got != tt.want {
-			t.Errorf("threadGroup(%q): expected %q, got %q", tt.name, tt.want, got)
-		}
+		assert.Equal(t, tt.want, got, "threadGroup(%q)", tt.name)
 	}
 }

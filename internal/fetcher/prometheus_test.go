@@ -3,6 +3,9 @@ package fetcher
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const sampleMetrics = `# HELP frankenphp_total_threads Total number of PHP threads
@@ -50,56 +53,41 @@ frankenphp_worker_queue_depth{worker="/app/api.php"} 0
 
 func TestParsePrometheusMetrics_GlobalMetrics(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	assertFloat(t, "TotalThreads", 20, snap.TotalThreads)
-	assertFloat(t, "BusyThreads", 4, snap.BusyThreads)
-	assertFloat(t, "QueueDepth", 2, snap.QueueDepth)
+	assert.Equal(t, float64(20), snap.TotalThreads, "TotalThreads")
+	assert.Equal(t, float64(4), snap.BusyThreads, "BusyThreads")
+	assert.Equal(t, float64(2), snap.QueueDepth, "QueueDepth")
 }
 
 func TestParsePrometheusMetrics_WorkerMetrics(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(snap.Workers) != 2 {
-		t.Fatalf("expected 2 workers, got %d", len(snap.Workers))
-	}
+	require.NoError(t, err)
+	require.Len(t, snap.Workers, 2)
 
 	w := snap.Workers["/app/worker.php"]
-	if w == nil {
-		t.Fatal("missing worker /app/worker.php")
-	}
+	require.NotNil(t, w)
 
-	assertFloat(t, "Total", 8, w.Total)
-	assertFloat(t, "Busy", 3, w.Busy)
-	assertFloat(t, "Ready", 5, w.Ready)
-	assertFloat(t, "RequestTime", 125.5, w.RequestTime)
-	assertFloat(t, "RequestCount", 10000, w.RequestCount)
-	assertFloat(t, "Crashes", 2, w.Crashes)
-	assertFloat(t, "Restarts", 5, w.Restarts)
-	assertFloat(t, "QueueDepth", 1, w.QueueDepth)
+	assert.Equal(t, float64(8), w.Total, "Total")
+	assert.Equal(t, float64(3), w.Busy, "Busy")
+	assert.Equal(t, float64(5), w.Ready, "Ready")
+	assert.Equal(t, 125.5, w.RequestTime, "RequestTime")
+	assert.Equal(t, float64(10000), w.RequestCount, "RequestCount")
+	assert.Equal(t, float64(2), w.Crashes, "Crashes")
+	assert.Equal(t, float64(5), w.Restarts, "Restarts")
+	assert.Equal(t, float64(1), w.QueueDepth, "QueueDepth")
 
 	api := snap.Workers["/app/api.php"]
-	if api == nil {
-		t.Fatal("missing worker /app/api.php")
-	}
-	assertFloat(t, "api.RequestCount", 3000, api.RequestCount)
-	assertFloat(t, "api.Crashes", 0, api.Crashes)
+	require.NotNil(t, api)
+	assert.Equal(t, float64(3000), api.RequestCount, "api.RequestCount")
+	assert.Equal(t, float64(0), api.Crashes, "api.Crashes")
 }
 
 func TestParsePrometheusMetrics_Empty(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(""))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertFloat(t, "TotalThreads", 0, snap.TotalThreads)
-	if len(snap.Workers) != 0 {
-		t.Errorf("expected 0 workers, got %d", len(snap.Workers))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), snap.TotalThreads)
+	assert.Empty(t, snap.Workers)
 }
 
 func TestParsePrometheusMetrics_PartialData(t *testing.T) {
@@ -107,11 +95,9 @@ func TestParsePrometheusMetrics_PartialData(t *testing.T) {
 frankenphp_busy_threads 7
 `
 	snap, err := parsePrometheusMetrics(strings.NewReader(partial))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertFloat(t, "BusyThreads", 7, snap.BusyThreads)
-	assertFloat(t, "TotalThreads", 0, snap.TotalThreads)
+	require.NoError(t, err)
+	assert.Equal(t, float64(7), snap.BusyThreads, "BusyThreads")
+	assert.Equal(t, float64(0), snap.TotalThreads, "TotalThreads")
 }
 
 const sampleCaddyMetrics = `# HELP caddy_http_requests_total Total HTTP requests
@@ -132,51 +118,29 @@ caddy_http_requests_in_flight{handler="subroute",server="srv0"} 42
 
 func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	assertFloat(t, "HTTPRequestsTotal", 160, snap.HTTPRequestsTotal)
-	assertFloat(t, "HTTPRequestDurationSum", 12.5, snap.HTTPRequestDurationSum)
-	assertFloat(t, "HTTPRequestDurationCount", 160, snap.HTTPRequestDurationCount)
-	assertFloat(t, "HTTPRequestsInFlight", 42, snap.HTTPRequestsInFlight)
-
-	if !snap.HasHTTPMetrics {
-		t.Error("HasHTTPMetrics should be true when Caddy metrics are present")
-	}
+	assert.Equal(t, float64(160), snap.HTTPRequestsTotal, "HTTPRequestsTotal")
+	assert.Equal(t, 12.5, snap.HTTPRequestDurationSum, "HTTPRequestDurationSum")
+	assert.Equal(t, float64(160), snap.HTTPRequestDurationCount, "HTTPRequestDurationCount")
+	assert.Equal(t, float64(42), snap.HTTPRequestsInFlight, "HTTPRequestsInFlight")
+	assert.True(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be true when Caddy metrics are present")
 }
 
 func TestParsePrometheusMetrics_HasHTTPMetrics_False(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if snap.HasHTTPMetrics {
-		t.Error("HasHTTPMetrics should be false when only FrankenPHP metrics are present")
-	}
+	assert.False(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be false when only FrankenPHP metrics are present")
 }
 
 func TestParsePrometheusMetrics_Mixed(t *testing.T) {
 	mixed := sampleMetrics + sampleCaddyMetrics
 	snap, err := parsePrometheusMetrics(strings.NewReader(mixed))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	assertFloat(t, "TotalThreads", 20, snap.TotalThreads)
-	assertFloat(t, "HTTPRequestsTotal", 160, snap.HTTPRequestsTotal)
-	if len(snap.Workers) != 2 {
-		t.Errorf("expected 2 workers, got %d", len(snap.Workers))
-	}
-	if !snap.HasHTTPMetrics {
-		t.Error("HasHTTPMetrics should be true in mixed metrics")
-	}
-}
-
-func assertFloat(t *testing.T, name string, expected, got float64) {
-	t.Helper()
-	if got != expected {
-		t.Errorf("%s: expected %v, got %v", name, expected, got)
-	}
+	assert.Equal(t, float64(20), snap.TotalThreads, "TotalThreads")
+	assert.Equal(t, float64(160), snap.HTTPRequestsTotal, "HTTPRequestsTotal")
+	assert.Len(t, snap.Workers, 2)
+	assert.True(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be true in mixed metrics")
 }

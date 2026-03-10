@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestServer(threadsStatus int, threadsBody any, metricsStatus int, metricsBody string) *httptest.Server {
@@ -45,19 +47,10 @@ func TestFetchThreads_OK(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	threads, err := f.fetchThreads(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(threads.ThreadDebugStates) != 2 {
-		t.Fatalf("expected 2 threads, got %d", len(threads.ThreadDebugStates))
-	}
-	if threads.ThreadDebugStates[0].Name != "Worker PHP Thread - /app/worker.php" {
-		t.Errorf("unexpected name: %s", threads.ThreadDebugStates[0].Name)
-	}
-	if threads.ReservedThreadCount != 2 {
-		t.Errorf("expected ReservedThreadCount 2, got %d", threads.ReservedThreadCount)
-	}
+	require.NoError(t, err)
+	require.Len(t, threads.ThreadDebugStates, 2)
+	assert.Equal(t, "Worker PHP Thread - /app/worker.php", threads.ThreadDebugStates[0].Name)
+	assert.Equal(t, 2, threads.ReservedThreadCount)
 }
 
 func TestFetchThreads_BadStatus(t *testing.T) {
@@ -66,12 +59,8 @@ func TestFetchThreads_BadStatus(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	_, err := f.fetchThreads(context.Background())
-	if err == nil {
-		t.Fatal("expected error for HTTP 500")
-	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Errorf("error should mention status code: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
 }
 
 func TestFetchMetrics_OK(t *testing.T) {
@@ -83,12 +72,8 @@ frankenphp_busy_threads 5
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	metrics, err := f.fetchMetrics(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if metrics.BusyThreads != 5 {
-		t.Errorf("expected BusyThreads 5, got %v", metrics.BusyThreads)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, float64(5), metrics.BusyThreads)
 }
 
 func TestFetch_GracefulDegradation(t *testing.T) {
@@ -113,16 +98,9 @@ func TestFetch_GracefulDegradation(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	snap, err := f.Fetch(context.Background())
-	if err != nil {
-		t.Fatalf("Fetch should not return error on partial failure: %v", err)
-	}
-
-	if len(snap.Threads.ThreadDebugStates) != 1 {
-		t.Errorf("threads should be populated, got %d", len(snap.Threads.ThreadDebugStates))
-	}
-	if len(snap.Errors) == 0 {
-		t.Error("expected errors to be recorded for failed metrics fetch")
-	}
+	require.NoError(t, err, "Fetch should not return error on partial failure")
+	assert.Len(t, snap.Threads.ThreadDebugStates, 1)
+	assert.NotEmpty(t, snap.Errors, "expected errors to be recorded for failed metrics fetch")
 }
 
 func TestFetch_AllFail(t *testing.T) {
@@ -131,16 +109,9 @@ func TestFetch_AllFail(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	snap, err := f.Fetch(context.Background())
-	if err != nil {
-		t.Fatalf("Fetch should not return error even if all fail: %v", err)
-	}
-
-	if len(snap.Errors) < 2 {
-		t.Errorf("expected at least 2 errors, got %d: %v", len(snap.Errors), snap.Errors)
-	}
-	if len(snap.Threads.ThreadDebugStates) != 0 {
-		t.Error("threads should be empty on failure")
-	}
+	require.NoError(t, err, "Fetch should not return error even if all fail")
+	assert.GreaterOrEqual(t, len(snap.Errors), 2)
+	assert.Empty(t, snap.Threads.ThreadDebugStates)
 }
 
 func TestRestartWorkers_OK(t *testing.T) {
@@ -155,9 +126,7 @@ func TestRestartWorkers_OK(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	err := f.RestartWorkers(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestRestartWorkers_Fail(t *testing.T) {
@@ -168,7 +137,5 @@ func TestRestartWorkers_Fail(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	err := f.RestartWorkers(context.Background())
-	if err == nil {
-		t.Fatal("expected error for HTTP 500")
-	}
+	require.Error(t, err)
 }

@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestFormatBytes(t *testing.T) {
 	tests := []struct {
@@ -17,8 +21,6 @@ func TestFormatBytes(t *testing.T) {
 
 	for _, tt := range tests {
 		got := formatBytes(tt.input)
-		if got != tt.want {
-			t.Errorf("formatBytes(%d): expected %q, got %q", tt.input, tt.want, got)
-		}
+		assert.Equal(t, tt.want, got, "formatBytes(%d)", tt.input)
 	}
 }

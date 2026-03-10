@@ -1,11 +1,11 @@
 package model
 
 import (
-	"math"
 	"testing"
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestState_Update_CountsIdleBusy(t *testing.T) {
@@ -25,12 +25,8 @@ func TestState_Update_CountsIdleBusy(t *testing.T) {
 	var s State
 	s.Update(snap)
 
-	if s.Derived.TotalBusy != 2 {
-		t.Errorf("TotalBusy: expected 2, got %d", s.Derived.TotalBusy)
-	}
-	if s.Derived.TotalIdle != 2 {
-		t.Errorf("TotalIdle: expected 2, got %d", s.Derived.TotalIdle)
-	}
+	assert.Equal(t, 2, s.Derived.TotalBusy)
+	assert.Equal(t, 2, s.Derived.TotalIdle)
 }
 
 func TestState_Update_CrashCount(t *testing.T) {
@@ -46,9 +42,7 @@ func TestState_Update_CrashCount(t *testing.T) {
 	var s State
 	s.Update(snap)
 
-	if s.Derived.TotalCrashes != 4 {
-		t.Errorf("TotalCrashes: expected 4, got %v", s.Derived.TotalCrashes)
-	}
+	assert.Equal(t, float64(4), s.Derived.TotalCrashes)
 }
 
 func TestState_Update_RPSAndAvgTime(t *testing.T) {
@@ -77,14 +71,9 @@ func TestState_Update_RPSAndAvgTime(t *testing.T) {
 	s.Update(curr)
 
 	// 100 requests in 2 seconds = 50 RPS
-	if math.Abs(s.Derived.RPS-50) > 0.5 {
-		t.Errorf("RPS: expected ~50, got %v", s.Derived.RPS)
-	}
-
+	assert.InDelta(t, 50, s.Derived.RPS, 0.5)
 	// 10s of request time for 100 requests = 100ms avg
-	if math.Abs(s.Derived.AvgTime-100) > 1 {
-		t.Errorf("AvgTime: expected ~100ms, got %v", s.Derived.AvgTime)
-	}
+	assert.InDelta(t, 100, s.Derived.AvgTime, 1)
 }
 
 func TestState_Update_NoPreviousSnapshot(t *testing.T) {
@@ -99,9 +88,7 @@ func TestState_Update_NoPreviousSnapshot(t *testing.T) {
 	var s State
 	s.Update(snap)
 
-	if s.Derived.RPS != 0 {
-		t.Errorf("RPS should be 0 without previous snapshot, got %v", s.Derived.RPS)
-	}
+	assert.Equal(t, float64(0), s.Derived.RPS)
 }
 
 func TestState_Update_CaddyFallbackRPS(t *testing.T) {
@@ -130,14 +117,9 @@ func TestState_Update_CaddyFallbackRPS(t *testing.T) {
 	s.Update(curr)
 
 	// 200 requests in 2 seconds = 100 RPS
-	if math.Abs(s.Derived.RPS-100) > 0.5 {
-		t.Errorf("RPS (Caddy fallback): expected ~100, got %v", s.Derived.RPS)
-	}
-
+	assert.InDelta(t, 100, s.Derived.RPS, 0.5)
 	// 10s of request time for 200 requests = 50ms avg
-	if math.Abs(s.Derived.AvgTime-50) > 1 {
-		t.Errorf("AvgTime (Caddy fallback): expected ~50ms, got %v", s.Derived.AvgTime)
-	}
+	assert.InDelta(t, 50, s.Derived.AvgTime, 1)
 }
 
 func TestState_Update_FrankenPHPTakesPriorityOverCaddy(t *testing.T) {
@@ -169,11 +151,9 @@ func TestState_Update_FrankenPHPTakesPriorityOverCaddy(t *testing.T) {
 	s.Update(prev)
 	s.Update(curr)
 
-	// FrankenPHP: 100 reqs in 1s = 100 RPS, avg = 10s/100 = 100ms
+	// FrankenPHP: 100 reqs in 1s = 100 RPS
 	// Caddy would give: 500 reqs in 1s = 500 RPS, this should NOT be used
-	if math.Abs(s.Derived.RPS-100) > 0.5 {
-		t.Errorf("RPS should use FrankenPHP metrics (100), got %v", s.Derived.RPS)
-	}
+	assert.InDelta(t, 100, s.Derived.RPS, 0.5)
 }
 
 func TestFormatUptime(t *testing.T) {
@@ -189,9 +169,7 @@ func TestFormatUptime(t *testing.T) {
 
 	for _, tt := range tests {
 		got := FormatUptime(tt.d)
-		if got != tt.want {
-			t.Errorf("FormatUptime(%v): expected %q, got %q", tt.d, tt.want, got)
-		}
+		assert.Equal(t, tt.want, got, "FormatUptime(%v)", tt.d)
 	}
 }
 
@@ -202,12 +180,8 @@ func TestSortField_Next(t *testing.T) {
 		seen[s] = true
 		s = s.Next()
 	}
-	if len(seen) != 7 {
-		t.Errorf("Next() should cycle through 7 values, got %d", len(seen))
-	}
-	if s != SortByIndex {
-		t.Errorf("Next() should cycle back to SortByIndex, got %v", s)
-	}
+	assert.Len(t, seen, 7)
+	assert.Equal(t, SortByIndex, s, "Next() should cycle back to SortByIndex")
 }
 
 func TestSortField_Prev(t *testing.T) {
@@ -217,21 +191,13 @@ func TestSortField_Prev(t *testing.T) {
 		seen[s] = true
 		s = s.Prev()
 	}
-	if len(seen) != 7 {
-		t.Errorf("Prev() should cycle through 7 values, got %d", len(seen))
-	}
-	if s != SortByIndex {
-		t.Errorf("Prev() should cycle back to SortByIndex, got %v", s)
-	}
+	assert.Len(t, seen, 7)
+	assert.Equal(t, SortByIndex, s, "Prev() should cycle back to SortByIndex")
 }
 
 func TestSortField_NextPrev_Inverse(t *testing.T) {
 	for _, start := range sortFieldOrder {
-		if start.Next().Prev() != start {
-			t.Errorf("Next().Prev() should return to %v, got %v", start, start.Next().Prev())
-		}
-		if start.Prev().Next() != start {
-			t.Errorf("Prev().Next() should return to %v, got %v", start, start.Prev().Next())
-		}
+		assert.Equal(t, start, start.Next().Prev(), "Next().Prev() should return to %v", start)
+		assert.Equal(t, start, start.Prev().Next(), "Prev().Next() should return to %v", start)
 	}
 }

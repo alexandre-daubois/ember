@@ -6,20 +6,17 @@ import (
 	"unicode/utf8"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRenderSparkline_TooFewValues(t *testing.T) {
 	got := renderSparkline([]float64{1.0}, 10)
-	if got != strings.Repeat(" ", 10) {
-		t.Errorf("expected 10 spaces, got %q", got)
-	}
+	assert.Equal(t, strings.Repeat(" ", 10), got)
 }
 
 func TestRenderSparkline_AllZero(t *testing.T) {
 	got := renderSparkline([]float64{0, 0, 0, 0}, 10)
-	if !strings.Contains(got, "▁▁▁▁") {
-		t.Errorf("all-zero sparkline should use lowest block, got %q", got)
-	}
+	assert.Contains(t, got, "▁▁▁▁")
 }
 
 func TestRenderSparkline_FixedWidth(t *testing.T) {
@@ -29,22 +26,14 @@ func TestRenderSparkline_FixedWidth(t *testing.T) {
 	shortRunes := utf8.RuneCountInString(stripANSI(short))
 	fullRunes := utf8.RuneCountInString(stripANSI(full))
 
-	if shortRunes != 10 {
-		t.Errorf("short sparkline should be 10 runes, got %d", shortRunes)
-	}
-	if fullRunes != 10 {
-		t.Errorf("full sparkline should be 10 runes, got %d", fullRunes)
-	}
+	assert.Equal(t, 10, shortRunes, "short sparkline should be 10 runes")
+	assert.Equal(t, 10, fullRunes, "full sparkline should be 10 runes")
 }
 
 func TestRenderSparkline_MaxIsHighestBlock(t *testing.T) {
 	got := stripANSI(renderSparkline([]float64{0, 5, 10}, 3))
-	if !strings.Contains(got, "█") {
-		t.Errorf("max value should produce highest block, got %q", got)
-	}
-	if !strings.Contains(got, "▁") {
-		t.Errorf("zero value should produce lowest block, got %q", got)
-	}
+	assert.Contains(t, got, "█", "max value should produce highest block")
+	assert.Contains(t, got, "▁", "zero value should produce lowest block")
 }
 
 func TestAppendSparkline_Caps(t *testing.T) {
@@ -52,12 +41,8 @@ func TestAppendSparkline_Caps(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		h = appendSparkline(h, float64(i))
 	}
-	if len(h) != sparklineSize {
-		t.Errorf("expected len %d, got %d", sparklineSize, len(h))
-	}
-	if h[len(h)-1] != 49 {
-		t.Errorf("expected last value 49, got %.0f", h[len(h)-1])
-	}
+	assert.Len(t, h, sparklineSize)
+	assert.Equal(t, float64(49), h[len(h)-1])
 }
 
 func TestWorkerScript(t *testing.T) {
@@ -72,9 +57,7 @@ func TestWorkerScript(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := workerScript(tt.name)
-		if got != tt.want {
-			t.Errorf("workerScript(%q): expected %q, got %q", tt.name, tt.want, got)
-		}
+		assert.Equal(t, tt.want, got, "workerScript(%q)", tt.name)
 	}
 }
 
@@ -85,10 +68,7 @@ func TestCountWorkerScripts(t *testing.T) {
 		{Name: "Worker PHP Thread - /app/api.php"},
 		{Name: "Regular PHP Thread"},
 	}
-	got := countWorkerScripts(threads)
-	if got != 2 {
-		t.Errorf("expected 2 distinct worker scripts, got %d", got)
-	}
+	assert.Equal(t, 2, countWorkerScripts(threads))
 }
 
 func TestCountWorkerScripts_None(t *testing.T) {
@@ -96,10 +76,7 @@ func TestCountWorkerScripts_None(t *testing.T) {
 		{Name: "Regular PHP Thread"},
 		{Name: "Regular PHP Thread"},
 	}
-	got := countWorkerScripts(threads)
-	if got != 0 {
-		t.Errorf("expected 0 worker scripts, got %d", got)
-	}
+	assert.Equal(t, 0, countWorkerScripts(threads))
 }
 
 func stripANSI(s string) string {
