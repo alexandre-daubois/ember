@@ -17,12 +17,30 @@ type renderOpts struct {
 	leakEnabled   bool
 }
 
-func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, opts renderOpts) string {
+func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts) string {
 	if len(threads) == 0 {
 		return greyStyle.Render(" No threads")
 	}
 
-	header := fmt.Sprintf(" %-4s %-10s %-7s %-24s %10s %8s %8s", "#", "State", "Method", "URI", "Time", "Mem", "Reqs")
+	colHead := func(label string, field model.SortField, w int, right bool) string {
+		if sortBy == field {
+			label += " ▼"
+		}
+		if right {
+			return fmt.Sprintf("%*s", w, label)
+		}
+		return fmt.Sprintf("%-*s", w, label)
+	}
+
+	header := fmt.Sprintf(" %s %s %s %s %s %s %s",
+		colHead("#", model.SortByIndex, 4, false),
+		colHead("State", model.SortByState, 10, false),
+		fmt.Sprintf("%-7s", "Method"),
+		fmt.Sprintf("%-24s", "URI"),
+		colHead("Time", model.SortByTime, 10, true),
+		colHead("Mem", model.SortByMemory, 8, true),
+		colHead("Reqs", model.SortByRequests, 8, true),
+	)
 	headerLine := tableHeaderStyle.Width(width).Render(header)
 
 	var rows []string

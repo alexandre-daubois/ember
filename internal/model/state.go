@@ -12,28 +12,35 @@ type SortField int
 const (
 	SortByIndex SortField = iota
 	SortByState
+	SortByTime
 	SortByMemory
 	SortByRequests
-	SortByTime
 )
+
+var sortFieldOrder = []SortField{SortByIndex, SortByState, SortByTime, SortByMemory, SortByRequests}
 
 func (s SortField) String() string {
 	switch s {
 	case SortByState:
 		return "state"
+	case SortByTime:
+		return "time"
 	case SortByMemory:
 		return "memory"
 	case SortByRequests:
 		return "requests"
-	case SortByTime:
-		return "time"
 	default:
 		return "index"
 	}
 }
 
 func (s SortField) Next() SortField {
-	return (s + 1) % 5
+	for i, f := range sortFieldOrder {
+		if f == s {
+			return sortFieldOrder[(i+1)%len(sortFieldOrder)]
+		}
+	}
+	return SortByIndex
 }
 
 type State struct {

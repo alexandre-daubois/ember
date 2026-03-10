@@ -158,7 +158,7 @@ func (a *App) View() string {
 	help := renderHelp(a.sortBy, a.paused, a.leakEnabled)
 
 	threads := a.filteredThreads()
-	workerList := renderWorkerListFromThreads(threads, a.cursor, a.width, renderOpts{
+	workerList := renderWorkerListFromThreads(threads, a.cursor, a.width, a.sortBy, renderOpts{
 		slowThreshold: a.config.SlowThreshold,
 		leakWatcher:   a.leakWatcher,
 		leakEnabled:   a.leakEnabled,
