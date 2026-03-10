@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexandredaubois/frankentop/internal/fetcher"
+	"github.com/alexandredaubois/ember/internal/fetcher"
 )
 
 func TestState_Update_CountsIdleBusy(t *testing.T) {

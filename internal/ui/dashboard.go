@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/alexandredaubois/frankentop/internal/model"
+	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -36,7 +36,7 @@ func renderDashboard(s *model.State, width int) string {
 		d.TotalBusy, threadTotal,
 	)
 
-	title := titleStyle.Render(" FrankenTop v0.1.0 ")
+	title := titleStyle.Render(" Ember 0.1 ")
 
 	hasWorkerMetrics := len(snap.Metrics.Workers) > 0
 	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics

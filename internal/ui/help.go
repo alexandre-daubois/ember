@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/alexandredaubois/frankentop/internal/model"
+	"github.com/alexandredaubois/ember/internal/model"
 )
 
 func renderHelp(sortBy model.SortField, paused bool, leakEnabled bool) string {

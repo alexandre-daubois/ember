@@ -1,4 +1,4 @@
-module github.com/alexandredaubois/frankentop
+module github.com/alexandredaubois/ember
 
 go 1.26
 

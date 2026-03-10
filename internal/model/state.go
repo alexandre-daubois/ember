@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alexandredaubois/frankentop/internal/fetcher"
+	"github.com/alexandredaubois/ember/internal/fetcher"
 )
 
 type SortField int

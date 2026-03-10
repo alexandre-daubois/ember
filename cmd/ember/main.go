@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexandredaubois/frankentop/internal/fetcher"
-	"github.com/alexandredaubois/frankentop/internal/ui"
+	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandredaubois/ember/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -43,7 +43,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("ftop %s\n", version)
+		fmt.Printf("ember %s\n", version)
 		return
 	}
 

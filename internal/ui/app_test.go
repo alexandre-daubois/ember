@@ -3,8 +3,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/alexandredaubois/frankentop/internal/fetcher"
-	"github.com/alexandredaubois/frankentop/internal/model"
+	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandredaubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
