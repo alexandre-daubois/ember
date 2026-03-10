@@ -5,6 +5,7 @@ import (
 
 	"github.com/alexandredaubois/frankentop/internal/fetcher"
 	"github.com/alexandredaubois/frankentop/internal/model"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func newAppWithThreads(threads []fetcher.ThreadDebugState) *App {
@@ -81,6 +82,35 @@ func TestFilteredThreads_NoMatch(t *testing.T) {
 	result := app.filteredThreads()
 	if len(result) != 0 {
 		t.Errorf("expected 0 matches, got %d", len(result))
+	}
+}
+
+func TestLeakToggle(t *testing.T) {
+	app := &App{
+		leakWatcher: model.NewLeakWatcher(60, 5),
+		leakEnabled: true,
+	}
+
+	if !app.leakEnabled {
+		t.Fatal("leak should start enabled")
+	}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+
+	if app.leakEnabled {
+		t.Error("leak should be disabled after pressing l")
+	}
+	if app.status != "leak watcher disabled" {
+		t.Errorf("unexpected status: %q", app.status)
+	}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+
+	if !app.leakEnabled {
+		t.Error("leak should be re-enabled after pressing l again")
+	}
+	if app.status != "leak watcher enabled" {
+		t.Errorf("unexpected status: %q", app.status)
 	}
 }
 

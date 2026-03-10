@@ -84,6 +84,7 @@ func (s *State) computeDerived() DerivedMetrics {
 		return d
 	}
 
+	// try FrankenPHP worker metrics first
 	var currCount, prevCount, currTime, prevTime float64
 	for _, w := range s.Current.Metrics.Workers {
 		currCount += w.RequestCount
@@ -92,6 +93,14 @@ func (s *State) computeDerived() DerivedMetrics {
 	for _, w := range s.Previous.Metrics.Workers {
 		prevCount += w.RequestCount
 		prevTime += w.RequestTime
+	}
+
+	// fallback to Caddy HTTP metrics if no FrankenPHP worker metrics
+	if currCount == 0 && s.Current.Metrics.HTTPRequestDurationCount > 0 {
+		currCount = s.Current.Metrics.HTTPRequestDurationCount
+		currTime = s.Current.Metrics.HTTPRequestDurationSum
+		prevCount = s.Previous.Metrics.HTTPRequestDurationCount
+		prevTime = s.Previous.Metrics.HTTPRequestDurationSum
 	}
 
 	deltaCount := currCount - prevCount

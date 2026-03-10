@@ -32,7 +32,7 @@ func main() {
 	var cfg Config
 
 	flag.StringVar(&cfg.Addr, "addr", "http://localhost:2019", "Caddy admin API address")
-	flag.DurationVar(&cfg.Interval, "interval", 2*time.Second, "polling interval")
+	flag.DurationVar(&cfg.Interval, "interval", 1*time.Second, "polling interval")
 	flag.IntVar(&cfg.SlowThreshold, "slow-threshold", 500, "slow request threshold (ms)")
 	flag.IntVar(&cfg.LeakThreshold, "leak-threshold", 5, "leak detection threshold (MB)")
 	flag.IntVar(&cfg.LeakWindow, "leak-window", 20, "leak watcher sample window")

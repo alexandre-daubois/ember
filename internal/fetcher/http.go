@@ -15,14 +15,15 @@ import (
 type HTTPFetcher struct {
 	baseURL    string
 	httpClient *http.Client
-	pid        int32
+	procHandle *processHandle
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
+	ph, _ := newProcessHandle(pid)
 	return &HTTPFetcher{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{Timeout: 5 * time.Second},
-		pid:        pid,
+		procHandle: ph,
 	}
 }
 
@@ -62,7 +63,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	})
 
 	g.Go(func() error {
-		p, err := fetchProcessMetrics(ctx, f.pid)
+		p, err := f.procHandle.fetch(ctx)
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, err.Error())

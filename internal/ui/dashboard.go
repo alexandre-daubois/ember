@@ -25,19 +25,30 @@ func renderDashboard(s *model.State, width int) string {
 	)
 
 	line2 := fmt.Sprintf(
-		"  RPS %-8.0f Avg %.1fms     Queue %.0f",
-		d.RPS, d.AvgTime, snap.Metrics.QueueDepth,
+		"  RPS %-8.0f Avg %.1fms     In-flight %.0f   Queue %.0f",
+		d.RPS, d.AvgTime, snap.Metrics.HTTPRequestsInFlight, snap.Metrics.QueueDepth,
 	)
 
-	workerTotal := int(snap.Metrics.TotalThreads)
+	threadTotal := len(snap.Threads.ThreadDebugStates)
 	line3 := fmt.Sprintf(
-		"  Workers: %d idle · %d busy · %.0f crashed    Threads: %.0f/%d",
+		"  Workers: %d idle · %d busy · %.0f crashed    Threads: %d/%d",
 		d.TotalIdle, d.TotalBusy, d.TotalCrashes,
-		snap.Metrics.BusyThreads, workerTotal,
+		d.TotalBusy, threadTotal,
 	)
 
 	title := titleStyle.Render(" FrankenTop v0.1.0 ")
-	content := lipgloss.JoinVertical(lipgloss.Left, line1, line2, line3)
+
+	hasWorkerMetrics := len(snap.Metrics.Workers) > 0
+	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
+
+	var lines []string
+	lines = append(lines, line1, line2, line3)
+
+	if !hasWorkerMetrics && !hasHTTPMetrics {
+		lines = append(lines, warnStyle.Render("  ⚠ No metrics, add `metrics` to your Caddyfile global block!"))
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	box := boxStyle.Width(width - 2).Render(
 		lipgloss.JoinVertical(lipgloss.Center, title, content),

@@ -104,6 +104,78 @@ func TestState_Update_NoPreviousSnapshot(t *testing.T) {
 	}
 }
 
+func TestState_Update_CaddyFallbackRPS(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-2 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 100,
+			HTTPRequestDurationSum:   5.0,
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 300,
+			HTTPRequestDurationSum:   15.0,
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	// 200 requests in 2 seconds = 100 RPS
+	if math.Abs(s.Derived.RPS-100) > 0.5 {
+		t.Errorf("RPS (Caddy fallback): expected ~100, got %v", s.Derived.RPS)
+	}
+
+	// 10s of request time for 200 requests = 50ms avg
+	if math.Abs(s.Derived.AvgTime-50) > 1 {
+		t.Errorf("AvgTime (Caddy fallback): expected ~50ms, got %v", s.Derived.AvgTime)
+	}
+}
+
+func TestState_Update_FrankenPHPTakesPriorityOverCaddy(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 100, RequestTime: 10.0},
+			},
+			HTTPRequestDurationCount: 500,
+			HTTPRequestDurationSum:   50.0,
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 200, RequestTime: 20.0},
+			},
+			HTTPRequestDurationCount: 1000,
+			HTTPRequestDurationSum:   100.0,
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	// FrankenPHP: 100 reqs in 1s = 100 RPS, avg = 10s/100 = 100ms
+	// Caddy would give: 500 reqs in 1s = 500 RPS, this should NOT be used
+	if math.Abs(s.Derived.RPS-100) > 0.5 {
+		t.Errorf("RPS should use FrankenPHP metrics (100), got %v", s.Derived.RPS)
+	}
+}
+
 func TestFormatUptime(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

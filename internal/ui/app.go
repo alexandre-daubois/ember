@@ -86,6 +86,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.snap != nil {
 			a.state.Update(msg.snap)
 			a.clampCursor()
+			if len(msg.snap.Errors) > 0 {
+				a.status = "⚠ " + strings.Join(msg.snap.Errors, " | ")
+			} else {
+				a.status = ""
+			}
 			if a.leakEnabled {
 				for _, t := range msg.snap.Threads.ThreadDebugStates {
 					if t.IsWaiting && t.MemoryUsage > 0 {

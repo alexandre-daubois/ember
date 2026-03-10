@@ -114,6 +114,66 @@ frankenphp_busy_threads 7
 	assertFloat(t, "TotalThreads", 0, snap.TotalThreads)
 }
 
+const sampleCaddyMetrics = `# HELP caddy_http_requests_total Total HTTP requests
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{handler="subroute",server="srv0",code="200"} 150
+caddy_http_requests_total{handler="subroute",server="srv0",code="404"} 10
+# HELP caddy_http_request_duration_seconds Histogram of request durations
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{handler="subroute",server="srv0",le="0.005"} 50
+caddy_http_request_duration_seconds_bucket{handler="subroute",server="srv0",le="0.01"} 100
+caddy_http_request_duration_seconds_bucket{handler="subroute",server="srv0",le="+Inf"} 160
+caddy_http_request_duration_seconds_sum{handler="subroute",server="srv0"} 12.5
+caddy_http_request_duration_seconds_count{handler="subroute",server="srv0"} 160
+# HELP caddy_http_requests_in_flight Active HTTP requests
+# TYPE caddy_http_requests_in_flight gauge
+caddy_http_requests_in_flight{handler="subroute",server="srv0"} 42
+`
+
+func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertFloat(t, "HTTPRequestsTotal", 160, snap.HTTPRequestsTotal)
+	assertFloat(t, "HTTPRequestDurationSum", 12.5, snap.HTTPRequestDurationSum)
+	assertFloat(t, "HTTPRequestDurationCount", 160, snap.HTTPRequestDurationCount)
+	assertFloat(t, "HTTPRequestsInFlight", 42, snap.HTTPRequestsInFlight)
+
+	if !snap.HasHTTPMetrics {
+		t.Error("HasHTTPMetrics should be true when Caddy metrics are present")
+	}
+}
+
+func TestParsePrometheusMetrics_HasHTTPMetrics_False(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if snap.HasHTTPMetrics {
+		t.Error("HasHTTPMetrics should be false when only FrankenPHP metrics are present")
+	}
+}
+
+func TestParsePrometheusMetrics_Mixed(t *testing.T) {
+	mixed := sampleMetrics + sampleCaddyMetrics
+	snap, err := parsePrometheusMetrics(strings.NewReader(mixed))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertFloat(t, "TotalThreads", 20, snap.TotalThreads)
+	assertFloat(t, "HTTPRequestsTotal", 160, snap.HTTPRequestsTotal)
+	if len(snap.Workers) != 2 {
+		t.Errorf("expected 2 workers, got %d", len(snap.Workers))
+	}
+	if !snap.HasHTTPMetrics {
+		t.Error("HasHTTPMetrics should be true in mixed metrics")
+	}
+}
+
 func assertFloat(t *testing.T, name string, expected, got float64) {
 	t.Helper()
 	if got != expected {

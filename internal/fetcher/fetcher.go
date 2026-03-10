@@ -39,10 +39,18 @@ type WorkerMetrics struct {
 }
 
 type MetricsSnapshot struct {
+	// FrankenPHP-specific (require frankenphp metrics)
 	TotalThreads float64                   `json:"totalThreads"`
 	BusyThreads  float64                   `json:"busyThreads"`
 	QueueDepth   float64                   `json:"queueDepth"`
 	Workers      map[string]*WorkerMetrics `json:"workers"`
+
+	// Caddy HTTP metrics (require `metrics` directive in Caddyfile)
+	HTTPRequestsTotal        float64 `json:"httpRequestsTotal"`
+	HTTPRequestDurationSum   float64 `json:"httpRequestDurationSum"`
+	HTTPRequestDurationCount float64 `json:"httpRequestDurationCount"`
+	HTTPRequestsInFlight     float64 `json:"httpRequestsInFlight"`
+	HasHTTPMetrics           bool    `json:"hasHttpMetrics"`
 }
 
 type ProcessMetrics struct {
