@@ -2,13 +2,15 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alexandredaubois/frankentop/internal/fetcher"
+	"github.com/alexandredaubois/frankentop/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDetail(t fetcher.ThreadDebugState, width, height int) string {
+func renderDetail(t fetcher.ThreadDebugState, leakStatus model.LeakStatus, width, height int) string {
 	w := width - 10
 	if w > 70 {
 		w = 70
@@ -38,6 +40,17 @@ func renderDetail(t fetcher.ThreadDebugState, width, height int) string {
 	}
 	if t.RequestCount > 0 {
 		lines = append(lines, fmt.Sprintf("  Requests handled: %d", t.RequestCount))
+	}
+
+	if len(leakStatus.Samples) > 0 {
+		var memStrs []string
+		for _, s := range leakStatus.Samples {
+			memStrs = append(memStrs, formatBytes(s))
+		}
+		lines = append(lines, fmt.Sprintf("  Idle memory history: %s", strings.Join(memStrs, " → ")))
+		if leakStatus.Leaking {
+			lines = append(lines, leakStyle.Render("  ⚠ Possible memory leak detected"))
+		}
 	}
 
 	lines = append(lines, "")

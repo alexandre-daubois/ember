@@ -11,7 +11,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int) string {
+type renderOpts struct {
+	slowThreshold time.Duration
+	leakWatcher   *model.LeakWatcher
+	leakEnabled   bool
+}
+
+func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, opts renderOpts) string {
 	if len(threads) == 0 {
 		return greyStyle.Render(" No threads")
 	}
@@ -21,7 +27,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 
 	var rows []string
 	for i, t := range threads {
-		row := formatThreadRow(t, width)
+		row := formatThreadRow(t, width, opts)
 		if i == cursor {
 			row = selectedRowStyle.Width(width).Render(row)
 		}
@@ -32,7 +38,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 
-func formatThreadRow(t fetcher.ThreadDebugState, width int) string {
+func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts) string {
 	var stateIcon string
 	var style lipgloss.Style
 
@@ -48,7 +54,7 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int) string {
 		style = greyStyle
 	}
 
-	timeStr := formatTime(t)
+	timeStr, timeStyle := formatTimeWithStyle(t, opts.slowThreshold)
 
 	name := t.Name
 	maxName := width - 30
@@ -56,27 +62,55 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int) string {
 		name = name[:maxName-1] + "…"
 	}
 
-	return fmt.Sprintf(" %-4d %s %-40s %10s",
+	var suffix string
+	if opts.leakEnabled && opts.leakWatcher != nil {
+		ls := opts.leakWatcher.Status(t.Index)
+		if ls.Leaking {
+			suffix = leakStyle.Render(" ⚠ leak?")
+		}
+	}
+
+	return fmt.Sprintf(" %-4d %s %-40s %s%s",
 		t.Index,
 		style.Render(fmt.Sprintf("%-10s", stateIcon)),
 		name,
-		timeStr,
+		timeStyle.Render(fmt.Sprintf("%10s", timeStr)),
+		suffix,
 	)
 }
 
-func formatTime(t fetcher.ThreadDebugState) string {
+func formatTimeWithStyle(t fetcher.ThreadDebugState, slowThreshold time.Duration) (string, lipgloss.Style) {
+	if slowThreshold == 0 {
+		slowThreshold = 500 * time.Millisecond
+	}
+
 	if t.IsBusy && t.RequestStartedAt > 0 {
 		elapsed := time.Since(time.UnixMilli(t.RequestStartedAt))
-		return fmt.Sprintf("%dms", elapsed.Milliseconds())
+		text := fmt.Sprintf("%dms", elapsed.Milliseconds())
+		switch {
+		case elapsed >= slowThreshold*2:
+			return text, dangerStyle
+		case elapsed >= slowThreshold:
+			return text, warnStyle
+		default:
+			return text, lipgloss.NewStyle()
+		}
 	}
+
 	if t.IsWaiting && t.WaitingSinceMilliseconds > 0 {
 		d := time.Duration(t.WaitingSinceMilliseconds) * time.Millisecond
 		if d >= time.Second {
-			return fmt.Sprintf("%.1fs idle", d.Seconds())
+			return fmt.Sprintf("%.1fs idle", d.Seconds()), greyStyle
 		}
-		return fmt.Sprintf("%dms idle", d.Milliseconds())
+		return fmt.Sprintf("%dms idle", d.Milliseconds()), greyStyle
 	}
-	return "—"
+
+	return "—", greyStyle
+}
+
+func formatTime(t fetcher.ThreadDebugState) string {
+	s, _ := formatTimeWithStyle(t, 500*time.Millisecond)
+	return s
 }
 
 func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetcher.ThreadDebugState {

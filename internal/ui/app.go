@@ -21,7 +21,10 @@ const (
 )
 
 type Config struct {
-	Interval time.Duration
+	Interval      time.Duration
+	SlowThreshold time.Duration
+	LeakThreshold int
+	LeakWindow    int
 }
 
 type restarter interface {
@@ -29,24 +32,28 @@ type restarter interface {
 }
 
 type App struct {
-	fetcher fetcher.Fetcher
-	config  Config
-	state   model.State
-	cursor  int
-	sortBy  model.SortField
-	paused  bool
-	width   int
-	height  int
-	err     error
-	mode    viewMode
-	filter  string
-	status  string
+	fetcher     fetcher.Fetcher
+	config      Config
+	state       model.State
+	leakWatcher *model.LeakWatcher
+	leakEnabled bool
+	cursor      int
+	sortBy      model.SortField
+	paused      bool
+	width       int
+	height      int
+	err         error
+	mode        viewMode
+	filter      string
+	status      string
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	return &App{
-		fetcher: f,
-		config:  cfg,
+		fetcher:     f,
+		config:      cfg,
+		leakWatcher: model.NewLeakWatcher(cfg.LeakWindow, cfg.LeakThreshold),
+		leakEnabled: true,
 	}
 }
 
@@ -79,6 +86,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.snap != nil {
 			a.state.Update(msg.snap)
 			a.clampCursor()
+			if a.leakEnabled {
+				for _, t := range msg.snap.Threads.ThreadDebugStates {
+					if t.IsWaiting && t.MemoryUsage > 0 {
+						a.leakWatcher.Record(t.Index, t.MemoryUsage)
+					}
+				}
+			}
 		}
 		return a, nil
 	case restartResultMsg:
@@ -98,10 +112,14 @@ func (a *App) View() string {
 	}
 
 	dashboard := renderDashboard(&a.state, a.width)
-	help := renderHelp(a.sortBy, a.paused)
+	help := renderHelp(a.sortBy, a.paused, a.leakEnabled)
 
 	threads := a.filteredThreads()
-	workerList := renderWorkerListFromThreads(threads, a.cursor, a.width)
+	workerList := renderWorkerListFromThreads(threads, a.cursor, a.width, renderOpts{
+		slowThreshold: a.config.SlowThreshold,
+		leakWatcher:   a.leakWatcher,
+		leakEnabled:   a.leakEnabled,
+	})
 
 	var statusLine string
 	if a.status != "" {
@@ -130,7 +148,8 @@ func (a *App) View() string {
 	switch a.mode {
 	case viewDetail:
 		if t, ok := a.selectedThread(); ok {
-			return renderDetail(t, a.width, a.height)
+			ls := a.leakWatcher.Status(t.Index)
+			return renderDetail(t, ls, a.width, a.height)
 		}
 	case viewConfirmRestart:
 		return renderConfirmOverlay(base, a.width, a.height)
@@ -174,6 +193,13 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		a.mode = viewFilter
 		a.filter = ""
+	case "l":
+		a.leakEnabled = !a.leakEnabled
+		if a.leakEnabled {
+			a.status = "leak watcher enabled"
+		} else {
+			a.status = "leak watcher disabled"
+		}
 	}
 	return a, nil
 }

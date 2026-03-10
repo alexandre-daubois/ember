@@ -67,7 +67,12 @@ func main() {
 		return
 	}
 
-	app := ui.NewApp(f, ui.Config{Interval: cfg.Interval})
+	app := ui.NewApp(f, ui.Config{
+		Interval:      cfg.Interval,
+		SlowThreshold: time.Duration(cfg.SlowThreshold) * time.Millisecond,
+		LeakThreshold: cfg.LeakThreshold,
+		LeakWindow:    cfg.LeakWindow,
+	})
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

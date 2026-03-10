@@ -25,9 +25,14 @@ var (
 	selectedRowStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("#333366"))
 
-	busyStyle = lipgloss.NewStyle().Foreground(red)
-	idleStyle = lipgloss.NewStyle().Foreground(green)
-	greyStyle = lipgloss.NewStyle().Foreground(subtle)
+	yellow = lipgloss.AdaptiveColor{Light: "#CCAA00", Dark: "#FFFF55"}
+
+	busyStyle   = lipgloss.NewStyle().Foreground(red)
+	idleStyle   = lipgloss.NewStyle().Foreground(green)
+	greyStyle   = lipgloss.NewStyle().Foreground(subtle)
+	warnStyle   = lipgloss.NewStyle().Foreground(yellow)
+	dangerStyle = lipgloss.NewStyle().Bold(true).Foreground(red)
+	leakStyle   = lipgloss.NewStyle().Foreground(yellow).Bold(true)
 
 	helpStyle = lipgloss.NewStyle().Foreground(subtle)
 )
