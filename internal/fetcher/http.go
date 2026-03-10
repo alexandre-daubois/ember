@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -94,7 +95,10 @@ func (f *HTTPFetcher) RestartWorkers(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("restart workers: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("restart workers: HTTP %d", resp.StatusCode)
 	}

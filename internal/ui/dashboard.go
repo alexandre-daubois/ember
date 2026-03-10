@@ -11,6 +11,9 @@ import (
 )
 
 func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64) string {
+	if width < 10 {
+		return "…"
+	}
 	if s.Current == nil {
 		return boxStyle.Width(width - 2).Render("Waiting for data...")
 	}
@@ -40,9 +43,9 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	line1 := fmt.Sprintf("  CPU %s %s  RSS %s  Uptime %s", cpuRaw, cpuSpark, rssStr, uptimeStr)
 
 	// line 2: RPS (colored), sparkline, Avg (colored), In-flight, Queue
-	rpsRaw := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS))
+	rpsFmt := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS))
 	if d.RPS > 0 {
-		rpsRaw = idleStyle.Render(fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS)))
+		rpsFmt = idleStyle.Render(rpsFmt)
 	}
 	avgRaw := fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime))
 	switch {
@@ -58,7 +61,7 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	}
 	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
 	line2 := fmt.Sprintf("  RPS %s %s  Avg %s  In-flight %s  Queue %s",
-		rpsRaw, rpsSpark, avgRaw, inflightStr, queueRaw)
+		rpsFmt, rpsSpark, avgRaw, inflightStr, queueRaw)
 
 	// line 3: config + thread bar
 	var threadBusy, threadIdle, threadTotal int

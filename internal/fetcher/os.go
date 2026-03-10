@@ -109,6 +109,9 @@ func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
 	var cpuPercent float64
 	if elapsed > 0 && !h.lastSample.IsZero() {
 		cpuPercent = (currentCPU - h.lastCPU) / elapsed * 100
+		if cpuPercent < 0 {
+			cpuPercent = 0
+		}
 	}
 
 	h.lastCPU = currentCPU
