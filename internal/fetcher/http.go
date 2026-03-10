@@ -84,6 +84,22 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}, nil
 }
 
+func (f *HTTPFetcher) RestartWorkers(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.baseURL+"/frankenphp/workers/restart", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("restart workers: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("restart workers: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (f *HTTPFetcher) fetchThreads(ctx context.Context) (ThreadsResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/frankenphp/threads", nil)
 	if err != nil {

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/alexandredaubois/frankentop/internal/fetcher"
+	"github.com/alexandredaubois/frankentop/internal/ui"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type Config struct {
@@ -60,6 +62,20 @@ func main() {
 
 	f := fetcher.NewHTTPFetcher(cfg.Addr, pid)
 
+	if cfg.JSONMode {
+		runJSON(ctx, f, cfg.Interval)
+		return
+	}
+
+	app := ui.NewApp(f, ui.Config{Interval: cfg.Interval})
+	p := tea.NewProgram(app, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runJSON(ctx context.Context, f *fetcher.HTTPFetcher, interval time.Duration) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 
@@ -74,7 +90,7 @@ func main() {
 
 	poll()
 
-	ticker := time.NewTicker(cfg.Interval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
