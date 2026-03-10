@@ -117,9 +117,6 @@ func renderThreadBar(busy, idle, total, maxWidth int) string {
 		return ""
 	}
 	barWidth := maxWidth
-	if barWidth > 60 {
-		barWidth = 60
-	}
 
 	busyW := busy * barWidth / total
 	idleW := idle * barWidth / total

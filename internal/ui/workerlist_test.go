@@ -66,7 +66,7 @@ func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
 		MemoryUsage:   18 * 1024 * 1024,
 		RequestCount:  4201,
 	}
-	row := formatThreadRow(thread, 120, renderOpts{}, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
 
 	assert.Contains(t, row, "POST")
 	assert.Contains(t, row, "/api/v1/users")
@@ -79,7 +79,7 @@ func TestFormatThreadRow_IdleShowsDashes(t *testing.T) {
 		Index:     1,
 		IsWaiting: true,
 	}
-	row := formatThreadRow(thread, 120, renderOpts{}, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
 
 	assert.Contains(t, row, "—", "idle row should contain dash placeholders")
 }
@@ -90,7 +90,9 @@ func TestFormatThreadRow_URITruncation(t *testing.T) {
 		IsBusy:     true,
 		CurrentURI: "/api/v1/very/long/path/that/exceeds/limit",
 	}
-	row := formatThreadRow(thread, 120, renderOpts{}, false)
+	// use narrow width so URI (42 chars) must truncate
+	narrow := 80
+	row := formatThreadRow(thread, narrow, uriWidth(narrow), renderOpts{}, false)
 
 	assert.NotContains(t, row, "exceeds/limit", "long URI should be truncated")
 	assert.Contains(t, row, "…", "truncated URI should end with ellipsis")

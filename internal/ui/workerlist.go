@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
@@ -17,10 +18,31 @@ type renderOpts struct {
 	leakEnabled   bool
 }
 
+// fixed column widths (excluding URI which is dynamic)
+const (
+	colIndex  = 5
+	colState  = 12 // 11 content + 1 trailing space
+	colMethod = 9  // 8 content + 1 trailing space
+	colTime   = 12 // 11 content + 1 trailing space
+	colMem    = 10 // 9 content + 1 trailing space
+	colReqs   = 9
+	colFixed  = 1 + colIndex + colState + colMethod + colTime + colMem + colReqs // 1 for prefix
+)
+
+func uriWidth(totalWidth int) int {
+	w := totalWidth - colFixed
+	if w < 10 {
+		w = 10
+	}
+	return w
+}
+
 func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts) string {
 	if len(threads) == 0 {
 		return greyStyle.Render(" No threads")
 	}
+
+	uriW := uriWidth(width)
 
 	colHead := func(label string, field model.SortField, w int, right bool) string {
 		if sortBy == field {
@@ -32,14 +54,14 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 		return fmt.Sprintf("%-*s", w, label)
 	}
 
-	header := fmt.Sprintf(" %s %s %s %s %s %s %s",
-		colHead("#", model.SortByIndex, 4, false),
-		colHead("State", model.SortByState, 10, false),
-		colHead("Method", model.SortByMethod, 7, false),
-		colHead("URI", model.SortByURI, 24, false),
-		colHead("Time", model.SortByTime, 10, true),
-		colHead("Mem", model.SortByMemory, 8, true),
-		colHead("Reqs", model.SortByRequests, 8, true),
+	header := fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s%*s%*s",
+		colIndex, colHead("#", model.SortByIndex, colIndex, false),
+		colState, colHead("State", model.SortByState, colState, false),
+		colMethod, colHead("Method", model.SortByMethod, colMethod, false),
+		uriW, colHead("URI", model.SortByURI, uriW, false),
+		colTime, colHead("Time", model.SortByTime, colTime, true),
+		colMem, colHead("Mem", model.SortByMemory, colMem, true),
+		colReqs, colHead("Reqs", model.SortByRequests, colReqs, true),
 	)
 	headerLine := tableHeaderStyle.Width(width).Render(header)
 
@@ -48,11 +70,15 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 	for i, t := range threads {
 		group := threadGroup(t)
 		if group != lastGroup {
-			label := greyStyle.Render(" ── " + group + " ")
-			rows = append(rows, label)
+			sep := " ── " + group + " "
+			remaining := width - utf8.RuneCountInString(sep)
+			if remaining > 0 {
+				sep += strings.Repeat("─", remaining)
+			}
+			rows = append(rows, greyStyle.Render(sep))
 			lastGroup = group
 		}
-		row := formatThreadRow(t, width, opts, i == cursor)
+		row := formatThreadRow(t, width, uriW, opts, i == cursor)
 		rows = append(rows, row)
 	}
 
@@ -67,7 +93,7 @@ func threadGroup(t fetcher.ThreadDebugState) string {
 	return "threads"
 }
 
-func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, selected bool) string {
+func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts renderOpts, selected bool) string {
 	var stateIcon string
 	var style lipgloss.Style
 
@@ -100,8 +126,8 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 	}
 	if t.IsBusy && t.CurrentURI != "" {
 		uri = t.CurrentURI
-		if len(uri) > 24 {
-			uri = uri[:23] + "…"
+		if len(uri) > uriW {
+			uri = uri[:uriW-1] + "…"
 		}
 	}
 
@@ -122,10 +148,10 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 		timeStyle = timeStyle.Reverse(true)
 	}
 
-	methodStr := fmt.Sprintf("%-7s", method)
-	uriStr := fmt.Sprintf("%-24s", uri)
-	memFmt := fmt.Sprintf("%8s", memStr)
-	reqsFmt := fmt.Sprintf("%8s", reqsStr)
+	methodStr := fmt.Sprintf("%-*s", colMethod, method)
+	uriStr := fmt.Sprintf("%-*s", uriW, uri)
+	memFmt := fmt.Sprintf("%*s", colMem, memStr)
+	reqsFmt := fmt.Sprintf("%*s", colReqs, reqsStr)
 
 	if selected {
 		methodStr = selectedRowStyle.Render(methodStr)
@@ -134,13 +160,13 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 		reqsFmt = selectedRowStyle.Render(reqsFmt)
 	}
 
-	row := fmt.Sprintf("%s%-4d %s %s %s %s %s %s%s",
+	row := fmt.Sprintf("%s%-*d%s%s%s%s%s%s%s",
 		prefix,
-		t.Index,
-		style.Render(fmt.Sprintf("%-10s", stateIcon)),
+		colIndex, t.Index,
+		style.Render(fmt.Sprintf("%-*s", colState, stateIcon)),
 		methodStr,
 		uriStr,
-		timeStyle.Render(fmt.Sprintf("%10s", timeStr)),
+		timeStyle.Render(fmt.Sprintf("%*s", colTime, timeStr)),
 		memFmt,
 		reqsFmt,
 		suffix,

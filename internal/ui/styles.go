@@ -3,16 +3,20 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	subtle     = lipgloss.AdaptiveColor{Light: "#555555", Dark: "#888888"}
-	green      = lipgloss.AdaptiveColor{Light: "#00A500", Dark: "#00FF00"}
-	red        = lipgloss.AdaptiveColor{Light: "#CC0000", Dark: "#FF5555"}
+	subtle = lipgloss.AdaptiveColor{Light: "#7A6652", Dark: "#A0896E"}
+	amber  = lipgloss.AdaptiveColor{Light: "#CC8800", Dark: "#FFAA00"}
+	ember  = lipgloss.AdaptiveColor{Light: "#CC4400", Dark: "#FF6B35"}
+	red    = lipgloss.AdaptiveColor{Light: "#CC0000", Dark: "#FF4444"}
+	warn   = lipgloss.AdaptiveColor{Light: "#CC6600", Dark: "#FF8C00"}
+	leak   = lipgloss.AdaptiveColor{Light: "#CC3300", Dark: "#FF6347"}
+
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4"))
+			Foreground(ember)
 
 	boxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")).
+			BorderForeground(ember).
 			Padding(0, 1)
 
 	tableHeaderStyle = lipgloss.NewStyle().
@@ -25,14 +29,12 @@ var (
 	selectedRowStyle = lipgloss.NewStyle().
 				Reverse(true)
 
-	yellow = lipgloss.AdaptiveColor{Light: "#CCAA00", Dark: "#FFFF55"}
-
 	busyStyle   = lipgloss.NewStyle().Foreground(red)
-	idleStyle   = lipgloss.NewStyle().Foreground(green)
+	idleStyle   = lipgloss.NewStyle().Foreground(amber)
 	greyStyle   = lipgloss.NewStyle().Foreground(subtle)
-	warnStyle   = lipgloss.NewStyle().Foreground(yellow)
+	warnStyle   = lipgloss.NewStyle().Foreground(warn)
 	dangerStyle = lipgloss.NewStyle().Bold(true).Foreground(red)
-	leakStyle   = lipgloss.NewStyle().Foreground(yellow).Bold(true)
+	leakStyle   = lipgloss.NewStyle().Foreground(leak).Bold(true)
 
 	helpStyle = lipgloss.NewStyle().Foreground(subtle)
 )
