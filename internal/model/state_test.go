@@ -209,3 +209,29 @@ func TestSortField_Next(t *testing.T) {
 		t.Errorf("Next() should cycle back to SortByIndex, got %v", s)
 	}
 }
+
+func TestSortField_Prev(t *testing.T) {
+	s := SortByIndex
+	seen := make(map[SortField]bool)
+	for range 7 {
+		seen[s] = true
+		s = s.Prev()
+	}
+	if len(seen) != 7 {
+		t.Errorf("Prev() should cycle through 7 values, got %d", len(seen))
+	}
+	if s != SortByIndex {
+		t.Errorf("Prev() should cycle back to SortByIndex, got %v", s)
+	}
+}
+
+func TestSortField_NextPrev_Inverse(t *testing.T) {
+	for _, start := range sortFieldOrder {
+		if start.Next().Prev() != start {
+			t.Errorf("Next().Prev() should return to %v, got %v", start, start.Next().Prev())
+		}
+		if start.Prev().Next() != start {
+			t.Errorf("Prev().Next() should return to %v, got %v", start, start.Prev().Next())
+		}
+	}
+}
