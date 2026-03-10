@@ -9,6 +9,7 @@ import (
 	"github.com/alexandredaubois/frankentop/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 type viewMode int
@@ -25,6 +26,7 @@ type Config struct {
 	SlowThreshold time.Duration
 	LeakThreshold int
 	LeakWindow    int
+	NoColor       bool
 }
 
 type restarter interface {
@@ -49,6 +51,9 @@ type App struct {
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
+	if cfg.NoColor {
+		lipgloss.SetColorProfile(termenv.Ascii)
+	}
 	return &App{
 		fetcher:     f,
 		config:      cfg,

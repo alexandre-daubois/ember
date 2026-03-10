@@ -23,7 +23,7 @@ var (
 				BorderForeground(subtle)
 
 	selectedRowStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("#333366"))
+				Reverse(true)
 
 	yellow = lipgloss.AdaptiveColor{Light: "#CCAA00", Dark: "#FFFF55"}
 

@@ -27,10 +27,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 
 	var rows []string
 	for i, t := range threads {
-		row := formatThreadRow(t, width, opts)
-		if i == cursor {
-			row = selectedRowStyle.Width(width).Render(row)
-		}
+		row := formatThreadRow(t, width, opts, i == cursor)
 		rows = append(rows, row)
 	}
 
@@ -38,7 +35,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 
-func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts) string {
+func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, selected bool) string {
 	var stateIcon string
 	var style lipgloss.Style
 
@@ -70,13 +67,31 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts) str
 		}
 	}
 
-	return fmt.Sprintf(" %-4d %s %-40s %s%s",
+	prefix := " "
+	if selected {
+		prefix = ">"
+		style = style.Reverse(true)
+		timeStyle = timeStyle.Reverse(true)
+	}
+
+	nameStr := fmt.Sprintf("%-40s", name)
+	if selected {
+		nameStr = selectedRowStyle.Render(nameStr)
+	}
+
+	row := fmt.Sprintf("%s%-4d %s %s %s%s",
+		prefix,
 		t.Index,
 		style.Render(fmt.Sprintf("%-10s", stateIcon)),
-		name,
+		nameStr,
 		timeStyle.Render(fmt.Sprintf("%10s", timeStr)),
 		suffix,
 	)
+
+	if selected {
+		return selectedRowStyle.Width(width).Render(row)
+	}
+	return row
 }
 
 func formatTimeWithStyle(t fetcher.ThreadDebugState, slowThreshold time.Duration) (string, lipgloss.Style) {

@@ -72,6 +72,7 @@ func main() {
 		SlowThreshold: time.Duration(cfg.SlowThreshold) * time.Millisecond,
 		LeakThreshold: cfg.LeakThreshold,
 		LeakWindow:    cfg.LeakWindow,
+		NoColor:       cfg.NoColor,
 	})
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
