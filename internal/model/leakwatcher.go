@@ -1,6 +1,9 @@
 package model
 
+import "sync"
+
 type LeakWatcher struct {
+	mu         sync.Mutex
 	windowSize int
 	threshold  int64 // bytes
 	samples    map[int]*ringBuffer
@@ -21,6 +24,9 @@ type LeakStatus struct {
 }
 
 func NewLeakWatcher(windowSize int, thresholdMB int) *LeakWatcher {
+	if windowSize < 3 {
+		windowSize = 3
+	}
 	return &LeakWatcher{
 		windowSize: windowSize,
 		threshold:  int64(thresholdMB) * 1024 * 1024,
@@ -32,6 +38,8 @@ func (lw *LeakWatcher) Record(threadIndex int, memoryUsage int64) {
 	if memoryUsage <= 0 {
 		return
 	}
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
 	rb, ok := lw.samples[threadIndex]
 	if !ok {
 		rb = newRingBuffer(lw.windowSize)
@@ -41,6 +49,8 @@ func (lw *LeakWatcher) Record(threadIndex int, memoryUsage int64) {
 }
 
 func (lw *LeakWatcher) Status(threadIndex int) LeakStatus {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
 	rb, ok := lw.samples[threadIndex]
 	if !ok {
 		return LeakStatus{}

@@ -55,7 +55,7 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 
 	name := t.Name
 	maxName := width - 30
-	if maxName > 0 && len(name) > maxName {
+	if maxName > 1 && len(name) > maxName {
 		name = name[:maxName-1] + "…"
 	}
 
