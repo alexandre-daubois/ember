@@ -19,7 +19,7 @@ type HTTPFetcher struct {
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
-	ph, _ := newProcessHandle(pid)
+	ph := newProcessHandle(pid)
 	return &HTTPFetcher{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{Timeout: 5 * time.Second},

@@ -41,62 +41,78 @@ type processHandle struct {
 	numCPU     float64
 }
 
-func newProcessHandle(pid int32) (*processHandle, error) {
+func (h *processHandle) reset() {
+	h.proc = nil
+	h.lastCPU = 0
+	h.lastSample = time.Time{}
+}
+
+func newProcessHandle(pid int32) *processHandle {
+	h := &processHandle{
+		numCPU: float64(runtime.NumCPU()),
+	}
 	if pid <= 0 {
-		return nil, nil
+		return h
 	}
 	p, err := process.NewProcess(pid)
 	if err != nil {
-		return nil, fmt.Errorf("process %d: %w", pid, err)
+		return h
 	}
-
-	h := &processHandle{
-		proc:   p,
-		numCPU: float64(runtime.NumCPU()),
-	}
-
-	times, err := p.Times()
-	if err == nil {
+	h.proc = p
+	if times, err := p.Times(); err == nil {
 		h.lastCPU = times.User + times.System
 		h.lastSample = time.Now()
 	}
-
-	return h, nil
+	return h
 }
 
 func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
-	if h == nil || h.proc == nil {
+	if h.proc == nil {
+		pid, err := FindFrankenPHPProcess(ctx)
+		if err != nil {
+			return ProcessMetrics{}, nil
+		}
+		p, err := process.NewProcess(pid)
+		if err != nil {
+			return ProcessMetrics{}, nil
+		}
+		h.proc = p
+		if times, err := p.Times(); err == nil {
+			h.lastCPU = times.User + times.System
+			h.lastSample = time.Now()
+		}
+		return ProcessMetrics{PID: pid}, nil
+	}
+
+	times, err := h.proc.TimesWithContext(ctx)
+	if err != nil {
+		h.reset()
 		return ProcessMetrics{}, nil
 	}
 
-	// compute CPU% as delta between two samples, not through the entire lifetime
-	var cpuPercent float64
-	times, err := h.proc.TimesWithContext(ctx)
+	memInfo, err := h.proc.MemoryInfoWithContext(ctx)
 	if err != nil {
-		return ProcessMetrics{}, fmt.Errorf("cpu times: %w", err)
+		h.reset()
+		return ProcessMetrics{}, nil
+	}
+
+	createTime, err := h.proc.CreateTimeWithContext(ctx)
+	if err != nil {
+		h.reset()
+		return ProcessMetrics{}, nil
 	}
 
 	now := time.Now()
 	currentCPU := times.User + times.System
 	elapsed := now.Sub(h.lastSample).Seconds()
 
+	var cpuPercent float64
 	if elapsed > 0 && !h.lastSample.IsZero() {
-		deltaCPU := currentCPU - h.lastCPU
-		cpuPercent = (deltaCPU / elapsed) * 100
+		cpuPercent = (currentCPU - h.lastCPU) / elapsed * 100
 	}
 
 	h.lastCPU = currentCPU
 	h.lastSample = now
-
-	memInfo, err := h.proc.MemoryInfoWithContext(ctx)
-	if err != nil {
-		return ProcessMetrics{}, fmt.Errorf("memory info: %w", err)
-	}
-
-	createTime, err := h.proc.CreateTimeWithContext(ctx)
-	if err != nil {
-		return ProcessMetrics{}, fmt.Errorf("create time: %w", err)
-	}
 
 	return ProcessMetrics{
 		PID:        h.proc.Pid,

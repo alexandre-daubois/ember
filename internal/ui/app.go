@@ -34,6 +34,8 @@ type restarter interface {
 	RestartWorkers(ctx context.Context) error
 }
 
+const sparklineSize = 15
+
 type App struct {
 	fetcher     fetcher.Fetcher
 	config      Config
@@ -49,6 +51,8 @@ type App struct {
 	mode        viewMode
 	filter      string
 	status      string
+	rpsHistory  []float64
+	cpuHistory  []float64
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -97,6 +101,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				a.status = ""
 			}
+			a.rpsHistory = appendSparkline(a.rpsHistory, a.state.Derived.RPS)
+			a.cpuHistory = appendSparkline(a.cpuHistory, msg.snap.Process.CPUPercent)
 			if a.leakEnabled {
 				for _, t := range msg.snap.Threads.ThreadDebugStates {
 					if t.IsWaiting && t.MemoryUsage > 0 {
@@ -117,6 +123,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+func appendSparkline(history []float64, val float64) []float64 {
+	history = append(history, val)
+	if len(history) > sparklineSize {
+		history = history[len(history)-sparklineSize:]
+	}
+	return history
+}
+
 func (a *App) View() string {
 	if a.width == 0 {
 		return "Loading..."
@@ -126,7 +140,7 @@ func (a *App) View() string {
 		return renderConnectionError(a.state.Current.Errors[0], a.width, a.height)
 	}
 
-	dashboard := renderDashboard(&a.state, a.width, a.config.Version)
+	dashboard := renderDashboard(&a.state, a.width, a.config.Version, a.rpsHistory, a.cpuHistory)
 	help := renderHelp(a.sortBy, a.paused, a.leakEnabled)
 
 	threads := a.filteredThreads()

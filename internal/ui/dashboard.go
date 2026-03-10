@@ -2,13 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDashboard(s *model.State, width int, version string) string {
+func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64) string {
 	if s.Current == nil {
 		return boxStyle.Width(width - 2).Render("Waiting for data...")
 	}
@@ -22,47 +23,52 @@ func renderDashboard(s *model.State, width int, version string) string {
 
 	title := titleStyle.Render(fmt.Sprintf(" Ember %s ", version))
 
-	// line 1: CPU (colored), RSS, Uptime
-	cpuStr := fmt.Sprintf("%.1f%%", p.CPUPercent)
+	// line 1: CPU (colored), sparkline, RSS, Uptime
+	cpuRaw := fmt.Sprintf("%-7s", fmt.Sprintf("%.1f%%", p.CPUPercent))
 	switch {
 	case p.CPUPercent >= 150:
-		cpuStr = dangerStyle.Render(cpuStr)
+		cpuRaw = dangerStyle.Render(cpuRaw)
 	case p.CPUPercent >= 80:
-		cpuStr = warnStyle.Render(cpuStr)
+		cpuRaw = warnStyle.Render(cpuRaw)
 	default:
-		cpuStr = idleStyle.Render(cpuStr)
+		cpuRaw = idleStyle.Render(cpuRaw)
 	}
-	line1 := fmt.Sprintf("  CPU %s    RSS %.0f MB    Uptime %s", cpuStr, rss, uptime)
+	cpuSpark := renderSparkline(cpuHistory, sparklineSize)
+	rssStr := fmt.Sprintf("%-8s", fmt.Sprintf("%.0f MB", rss))
+	uptimeStr := fmt.Sprintf("%-10s", uptime)
+	line1 := fmt.Sprintf("  CPU %s %s  RSS %s  Uptime %s", cpuRaw, cpuSpark, rssStr, uptimeStr)
 
-	// line 2: RPS (colored), Avg (colored), In-flight, Queue
-	rpsStr := fmt.Sprintf("%.0f", d.RPS)
+	// line 2: RPS (colored), sparkline, Avg (colored), In-flight, Queue
+	rpsRaw := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS))
 	if d.RPS > 0 {
-		rpsStr = idleStyle.Render(rpsStr)
+		rpsRaw = idleStyle.Render(fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS)))
 	}
-	avgStr := fmt.Sprintf("%.1fms", d.AvgTime)
+	avgRaw := fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime))
 	switch {
 	case d.AvgTime >= 1000:
-		avgStr = dangerStyle.Render(avgStr)
+		avgRaw = dangerStyle.Render(fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime)))
 	case d.AvgTime >= 500:
-		avgStr = warnStyle.Render(avgStr)
+		avgRaw = warnStyle.Render(fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime)))
 	}
-	queueStr := fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)
+	inflightStr := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.HTTPRequestsInFlight))
+	queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
 	if snap.Metrics.QueueDepth > 0 {
-		queueStr = warnStyle.Render(queueStr)
+		queueRaw = warnStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)))
 	}
-	line2 := fmt.Sprintf("  RPS %-8s Avg %-10s In-flight %.0f   Queue %s",
-		rpsStr, avgStr, snap.Metrics.HTTPRequestsInFlight, queueStr)
+	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
+	line2 := fmt.Sprintf("  RPS %s %s  Avg %s  In-flight %s  Queue %s",
+		rpsRaw, rpsSpark, avgRaw, inflightStr, queueRaw)
 
 	// line 3: Workers + thread bar
 	threadTotal := len(snap.Threads.ThreadDebugStates)
-	crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
+	crashRaw := fmt.Sprintf("%-3s", fmt.Sprintf("%.0f", d.TotalCrashes))
 	if d.TotalCrashes > 0 {
-		crashStr = dangerStyle.Render(crashStr)
+		crashRaw = dangerStyle.Render(fmt.Sprintf("%-3s", fmt.Sprintf("%.0f", d.TotalCrashes)))
 	}
 
 	threadBar := renderThreadBar(d.TotalBusy, d.TotalIdle, threadTotal, width-40)
-	line3 := fmt.Sprintf("  Workers: %d idle · %d busy · %s crashed    Threads: %d/%d",
-		d.TotalIdle, d.TotalBusy, crashStr, d.TotalBusy, threadTotal)
+	line3 := fmt.Sprintf("  Workers: %-3d idle · %-3d busy · %s crashed    Threads: %d/%d",
+		d.TotalIdle, d.TotalBusy, crashRaw, d.TotalBusy, threadTotal)
 
 	hasWorkerMetrics := len(snap.Metrics.Workers) > 0
 	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
@@ -99,6 +105,42 @@ func renderThreadBar(busy, idle, total, maxWidth int) string {
 		greyStyle.Render(strings.Repeat("░", inactiveW))
 
 	return "[" + bar + "]"
+}
+
+var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+func renderSparkline(values []float64, fixedWidth int) string {
+	if len(values) < 2 {
+		return strings.Repeat(" ", fixedWidth)
+	}
+
+	maxVal := 0.0
+	for _, v := range values {
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+
+	var b strings.Builder
+	pad := fixedWidth - len(values)
+	for i := 0; i < pad; i++ {
+		b.WriteRune(' ')
+	}
+	for _, v := range values {
+		if maxVal == 0 {
+			b.WriteRune(sparkBlocks[0])
+			continue
+		}
+		idx := int(math.Round(v / maxVal * float64(len(sparkBlocks)-1)))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(sparkBlocks) {
+			idx = len(sparkBlocks) - 1
+		}
+		b.WriteRune(sparkBlocks[idx])
+	}
+	return greyStyle.Render(b.String())
 }
 
 func renderConnectionError(err string, width, height int) string {
