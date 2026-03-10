@@ -237,3 +237,42 @@ func TestFormatNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestSortThreads_GroupsByScript(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, Name: "Regular PHP Thread"},
+		{Index: 1, Name: "Worker PHP Thread - /app/api.php"},
+		{Index: 2, Name: "Worker PHP Thread - /app/worker.php"},
+		{Index: 3, Name: "Regular PHP Thread"},
+	}
+	sorted := sortThreads(threads, model.SortByIndex)
+
+	groups := make([]string, len(sorted))
+	for i, s := range sorted {
+		groups[i] = threadGroup(s)
+	}
+
+	for i := 1; i < len(groups); i++ {
+		if groups[i] < groups[i-1] {
+			t.Errorf("groups not contiguous: %v", groups)
+			break
+		}
+	}
+}
+
+func TestThreadGroup(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"Worker PHP Thread - /app/worker.php", "(Worker script) /app/worker.php"},
+		{"Regular PHP Thread", "threads"},
+		{"", "threads"},
+	}
+	for _, tt := range tests {
+		got := threadGroup(fetcher.ThreadDebugState{Name: tt.name})
+		if got != tt.want {
+			t.Errorf("threadGroup(%q): expected %q, got %q", tt.name, tt.want, got)
+		}
+	}
+}

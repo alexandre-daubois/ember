@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/alexandredaubois/ember/internal/fetcher"
 )
 
 func TestRenderSparkline_TooFewValues(t *testing.T) {
@@ -55,6 +57,48 @@ func TestAppendSparkline_Caps(t *testing.T) {
 	}
 	if h[len(h)-1] != 49 {
 		t.Errorf("expected last value 49, got %.0f", h[len(h)-1])
+	}
+}
+
+func TestWorkerScript(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"Worker PHP Thread - /app/worker.php", "/app/worker.php"},
+		{"Worker PHP Thread - /app/api.php", "/app/api.php"},
+		{"Regular PHP Thread", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := workerScript(tt.name)
+		if got != tt.want {
+			t.Errorf("workerScript(%q): expected %q, got %q", tt.name, tt.want, got)
+		}
+	}
+}
+
+func TestCountWorkerScripts(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Name: "Worker PHP Thread - /app/worker.php"},
+		{Name: "Worker PHP Thread - /app/worker.php"},
+		{Name: "Worker PHP Thread - /app/api.php"},
+		{Name: "Regular PHP Thread"},
+	}
+	got := countWorkerScripts(threads)
+	if got != 2 {
+		t.Errorf("expected 2 distinct worker scripts, got %d", got)
+	}
+}
+
+func TestCountWorkerScripts_None(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Name: "Regular PHP Thread"},
+		{Name: "Regular PHP Thread"},
+	}
+	got := countWorkerScripts(threads)
+	if got != 0 {
+		t.Errorf("expected 0 worker scripts, got %d", got)
 	}
 }
 

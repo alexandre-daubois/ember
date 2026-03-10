@@ -44,7 +44,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 
 func threadGroup(t fetcher.ThreadDebugState) string {
 	if s := workerScript(t.Name); s != "" {
-		return s
+		return "(Worker script) " + s
 	}
 	return "threads"
 }

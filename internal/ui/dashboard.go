@@ -133,7 +133,7 @@ const workerPrefix = "Worker PHP Thread - "
 
 func workerScript(name string) string {
 	if strings.HasPrefix(name, workerPrefix) {
-		return "(Worker script) " + name[len(workerPrefix):]
+		return name[len(workerPrefix):]
 	}
 	return ""
 }
