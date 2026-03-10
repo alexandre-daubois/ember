@@ -67,6 +67,76 @@ func TestFilteredThreads_CaseInsensitive(t *testing.T) {
 	assert.Len(t, result, 1)
 }
 
+func TestFilteredThreads_ByMethod(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Thread 0", CurrentMethod: "GET"},
+		{Index: 1, Name: "Thread 1", CurrentMethod: "POST"},
+		{Index: 2, Name: "Thread 2", CurrentMethod: ""},
+	})
+	app.filter = "post"
+
+	result := app.filteredThreads()
+	assert.Len(t, result, 1)
+	assert.Equal(t, "POST", result[0].CurrentMethod)
+}
+
+func TestFilteredThreads_ByURI(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Thread 0", CurrentURI: "/api/users"},
+		{Index: 1, Name: "Thread 1", CurrentURI: "/api/orders"},
+		{Index: 2, Name: "Thread 2", CurrentURI: ""},
+	})
+	app.filter = "users"
+
+	result := app.filteredThreads()
+	assert.Len(t, result, 1)
+	assert.Equal(t, "/api/users", result[0].CurrentURI)
+}
+
+func TestFilteredThreads_ByPartialURI(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Thread 0", CurrentURI: "/api/v1/users/123"},
+		{Index: 1, Name: "Thread 1", CurrentURI: "/api/v1/orders"},
+		{Index: 2, Name: "Thread 2", CurrentURI: "/health"},
+	})
+	app.filter = "/api/v1"
+
+	result := app.filteredThreads()
+	assert.Len(t, result, 2)
+}
+
+func TestFilteredThreads_MethodCaseInsensitive(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Thread 0", CurrentMethod: "GET"},
+		{Index: 1, Name: "Thread 1", CurrentMethod: "POST"},
+	})
+	app.filter = "get"
+
+	result := app.filteredThreads()
+	assert.Len(t, result, 1)
+	assert.Equal(t, 0, result[0].Index)
+}
+
+func TestFilteredThreads_MatchesAnyField(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Worker PHP Thread", CurrentMethod: "POST", CurrentURI: "/upload"},
+		{Index: 1, Name: "Regular PHP Thread", CurrentMethod: "GET", CurrentURI: "/api"},
+		{Index: 2, Name: "Regular PHP Thread", State: "inactive"},
+	})
+
+	app.filter = "worker"
+	assert.Len(t, app.filteredThreads(), 1, "should match by name")
+
+	app.filter = "upload"
+	assert.Len(t, app.filteredThreads(), 1, "should match by URI")
+
+	app.filter = "post"
+	assert.Len(t, app.filteredThreads(), 1, "should match by method")
+
+	app.filter = "inactive"
+	assert.Len(t, app.filteredThreads(), 1, "should match by state")
+}
+
 func TestFilteredThreads_NoMatch(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{
 		{Index: 0, Name: "Worker PHP Thread"},

@@ -79,6 +79,45 @@ func TestCountWorkerScripts_None(t *testing.T) {
 	assert.Equal(t, 0, countWorkerScripts(threads))
 }
 
+func TestCountWorkerThreads(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Name: "Worker PHP Thread - /app/worker.php"},
+		{Name: "Worker PHP Thread - /app/worker.php"},
+		{Name: "Worker PHP Thread - /app/api.php"},
+		{Name: "Regular PHP Thread"},
+	}
+	assert.Equal(t, 3, countWorkerThreads(threads))
+}
+
+func TestCountWorkerThreads_None(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Name: "Regular PHP Thread"},
+	}
+	assert.Equal(t, 0, countWorkerThreads(threads))
+}
+
+func TestRenderThreadBar_Empty(t *testing.T) {
+	assert.Equal(t, "", renderThreadBar(0, 0, 0, 20))
+}
+
+func TestRenderThreadBar_TooNarrow(t *testing.T) {
+	assert.Equal(t, "", renderThreadBar(1, 1, 2, 5))
+}
+
+func TestRenderThreadBar_HasBrackets(t *testing.T) {
+	bar := renderThreadBar(2, 3, 10, 20)
+	plain := stripANSI(bar)
+	assert.True(t, strings.HasPrefix(plain, "["), "bar should start with [")
+	assert.True(t, strings.HasSuffix(plain, "]"), "bar should end with ]")
+}
+
+func TestRenderThreadBar_WidthMatchesMax(t *testing.T) {
+	bar := renderThreadBar(5, 5, 10, 30)
+	plain := stripANSI(bar)
+	// [  +  30 bar chars  +  ] = 32
+	assert.Equal(t, 32, utf8.RuneCountInString(plain))
+}
+
 func stripANSI(s string) string {
 	var out []rune
 	inEsc := false

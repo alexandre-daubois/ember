@@ -165,14 +165,18 @@ func (a *App) View() string {
 	listWidth := a.width - panelWidth
 
 	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, a.rpsHistory, a.cpuHistory)
-	help := renderHelp(a.sortBy, a.paused, a.leakEnabled)
+	help := renderHelp(a.sortBy, a.paused, a.leakEnabled, listWidth)
 
 	threads := a.filteredThreads()
+	totalCount := 0
+	if a.state.Current != nil {
+		totalCount = len(a.state.Current.Threads.ThreadDebugStates)
+	}
 	workerList := renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
 		slowThreshold: a.config.SlowThreshold,
 		leakWatcher:   a.leakWatcher,
 		leakEnabled:   a.leakEnabled,
-	})
+	}, totalCount)
 
 	var statusLine string
 	if a.status != "" {
@@ -328,7 +332,9 @@ func (a *App) filteredThreads() []fetcher.ThreadDebugState {
 	var result []fetcher.ThreadDebugState
 	for _, t := range threads {
 		if strings.Contains(strings.ToLower(t.Name), f) ||
-			strings.Contains(strings.ToLower(t.State), f) {
+			strings.Contains(strings.ToLower(t.State), f) ||
+			strings.Contains(strings.ToLower(t.CurrentMethod), f) ||
+			strings.Contains(strings.ToLower(t.CurrentURI), f) {
 			result = append(result, t)
 		}
 	}

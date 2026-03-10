@@ -66,7 +66,7 @@ func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
 		MemoryUsage:   18 * 1024 * 1024,
 		RequestCount:  4201,
 	}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, false)
 
 	assert.Contains(t, row, "POST")
 	assert.Contains(t, row, "/api/v1/users")
@@ -79,7 +79,7 @@ func TestFormatThreadRow_IdleShowsDashes(t *testing.T) {
 		Index:     1,
 		IsWaiting: true,
 	}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, false)
 
 	assert.Contains(t, row, "—", "idle row should contain dash placeholders")
 }
@@ -92,10 +92,58 @@ func TestFormatThreadRow_URITruncation(t *testing.T) {
 	}
 	// use narrow width so URI (42 chars) must truncate
 	narrow := 80
-	row := formatThreadRow(thread, narrow, uriWidth(narrow), renderOpts{}, false)
+	row := formatThreadRow(thread, narrow, uriWidth(narrow), renderOpts{}, false, false)
 
 	assert.NotContains(t, row, "exceeds/limit", "long URI should be truncated")
 	assert.Contains(t, row, "…", "truncated URI should end with ellipsis")
+}
+
+func TestFormatThreadRow_ZebraContainsData(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:         5,
+		IsBusy:        true,
+		CurrentMethod: "GET",
+		CurrentURI:    "/health",
+		MemoryUsage:   2 * 1024 * 1024,
+		RequestCount:  42,
+	}
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, true)
+
+	assert.Contains(t, row, "GET")
+	assert.Contains(t, row, "/health")
+	assert.Contains(t, row, "2 MB")
+}
+
+func TestFormatThreadRow_SelectedOverridesZebra(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:     0,
+		IsWaiting: true,
+	}
+	selected := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, true, true)
+	assert.Contains(t, selected, ">")
+}
+
+func TestRenderWorkerList_CountBadge(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsWaiting: true},
+		{Index: 1, IsWaiting: true},
+		{Index: 2, IsWaiting: true},
+	}
+	out := renderWorkerListFromThreads(threads, 0, 120, model.SortByIndex, renderOpts{}, 3)
+	assert.Contains(t, out, "[3]")
+}
+
+func TestRenderWorkerList_CountBadgeFiltered(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsWaiting: true},
+	}
+	out := renderWorkerListFromThreads(threads, 0, 120, model.SortByIndex, renderOpts{}, 5)
+	assert.Contains(t, out, "[1/5]")
+}
+
+func TestRenderWorkerList_Empty(t *testing.T) {
+	out := renderWorkerListFromThreads(nil, 0, 120, model.SortByIndex, renderOpts{}, 0)
+	assert.Contains(t, out, "No threads")
 }
 
 func TestSortThreads_ByMethod(t *testing.T) {

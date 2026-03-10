@@ -36,5 +36,11 @@ var (
 	dangerStyle = lipgloss.NewStyle().Bold(true).Foreground(red)
 	leakStyle   = lipgloss.NewStyle().Foreground(leak).Bold(true)
 
-	helpStyle = lipgloss.NewStyle().Foreground(subtle)
+	helpStyle    = lipgloss.NewStyle().Foreground(subtle)
+	helpKeyStyle = lipgloss.NewStyle().Foreground(ember).Bold(true)
+
+	separatorStyle = lipgloss.NewStyle().Foreground(subtle)
+
+	zebraBg    = lipgloss.AdaptiveColor{Light: "#F5F0EB", Dark: "#1A1410"}
+	zebraStyle = lipgloss.NewStyle().Background(zebraBg)
 )

@@ -37,7 +37,7 @@ func uriWidth(totalWidth int) int {
 	return w
 }
 
-func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts) string {
+func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts, totalCount int) string {
 	if len(threads) == 0 {
 		return greyStyle.Render(" No threads")
 	}
@@ -63,10 +63,17 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 		colMem, colHead("Mem", model.SortByMemory, colMem, true),
 		colReqs, colHead("Reqs", model.SortByRequests, colReqs, true),
 	)
-	headerLine := tableHeaderStyle.Width(width).Render(header)
+	var countBadge string
+	if totalCount > 0 && len(threads) < totalCount {
+		countBadge = greyStyle.Render(fmt.Sprintf(" [%d/%d]", len(threads), totalCount))
+	} else if totalCount > 0 {
+		countBadge = greyStyle.Render(fmt.Sprintf(" [%d]", totalCount))
+	}
+	headerLine := tableHeaderStyle.Width(width).Render(header + countBadge)
 
 	var rows []string
 	lastGroup := ""
+	rowIdx := 0
 	for i, t := range threads {
 		group := threadGroup(t)
 		if group != lastGroup {
@@ -78,8 +85,9 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 			rows = append(rows, greyStyle.Render(sep))
 			lastGroup = group
 		}
-		row := formatThreadRow(t, width, uriW, opts, i == cursor)
+		row := formatThreadRow(t, width, uriW, opts, i == cursor, rowIdx%2 == 1)
 		rows = append(rows, row)
+		rowIdx++
 	}
 
 	content := strings.Join(rows, "\n")
@@ -93,7 +101,7 @@ func threadGroup(t fetcher.ThreadDebugState) string {
 	return "threads"
 }
 
-func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts renderOpts, selected bool) string {
+func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts renderOpts, selected bool, zebra bool) string {
 	var stateIcon string
 	var style lipgloss.Style
 
@@ -146,6 +154,9 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		prefix = ">"
 		style = style.Reverse(true)
 		timeStyle = timeStyle.Reverse(true)
+	} else if zebra {
+		style = style.Background(zebraBg)
+		timeStyle = timeStyle.Background(zebraBg)
 	}
 
 	methodStr := fmt.Sprintf("%-*s", colMethod, method)
@@ -153,16 +164,26 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 	memFmt := fmt.Sprintf("%*s", colMem, memStr)
 	reqsFmt := fmt.Sprintf("%*s", colReqs, reqsStr)
 
+	indexPart := fmt.Sprintf("%s%-*d", prefix, colIndex, t.Index)
+
 	if selected {
 		methodStr = selectedRowStyle.Render(methodStr)
 		uriStr = selectedRowStyle.Render(uriStr)
 		memFmt = selectedRowStyle.Render(memFmt)
 		reqsFmt = selectedRowStyle.Render(reqsFmt)
+	} else if zebra {
+		indexPart = zebraStyle.Render(indexPart)
+		methodStr = zebraStyle.Render(methodStr)
+		uriStr = zebraStyle.Render(uriStr)
+		memFmt = zebraStyle.Render(memFmt)
+		reqsFmt = zebraStyle.Render(reqsFmt)
+		if suffix != "" {
+			suffix = leakStyle.Background(zebraBg).Render(" ⚠ leak?")
+		}
 	}
 
-	row := fmt.Sprintf("%s%-*d%s%s%s%s%s%s%s",
-		prefix,
-		colIndex, t.Index,
+	row := fmt.Sprintf("%s%s%s%s%s%s%s%s",
+		indexPart,
 		style.Render(fmt.Sprintf("%-*s", colState, stateIcon)),
 		methodStr,
 		uriStr,
@@ -174,6 +195,9 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 
 	if selected {
 		return selectedRowStyle.Width(width).Render(row)
+	}
+	if zebra {
+		return zebraStyle.Width(width).Render(row)
 	}
 	return row
 }

@@ -15,7 +15,7 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		return "…"
 	}
 	if s.Current == nil {
-		return boxStyle.Width(width - 2).Render("Waiting for data...")
+		return greyStyle.Render(" Waiting for data...")
 	}
 
 	snap := s.Current
@@ -25,7 +25,41 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	rss := float64(p.RSS) / 1024 / 1024
 	uptime := model.FormatUptime(p.Uptime)
 
-	title := titleStyle.Render(fmt.Sprintf(" Ember %s ", version))
+	// title line: left-aligned title + right-aligned config
+	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s", version))
+
+	var threadBusy, threadIdle, threadTotal int
+	for _, t := range snap.Threads.ThreadDebugStates {
+		if workerScript(t.Name) != "" {
+			continue
+		}
+		threadTotal++
+		if t.IsBusy {
+			threadBusy++
+		} else if t.IsWaiting {
+			threadIdle++
+		}
+	}
+
+	workerThreadCount := countWorkerThreads(snap.Threads.ThreadDebugStates)
+	configParts := []string{fmt.Sprintf("%d threads", len(snap.Threads.ThreadDebugStates))}
+	if workerThreadCount > 0 {
+		configParts = append([]string{fmt.Sprintf("%d workers", workerThreadCount)}, configParts...)
+	}
+	if snap.Threads.ReservedThreadCount > 0 {
+		configParts = append(configParts, fmt.Sprintf("%d reserved", snap.Threads.ReservedThreadCount))
+	}
+	configRight := greyStyle.Render(strings.Join(configParts, " · ") + " ")
+	gap := width - lipgloss.Width(titleLeft) - lipgloss.Width(configRight)
+	if gap < 1 {
+		gap = 1
+	}
+	titleLine := titleLeft + strings.Repeat(" ", gap) + configRight
+
+	if d.TotalCrashes > 0 {
+		crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
+		configRight = dangerStyle.Render(crashStr+" crashed") + "  " + configRight
+	}
 
 	// line 1: CPU (colored), sparkline, RSS, Uptime
 	cpuRaw := fmt.Sprintf("%-7s", fmt.Sprintf("%.1f%%", p.CPUPercent))
@@ -40,7 +74,7 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	cpuSpark := renderSparkline(cpuHistory, sparklineSize)
 	rssStr := fmt.Sprintf("%-8s", fmt.Sprintf("%.0f MB", rss))
 	uptimeStr := fmt.Sprintf("%-10s", uptime)
-	line1 := fmt.Sprintf("  CPU %s %s  RSS %s  Uptime %s", cpuRaw, cpuSpark, rssStr, uptimeStr)
+	line1 := fmt.Sprintf(" CPU %s %s  RSS %s  Uptime %s", cpuRaw, cpuSpark, rssStr, uptimeStr)
 
 	// line 2: RPS (colored), sparkline, Avg (colored), In-flight, Queue
 	rpsFmt := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS))
@@ -60,56 +94,37 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		queueRaw = warnStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)))
 	}
 	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
-	line2 := fmt.Sprintf("  RPS %s %s  Avg %s  In-flight %s  Queue %s",
+	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s  Queue %s",
 		rpsFmt, rpsSpark, avgRaw, inflightStr, queueRaw)
 
-	// line 3: config + thread bar
-	var threadBusy, threadIdle, threadTotal int
-	workerScripts := countWorkerScripts(snap.Threads.ThreadDebugStates)
-	for _, t := range snap.Threads.ThreadDebugStates {
-		if workerScript(t.Name) != "" {
-			continue
-		}
-		threadTotal++
-		if t.IsBusy {
-			threadBusy++
-		} else if t.IsWaiting {
-			threadIdle++
-		}
-	}
+	// thread bar with colored legend
+	threadInactive := threadTotal - threadBusy - threadIdle
+	legend := fmt.Sprintf(" %s %s %s",
+		busyStyle.Render(fmt.Sprintf("%d busy", threadBusy)),
+		idleStyle.Render(fmt.Sprintf("%d idle", threadIdle)),
+		greyStyle.Render(fmt.Sprintf("%d inactive", threadInactive)),
+	)
+	legendW := lipgloss.Width(legend)
+	threadLabel := fmt.Sprintf(" Threads %d/%d ", threadBusy, threadTotal)
+	barMaxW := width - len(threadLabel) - legendW - 4
+	threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, barMaxW)
+	line3 := threadLabel + threadBar + legend
 
-	configParts := []string{fmt.Sprintf("%d threads", len(snap.Threads.ThreadDebugStates))}
-	if workerScripts > 0 {
-		configParts = append([]string{fmt.Sprintf("%d workers", workerScripts)}, configParts...)
-	}
-	if snap.Threads.ReservedThreadCount > 0 {
-		configParts = append(configParts, fmt.Sprintf("%d reserved", snap.Threads.ReservedThreadCount))
-	}
-	line3 := fmt.Sprintf("  Config: %s", strings.Join(configParts, " · "))
-	if d.TotalCrashes > 0 {
-		crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
-		line3 += "    " + dangerStyle.Render(crashStr+" crashed")
-	}
+	separator := separatorStyle.Render(strings.Repeat("─", width))
 
-	threadLabel := fmt.Sprintf("  Threads %d/%d ", threadBusy, threadTotal)
-	threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, width-len(threadLabel)-6)
-	line4 := threadLabel + threadBar
-
-	hasWorkerMetrics := workerScripts > 0
+	hasWorkerMetrics := workerThreadCount > 0
 	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
 
 	var lines []string
-	lines = append(lines, line1, line2, line3, line4)
+	lines = append(lines, titleLine, line1, line2, line3)
 
 	if !hasWorkerMetrics && !hasHTTPMetrics {
-		lines = append(lines, warnStyle.Render("  ⚠ No metrics — add `metrics` to Caddyfile global block"))
+		lines = append(lines, warnStyle.Render(" ⚠ No metrics — add `metrics` to Caddyfile global block"))
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	lines = append(lines, separator)
 
-	return boxStyle.Width(width - 2).Render(
-		lipgloss.JoinVertical(lipgloss.Center, title, content),
-	)
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 func renderThreadBar(busy, idle, total, maxWidth int) string {
@@ -136,6 +151,16 @@ func workerScript(name string) string {
 		return name[len(workerPrefix):]
 	}
 	return ""
+}
+
+func countWorkerThreads(threads []fetcher.ThreadDebugState) int {
+	count := 0
+	for _, t := range threads {
+		if workerScript(t.Name) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func countWorkerScripts(threads []fetcher.ThreadDebugState) int {
