@@ -26,13 +26,27 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 	headerLine := tableHeaderStyle.Width(width).Render(header)
 
 	var rows []string
+	lastGroup := ""
 	for i, t := range threads {
+		group := threadGroup(t)
+		if group != lastGroup {
+			label := greyStyle.Render(" ── " + group + " ")
+			rows = append(rows, label)
+			lastGroup = group
+		}
 		row := formatThreadRow(t, width, opts, i == cursor)
 		rows = append(rows, row)
 	}
 
 	content := strings.Join(rows, "\n")
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
+}
+
+func threadGroup(t fetcher.ThreadDebugState) string {
+	if s := workerScript(t.Name); s != "" {
+		return s
+	}
+	return "threads"
 }
 
 func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, selected bool) string {
@@ -159,6 +173,10 @@ func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetch
 	copy(sorted, threads)
 
 	sort.SliceStable(sorted, func(i, j int) bool {
+		gi, gj := threadGroup(sorted[i]), threadGroup(sorted[j])
+		if gi != gj {
+			return gi < gj
+		}
 		switch by {
 		case model.SortByState:
 			return stateOrder(sorted[i]) < stateOrder(sorted[j])

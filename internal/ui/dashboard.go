@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -59,18 +60,25 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	line2 := fmt.Sprintf("  RPS %s %s  Avg %s  In-flight %s  Queue %s",
 		rpsRaw, rpsSpark, avgRaw, inflightStr, queueRaw)
 
-	// line 3: Workers + thread bar
+	// line 3: config summary + thread bar
 	threadTotal := len(snap.Threads.ThreadDebugStates)
-	crashRaw := fmt.Sprintf("%-3s", fmt.Sprintf("%.0f", d.TotalCrashes))
+	workerScripts := countWorkerScripts(snap.Threads.ThreadDebugStates)
+	configParts := []string{fmt.Sprintf("%d threads", threadTotal)}
+	if workerScripts > 0 {
+		configParts = append([]string{fmt.Sprintf("%d workers", workerScripts)}, configParts...)
+	}
+	if snap.Threads.ReservedThreadCount > 0 {
+		configParts = append(configParts, fmt.Sprintf("%d reserved", snap.Threads.ReservedThreadCount))
+	}
+	line3 := fmt.Sprintf("  Config: %s", strings.Join(configParts, " · "))
 	if d.TotalCrashes > 0 {
-		crashRaw = dangerStyle.Render(fmt.Sprintf("%-3s", fmt.Sprintf("%.0f", d.TotalCrashes)))
+		crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
+		line3 += "    " + dangerStyle.Render(crashStr+" crashed")
 	}
 
 	threadBar := renderThreadBar(d.TotalBusy, d.TotalIdle, threadTotal, width-40)
-	line3 := fmt.Sprintf("  Workers: %-3d idle · %-3d busy · %s crashed    Threads: %d/%d",
-		d.TotalIdle, d.TotalBusy, crashRaw, d.TotalBusy, threadTotal)
 
-	hasWorkerMetrics := len(snap.Metrics.Workers) > 0
+	hasWorkerMetrics := workerScripts > 0
 	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
 
 	var lines []string
@@ -105,6 +113,25 @@ func renderThreadBar(busy, idle, total, maxWidth int) string {
 		greyStyle.Render(strings.Repeat("░", inactiveW))
 
 	return "[" + bar + "]"
+}
+
+const workerPrefix = "Worker PHP Thread - "
+
+func workerScript(name string) string {
+	if strings.HasPrefix(name, workerPrefix) {
+		return "(Worker script) " + name[len(workerPrefix):]
+	}
+	return ""
+}
+
+func countWorkerScripts(threads []fetcher.ThreadDebugState) int {
+	seen := make(map[string]struct{})
+	for _, t := range threads {
+		if s := workerScript(t.Name); s != "" {
+			seen[s] = struct{}{}
+		}
+	}
+	return len(seen)
 }
 
 var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
