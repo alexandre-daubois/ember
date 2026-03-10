@@ -1,0 +1,66 @@
+package fetcher
+
+import (
+	"context"
+	"time"
+)
+
+type ThreadDebugState struct {
+	Index                    int    `json:"Index"`
+	Name                     string `json:"Name"`
+	State                    string `json:"State"`
+	IsWaiting                bool   `json:"IsWaiting"`
+	IsBusy                   bool   `json:"IsBusy"`
+	WaitingSinceMilliseconds int64  `json:"WaitingSinceMilliseconds"`
+
+	// Future fields (upstream PR required, zero-valued for now)
+	CurrentURI       string `json:"CurrentURI,omitempty"`
+	CurrentMethod    string `json:"CurrentMethod,omitempty"`
+	RequestStartedAt int64  `json:"RequestStartedAt,omitempty"`
+	MemoryUsage      int64  `json:"MemoryUsage,omitempty"`
+	RequestCount     int64  `json:"RequestCount,omitempty"`
+}
+
+type ThreadsResponse struct {
+	ThreadDebugStates   []ThreadDebugState `json:"ThreadDebugStates"`
+	ReservedThreadCount int                `json:"ReservedThreadCount"`
+}
+
+type WorkerMetrics struct {
+	Worker       string  `json:"worker"`
+	Total        float64 `json:"total"`
+	Busy         float64 `json:"busy"`
+	Ready        float64 `json:"ready"`
+	RequestTime  float64 `json:"requestTime"`
+	RequestCount float64 `json:"requestCount"`
+	Crashes      float64 `json:"crashes"`
+	Restarts     float64 `json:"restarts"`
+	QueueDepth   float64 `json:"queueDepth"`
+}
+
+type MetricsSnapshot struct {
+	TotalThreads float64                   `json:"totalThreads"`
+	BusyThreads  float64                   `json:"busyThreads"`
+	QueueDepth   float64                   `json:"queueDepth"`
+	Workers      map[string]*WorkerMetrics `json:"workers"`
+}
+
+type ProcessMetrics struct {
+	PID        int32         `json:"pid"`
+	CPUPercent float64       `json:"cpuPercent"`
+	RSS        uint64        `json:"rss"`
+	CreateTime int64         `json:"createTime"`
+	Uptime     time.Duration `json:"uptime"`
+}
+
+type Snapshot struct {
+	Threads   ThreadsResponse `json:"threads"`
+	Metrics   MetricsSnapshot `json:"metrics"`
+	Process   ProcessMetrics  `json:"process"`
+	FetchedAt time.Time       `json:"fetchedAt"`
+	Errors    []string        `json:"errors,omitempty"`
+}
+
+type Fetcher interface {
+	Fetch(ctx context.Context) (*Snapshot, error)
+}
