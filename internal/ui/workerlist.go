@@ -22,7 +22,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 		return greyStyle.Render(" No threads")
 	}
 
-	header := fmt.Sprintf(" %-4s %-10s %-40s %10s", "#", "State", "Name", "Time")
+	header := fmt.Sprintf(" %-4s %-10s %-7s %-24s %10s %8s %8s", "#", "State", "Method", "URI", "Time", "Mem", "Reqs")
 	headerLine := tableHeaderStyle.Width(width).Render(header)
 
 	var rows []string
@@ -53,18 +53,34 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 
 	timeStr, timeStyle := formatTimeWithStyle(t, opts.slowThreshold)
 
-	name := t.Name
-	maxName := width - 30
-	if maxName > 1 && len(name) > maxName {
-		name = name[:maxName-1] + "…"
-	}
-
 	var suffix string
 	if opts.leakEnabled && opts.leakWatcher != nil {
 		ls := opts.leakWatcher.Status(t.Index)
 		if ls.Leaking {
 			suffix = leakStyle.Render(" ⚠ leak?")
 		}
+	}
+
+	method := "—"
+	uri := "—"
+	if t.IsBusy && t.CurrentMethod != "" {
+		method = t.CurrentMethod
+	}
+	if t.IsBusy && t.CurrentURI != "" {
+		uri = t.CurrentURI
+		if len(uri) > 24 {
+			uri = uri[:23] + "…"
+		}
+	}
+
+	memStr := "—"
+	if t.MemoryUsage > 0 {
+		memStr = formatBytes(t.MemoryUsage)
+	}
+
+	reqsStr := "—"
+	if t.RequestCount > 0 {
+		reqsStr = fmt.Sprintf("%d", t.RequestCount)
 	}
 
 	prefix := " "
@@ -74,17 +90,15 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 		timeStyle = timeStyle.Reverse(true)
 	}
 
-	nameStr := fmt.Sprintf("%-40s", name)
-	if selected {
-		nameStr = selectedRowStyle.Render(nameStr)
-	}
-
-	row := fmt.Sprintf("%s%-4d %s %s %s%s",
+	row := fmt.Sprintf("%s%-4d %s %-7s %-24s %s %8s %8s%s",
 		prefix,
 		t.Index,
 		style.Render(fmt.Sprintf("%-10s", stateIcon)),
-		nameStr,
+		method,
+		uri,
 		timeStyle.Render(fmt.Sprintf("%10s", timeStr)),
+		memStr,
+		reqsStr,
 		suffix,
 	)
 
