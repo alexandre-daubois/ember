@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
@@ -42,15 +41,8 @@ func renderDetail(t fetcher.ThreadDebugState, leakStatus model.LeakStatus, width
 		lines = append(lines, fmt.Sprintf("  Requests handled: %d", t.RequestCount))
 	}
 
-	if len(leakStatus.Samples) > 0 {
-		var memStrs []string
-		for _, s := range leakStatus.Samples {
-			memStrs = append(memStrs, formatBytes(s))
-		}
-		lines = append(lines, fmt.Sprintf("  Idle memory history: %s", strings.Join(memStrs, " → ")))
-		if leakStatus.Leaking {
-			lines = append(lines, leakStyle.Render("  ⚠ Possible memory leak detected"))
-		}
+	if leakStatus.Leaking {
+		lines = append(lines, leakStyle.Render("  ⚠ Possible memory leak detected"))
 	}
 
 	lines = append(lines, "")
