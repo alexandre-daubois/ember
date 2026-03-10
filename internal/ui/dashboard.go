@@ -60,10 +60,22 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	line2 := fmt.Sprintf("  RPS %s %s  Avg %s  In-flight %s  Queue %s",
 		rpsRaw, rpsSpark, avgRaw, inflightStr, queueRaw)
 
-	// line 3: config summary + thread bar
-	threadTotal := len(snap.Threads.ThreadDebugStates)
+	// line 3: config + thread bar
+	var threadBusy, threadIdle, threadTotal int
 	workerScripts := countWorkerScripts(snap.Threads.ThreadDebugStates)
-	configParts := []string{fmt.Sprintf("%d threads", threadTotal)}
+	for _, t := range snap.Threads.ThreadDebugStates {
+		if workerScript(t.Name) != "" {
+			continue
+		}
+		threadTotal++
+		if t.IsBusy {
+			threadBusy++
+		} else if t.IsWaiting {
+			threadIdle++
+		}
+	}
+
+	configParts := []string{fmt.Sprintf("%d threads", len(snap.Threads.ThreadDebugStates))}
 	if workerScripts > 0 {
 		configParts = append([]string{fmt.Sprintf("%d workers", workerScripts)}, configParts...)
 	}
@@ -76,13 +88,15 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		line3 += "    " + dangerStyle.Render(crashStr+" crashed")
 	}
 
-	threadBar := renderThreadBar(d.TotalBusy, d.TotalIdle, threadTotal, width-40)
+	threadLabel := fmt.Sprintf("  Threads %d/%d ", threadBusy, threadTotal)
+	threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, width-len(threadLabel)-6)
+	line4 := threadLabel + threadBar
 
 	hasWorkerMetrics := workerScripts > 0
 	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
 
 	var lines []string
-	lines = append(lines, line1, line2, line3, "  "+threadBar)
+	lines = append(lines, line1, line2, line3, line4)
 
 	if !hasWorkerMetrics && !hasHTTPMetrics {
 		lines = append(lines, warnStyle.Render("  ⚠ No metrics — add `metrics` to Caddyfile global block"))

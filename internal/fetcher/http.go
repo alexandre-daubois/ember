@@ -22,7 +22,7 @@ func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 	ph := newProcessHandle(pid)
 	return &HTTPFetcher{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{Timeout: 5 * time.Second},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 		procHandle: ph,
 	}
 }

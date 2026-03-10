@@ -94,6 +94,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetchMsg:
 		a.err = msg.err
 		if msg.snap != nil {
+			hasThreads := len(msg.snap.Threads.ThreadDebugStates) > 0
+			hadThreads := a.state.Current != nil && len(a.state.Current.Threads.ThreadDebugStates) > 0
+
+			if !hasThreads && hadThreads {
+				a.state.Current.Process = msg.snap.Process
+				a.cpuHistory = appendSparkline(a.cpuHistory, msg.snap.Process.CPUPercent)
+				if msg.snap.Process.CPUPercent >= 80 {
+					a.status = "⚠ System under high load — reconnecting…"
+				} else {
+					a.status = "⚠ Connection lost — reconnecting…"
+				}
+				return a, nil
+			}
+
 			a.state.Update(msg.snap)
 			a.clampCursor()
 			if len(msg.snap.Errors) > 0 {
