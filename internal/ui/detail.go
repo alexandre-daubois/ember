@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
@@ -9,52 +10,78 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDetail(t fetcher.ThreadDebugState, leakStatus model.LeakStatus, width, height int) string {
-	w := width - 10
-	if w > 70 {
-		w = 70
-	}
-	if w < 40 {
-		w = 40
+const (
+	detailPanelWidth    = 38
+	detailPanelHeight   = 10
+	detailSideThreshold = 115
+)
+
+func renderDetailPanel(t fetcher.ThreadDebugState, leakStatus model.LeakStatus, width, height int) string {
+	inner := width - 4 // border + padding
+	if inner < 10 {
+		inner = 10
 	}
 
-	title := fmt.Sprintf("Thread #%d — %s", t.Index, t.Name)
+	title := fmt.Sprintf("Thread #%d", t.Index)
+	name := t.Name
+	if len(name) > inner {
+		name = name[:inner-1] + "…"
+	}
 
 	var lines []string
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, greyStyle.Render(name))
+	lines = append(lines, "")
 	lines = append(lines, stateDetailLine(t))
 
 	if t.IsBusy {
-		lines = append(lines, fmt.Sprintf("  Current: %s %s", t.CurrentMethod, t.CurrentURI))
+		if t.CurrentMethod != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", t.CurrentMethod, truncateURI(t.CurrentURI, inner-2)))
+		}
 		if t.RequestStartedAt > 0 {
 			elapsed := time.Since(time.UnixMilli(t.RequestStartedAt))
 			lines = append(lines, fmt.Sprintf("  Duration: %dms", elapsed.Milliseconds()))
 		}
 	} else if t.IsWaiting && t.WaitingSinceMilliseconds > 0 {
 		d := time.Duration(t.WaitingSinceMilliseconds) * time.Millisecond
-		lines = append(lines, fmt.Sprintf("  Idle for: %.1fs", d.Seconds()))
+		lines = append(lines, fmt.Sprintf("  Idle: %.1fs", d.Seconds()))
 	}
 
 	if t.MemoryUsage > 0 {
 		lines = append(lines, fmt.Sprintf("  Memory: %s", formatBytes(t.MemoryUsage)))
 	}
 	if t.RequestCount > 0 {
-		lines = append(lines, fmt.Sprintf("  Requests handled: %d", t.RequestCount))
+		lines = append(lines, fmt.Sprintf("  Requests: %s", formatNumber(t.RequestCount)))
 	}
 
 	if leakStatus.Leaking {
-		lines = append(lines, leakStyle.Render("  ⚠ Possible memory leak detected"))
+		lines = append(lines, "")
+		lines = append(lines, leakStyle.Render("  ⚠ Possible leak"))
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, helpStyle.Render("  [r] restart all workers   [Esc] back"))
+	lines = append(lines, helpStyle.Render("  [r] restart  [Esc] close"))
 
-	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	content := strings.Join(lines, "\n")
 
-	popup := boxStyle.
-		Width(w).
-		Render(lipgloss.JoinVertical(lipgloss.Left, titleStyle.Render(title), "", content))
+	contentHeight := lipgloss.Height(content)
+	boxChrome := 2 // top + bottom border
+	available := height - boxChrome
+	if contentHeight < available {
+		content += strings.Repeat("\n", available-contentHeight)
+	}
 
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup)
+	return boxStyle.Width(width - 2).Render(content)
+}
+
+func truncateURI(uri string, maxLen int) string {
+	if len(uri) <= maxLen {
+		return uri
+	}
+	if maxLen < 4 {
+		return uri[:maxLen]
+	}
+	return uri[:maxLen-1] + "…"
 }
 
 func stateDetailLine(t fetcher.ThreadDebugState) string {

@@ -154,11 +154,21 @@ func (a *App) View() string {
 		return renderConnectionError(a.state.Current.Errors[0], a.width, a.height)
 	}
 
-	dashboard := renderDashboard(&a.state, a.width, a.config.Version, a.rpsHistory, a.cpuHistory)
+	sidePanel := a.mode == viewDetail && a.width >= detailSideThreshold
+	panelWidth := 0
+	if sidePanel {
+		panelWidth = detailPanelWidth
+		if panelWidth > a.width/2 {
+			panelWidth = a.width / 2
+		}
+	}
+	listWidth := a.width - panelWidth
+
+	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, a.rpsHistory, a.cpuHistory)
 	help := renderHelp(a.sortBy, a.paused, a.leakEnabled)
 
 	threads := a.filteredThreads()
-	workerList := renderWorkerListFromThreads(threads, a.cursor, a.width, a.sortBy, renderOpts{
+	workerList := renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
 		slowThreshold: a.config.SlowThreshold,
 		leakWatcher:   a.leakWatcher,
 		leakEnabled:   a.leakEnabled,
@@ -188,13 +198,19 @@ func (a *App) View() string {
 
 	base := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
-	switch a.mode {
-	case viewDetail:
+	if a.mode == viewDetail {
 		if t, ok := a.selectedThread(); ok {
 			ls := a.leakWatcher.Status(t.Index)
-			return renderDetail(t, ls, a.width, a.height)
+			if sidePanel {
+				panel := renderDetailPanel(t, ls, panelWidth, a.height)
+				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
+			}
+			panel := renderDetailPanel(t, ls, a.width, detailPanelHeight)
+			return lipgloss.JoinVertical(lipgloss.Left, base, panel)
 		}
-	case viewConfirmRestart:
+	}
+
+	if a.mode == viewConfirmRestart {
 		return renderConfirmOverlay(base, a.width, a.height)
 	}
 
@@ -253,6 +269,13 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		a.mode = viewList
+	case "up", "k":
+		if a.cursor > 0 {
+			a.cursor--
+		}
+	case "down", "j":
+		a.cursor++
+		a.clampCursor()
 	case "r":
 		a.mode = viewConfirmRestart
 	}
