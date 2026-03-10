@@ -54,7 +54,9 @@ func main() {
 	if pid == 0 {
 		detected, err := fetcher.FindFrankenPHPProcess(ctx)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			if cfg.JSONMode {
+				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			}
 		} else {
 			pid = detected
 		}
@@ -73,6 +75,7 @@ func main() {
 		LeakThreshold: cfg.LeakThreshold,
 		LeakWindow:    cfg.LeakWindow,
 		NoColor:       cfg.NoColor,
+		Version:       version,
 	})
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

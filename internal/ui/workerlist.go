@@ -80,7 +80,7 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 
 	reqsStr := "—"
 	if t.RequestCount > 0 {
-		reqsStr = fmt.Sprintf("%d", t.RequestCount)
+		reqsStr = formatNumber(t.RequestCount)
 	}
 
 	prefix := " "
@@ -90,15 +90,27 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, opts renderOpts, sel
 		timeStyle = timeStyle.Reverse(true)
 	}
 
-	row := fmt.Sprintf("%s%-4d %s %-7s %-24s %s %8s %8s%s",
+	methodStr := fmt.Sprintf("%-7s", method)
+	uriStr := fmt.Sprintf("%-24s", uri)
+	memFmt := fmt.Sprintf("%8s", memStr)
+	reqsFmt := fmt.Sprintf("%8s", reqsStr)
+
+	if selected {
+		methodStr = selectedRowStyle.Render(methodStr)
+		uriStr = selectedRowStyle.Render(uriStr)
+		memFmt = selectedRowStyle.Render(memFmt)
+		reqsFmt = selectedRowStyle.Render(reqsFmt)
+	}
+
+	row := fmt.Sprintf("%s%-4d %s %s %s %s %s %s%s",
 		prefix,
 		t.Index,
 		style.Render(fmt.Sprintf("%-10s", stateIcon)),
-		method,
-		uri,
+		methodStr,
+		uriStr,
 		timeStyle.Render(fmt.Sprintf("%10s", timeStr)),
-		memStr,
-		reqsStr,
+		memFmt,
+		reqsFmt,
 		suffix,
 	)
 
@@ -172,4 +184,19 @@ func stateOrder(t fetcher.ThreadDebugState) int {
 		return 1
 	}
 	return 2
+}
+
+func formatNumber(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var result []byte
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, byte(c))
+	}
+	return string(result)
 }

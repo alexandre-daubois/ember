@@ -27,6 +27,7 @@ type Config struct {
 	LeakThreshold int
 	LeakWindow    int
 	NoColor       bool
+	Version       string
 }
 
 type restarter interface {
@@ -121,7 +122,11 @@ func (a *App) View() string {
 		return "Loading..."
 	}
 
-	dashboard := renderDashboard(&a.state, a.width)
+	if a.state.Current != nil && len(a.state.Current.Threads.ThreadDebugStates) == 0 && len(a.state.Current.Errors) > 0 {
+		return renderConnectionError(a.state.Current.Errors[0], a.width, a.height)
+	}
+
+	dashboard := renderDashboard(&a.state, a.width, a.config.Version)
 	help := renderHelp(a.sortBy, a.paused, a.leakEnabled)
 
 	threads := a.filteredThreads()

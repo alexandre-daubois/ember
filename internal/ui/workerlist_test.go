@@ -89,8 +89,8 @@ func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
 	if !strings.Contains(row, "18 MB") {
 		t.Error("row should contain memory")
 	}
-	if !strings.Contains(row, "4201") {
-		t.Error("row should contain request count")
+	if !strings.Contains(row, "4,201") {
+		t.Error("row should contain formatted request count")
 	}
 }
 
