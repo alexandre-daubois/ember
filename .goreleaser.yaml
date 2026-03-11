@@ -18,7 +18,7 @@ builds:
 archives:
   - format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: checksums.txt
@@ -31,11 +31,12 @@ changelog:
       - "^test:"
       - "^ci:"
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: ember
+    repository:
       owner: alexandre-daubois
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/alexandre-daubois/ember"
     description: "Real-time terminal dashboard for FrankenPHP"
-    license: "MIT"
-    directory: Formula
+    directory: Casks
