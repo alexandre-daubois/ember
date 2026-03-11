@@ -209,7 +209,7 @@ func formatTimeWithStyle(t fetcher.ThreadDebugState, slowThreshold time.Duration
 
 	if t.IsBusy && t.RequestStartedAt > 0 {
 		elapsed := time.Since(time.UnixMilli(t.RequestStartedAt))
-		text := fmt.Sprintf("%dms", elapsed.Milliseconds())
+		text := compactDuration(elapsed)
 		switch {
 		case elapsed >= slowThreshold*2:
 			return text, dangerStyle
@@ -222,13 +222,25 @@ func formatTimeWithStyle(t fetcher.ThreadDebugState, slowThreshold time.Duration
 
 	if t.IsWaiting && t.WaitingSinceMilliseconds > 0 {
 		d := time.Duration(t.WaitingSinceMilliseconds) * time.Millisecond
-		if d >= time.Second {
-			return fmt.Sprintf("%.1fs idle", d.Seconds()), greyStyle
-		}
-		return fmt.Sprintf("%dms idle", d.Milliseconds()), greyStyle
+		return compactDuration(d) + " idle", greyStyle
 	}
 
 	return "—", greyStyle
+}
+
+func compactDuration(d time.Duration) string {
+	switch {
+	case d >= 24*time.Hour:
+		return fmt.Sprintf("%.1fd", d.Hours()/24)
+	case d >= time.Hour:
+		return fmt.Sprintf("%.1fh", d.Hours())
+	case d >= time.Minute:
+		return fmt.Sprintf("%.1fm", d.Minutes())
+	case d >= time.Second:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	default:
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
 }
 
 func formatTime(t fetcher.ThreadDebugState) string {

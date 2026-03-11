@@ -200,9 +200,49 @@ func TestFormatTime_IdleSubSecond(t *testing.T) {
 	assert.Equal(t, "500ms idle", formatTime(thread))
 }
 
+func TestFormatTime_IdleMinutes(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		IsWaiting:                true,
+		WaitingSinceMilliseconds: 125000,
+	}
+	assert.Equal(t, "2.1m idle", formatTime(thread))
+}
+
+func TestFormatTime_IdleHours(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		IsWaiting:                true,
+		WaitingSinceMilliseconds: 49874500,
+	}
+	assert.Equal(t, "13.9h idle", formatTime(thread))
+}
+
+func TestFormatTime_IdleDays(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		IsWaiting:                true,
+		WaitingSinceMilliseconds: 172800000,
+	}
+	assert.Equal(t, "2.0d idle", formatTime(thread))
+}
+
 func TestFormatTime_NoInfo(t *testing.T) {
 	thread := fetcher.ThreadDebugState{State: "inactive"}
 	assert.Equal(t, "—", formatTime(thread))
+}
+
+func TestCompactDuration(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{250 * time.Millisecond, "250ms"},
+		{3200 * time.Millisecond, "3.2s"},
+		{125 * time.Second, "2.1m"},
+		{3700 * time.Second, "1.0h"},
+		{49 * time.Hour, "2.0d"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, compactDuration(tt.d), "compactDuration(%v)", tt.d)
+	}
 }
 
 func TestSortThreads_ByTime(t *testing.T) {
