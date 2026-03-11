@@ -1,0 +1,41 @@
+version: 2
+
+builds:
+  - main: ./cmd/ember
+    binary: ember
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+brews:
+  - repository:
+      owner: alexandre-daubois
+      name: homebrew-tap
+    homepage: "https://github.com/alexandre-daubois/ember"
+    description: "Real-time terminal dashboard for FrankenPHP"
+    license: "MIT"
+    directory: Formula
