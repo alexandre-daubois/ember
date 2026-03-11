@@ -52,15 +52,6 @@ Ember auto-detects the FrankenPHP process and connects to the Caddy admin API.
 | `/` | Filter threads |
 | `q` | Quit |
 
-## Features
-
-- Thread list with state, method, URI, duration, memory and request count
-- CPU / RSS / RPS sparklines
-- Worker and regular thread grouping
-- Slow request and memory leak detection
-- Responsive detail panel (side or bottom)
-- Resilient fetcher with retry and stale data fallback
-
 ## License
 
 MIT
