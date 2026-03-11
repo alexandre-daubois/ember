@@ -4,6 +4,17 @@ Understand why your app is on fire by monitoring threads, workers, memory, reque
 
 ![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/img.png?raw=true)
 
+## Features
+
+- Per-thread introspection (URI, HTTP method, duration, memory)
+- Memory leak detection via linear regression on idle snapshots
+- Live RPS and average response time with sparkline history
+- Sorting, live filtering, and detail panel
+- Graceful worker restart from the TUI
+- Stale data and connection loss detection
+- JSON output mode for scripting
+- Auto-detection of the FrankenPHP process
+
 ## Build
 
 ```bash
