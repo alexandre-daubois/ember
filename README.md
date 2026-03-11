@@ -4,11 +4,13 @@ Understand why your app is on fire by monitoring threads, workers, memory, reque
 
 ![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/img.png?raw=true)
 
-## Install
+## Build
 
 ```bash
-go install github.com/alexandredaubois/ember/cmd/ember@latest
+go build ./cmd/ember
 ```
+
+That's it!
 
 ## Usage
 
