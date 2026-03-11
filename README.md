@@ -9,19 +9,31 @@ Understand why your app is on fire by monitoring threads, workers, memory, reque
 - Per-thread introspection (URI, HTTP method, duration, memory)
 - Memory leak detection via linear regression on idle snapshots
 - Live RPS and average response time with sparkline history
+- Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
 - Sorting, live filtering, and detail panel
 - Graceful worker restart from the TUI
 - Stale data and connection loss detection
 - JSON output mode for scripting
 - Auto-detection of the FrankenPHP process
+- Cross-platform binaries, Homebrew tap, and Docker image
 
-## Build
+## Install
 
 ```bash
-go build ./cmd/ember
+brew install alexandre-daubois/tap/ember
 ```
 
-That's it!
+Or with Go:
+
+```bash
+go install github.com/alexandre-daubois/ember/cmd/ember@latest
+```
+
+Or with Docker:
+
+```bash
+docker run --rm --network host ghcr.io/alexandre-daubois/ember
+```
 
 ## Usage
 
@@ -63,6 +75,7 @@ Ember auto-detects the FrankenPHP process and connects to the Caddy admin API.
 | `l` | Toggle leak watcher |
 | `r` | Restart workers |
 | `/` | Filter threads |
+| `g` | Full-screen graphs |
 | `q` | Quit |
 
 ## License

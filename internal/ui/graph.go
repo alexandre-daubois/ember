@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/guptarohit/asciigraph"
@@ -81,7 +82,10 @@ func renderSingleGraph(p graphPanel, width, height int) string {
 		asciigraph.Width(chartWidth),
 		asciigraph.SeriesColors(p.color),
 		asciigraph.LowerBound(0),
-		asciigraph.UpperBound(upperBound),
+		asciigraph.UpperBound(math.Ceil(upperBound)),
+		asciigraph.YAxisValueFormatter(func(v float64) string {
+			return fmt.Sprintf("%.0f", v)
+		}),
 	)
 
 	header := lipgloss.NewStyle().Bold(true).Foreground(ember).Render(label)
