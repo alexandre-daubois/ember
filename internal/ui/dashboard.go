@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64) string {
+func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64, stale bool) string {
 	if width < 10 {
 		return "…"
 	}
@@ -27,6 +27,9 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 
 	// title line: left-aligned title + right-aligned config
 	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s", version))
+	if stale {
+		titleLeft += " " + warnStyle.Render("STALE")
+	}
 
 	var threadBusy, threadIdle, threadTotal int
 	for _, t := range snap.Threads.ThreadDebugStates {

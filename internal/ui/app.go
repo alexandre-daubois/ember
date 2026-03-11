@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -53,6 +54,8 @@ type App struct {
 	status      string
 	rpsHistory  []float64
 	cpuHistory  []float64
+	stale       bool
+	lastFresh   time.Time
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -98,16 +101,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			hadThreads := a.state.Current != nil && len(a.state.Current.Threads.ThreadDebugStates) > 0
 
 			if !hasThreads && hadThreads {
+				a.stale = true
 				a.state.Current.Process = msg.snap.Process
 				a.cpuHistory = appendSparkline(a.cpuHistory, msg.snap.Process.CPUPercent)
+				staleDur := time.Since(a.lastFresh).Truncate(time.Second)
 				if msg.snap.Process.CPUPercent >= 80 {
-					a.status = "⚠ System under high load — reconnecting…"
+					a.status = fmt.Sprintf("⚠ High load — data stale %s", staleDur)
 				} else {
-					a.status = "⚠ Connection lost — reconnecting…"
+					a.status = fmt.Sprintf("⚠ Connection lost — data stale %s", staleDur)
 				}
 				return a, nil
 			}
 
+			a.stale = false
+			a.lastFresh = time.Now()
 			a.state.Update(msg.snap)
 			a.clampCursor()
 			if len(msg.snap.Errors) > 0 {
@@ -164,7 +171,7 @@ func (a *App) View() string {
 	}
 	listWidth := a.width - panelWidth
 
-	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, a.rpsHistory, a.cpuHistory)
+	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, a.rpsHistory, a.cpuHistory, a.stale)
 	help := renderHelp(a.sortBy, a.paused, a.leakEnabled, listWidth)
 
 	threads := a.filteredThreads()
