@@ -144,7 +144,7 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1fh", d.Hours())
 	case d >= time.Minute:
 		return fmt.Sprintf("%.1fm", d.Minutes())
-	case d >= time.Second:
+	case d >= 10*time.Second:
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	default:
 		return fmt.Sprintf("%dms", d.Milliseconds())

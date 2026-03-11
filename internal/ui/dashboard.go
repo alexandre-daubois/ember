@@ -26,7 +26,7 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	uptime := model.FormatUptime(p.Uptime)
 
 	// title line: left-aligned title + right-aligned config
-	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s", version))
+	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s (beta)", version))
 	if stale {
 		titleLeft += " " + warnStyle.Render("STALE")
 	}
@@ -84,12 +84,12 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	if d.RPS > 0 {
 		rpsFmt = idleStyle.Render(rpsFmt)
 	}
-	avgRaw := fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime))
+	avgRaw := fmt.Sprintf("%-10s", formatMs(d.AvgTime))
 	switch {
 	case d.AvgTime >= 1000:
-		avgRaw = dangerStyle.Render(fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime)))
+		avgRaw = dangerStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
 	case d.AvgTime >= 500:
-		avgRaw = warnStyle.Render(fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", d.AvgTime)))
+		avgRaw = warnStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
 	}
 	inflightStr := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.HTTPRequestsInFlight))
 	queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
@@ -187,7 +187,7 @@ func countWorkerScripts(threads []fetcher.ThreadDebugState) int {
 }
 
 func formatPercentile(ms float64) string {
-	text := fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", ms))
+	text := fmt.Sprintf("%-10s", formatMs(ms))
 	switch {
 	case ms >= 1000:
 		return dangerStyle.Render(text)
@@ -196,6 +196,13 @@ func formatPercentile(ms float64) string {
 	default:
 		return text
 	}
+}
+
+func formatMs(ms float64) string {
+	if ms >= 10000 {
+		return fmt.Sprintf("%.1fs", ms/1000)
+	}
+	return fmt.Sprintf("%.1fms", ms)
 }
 
 var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}

@@ -67,7 +67,7 @@ func TestRenderDetailPanel_IdleThread(t *testing.T) {
 
 	assert.Contains(t, panel, "Thread #2")
 	assert.Contains(t, panel, "IDLE")
-	assert.Contains(t, panel, "5.0s")
+	assert.Contains(t, panel, "5000ms")
 }
 
 func TestRenderDetailPanel_LeakWarning(t *testing.T) {
@@ -216,7 +216,8 @@ func TestRenderStateBadge(t *testing.T) {
 
 func TestFormatDuration(t *testing.T) {
 	assert.Equal(t, "500ms", formatDuration(500*1e6))
-	assert.Equal(t, "1.5s", formatDuration(1500*1e6))
+	assert.Equal(t, "1500ms", formatDuration(1500*1e6))
+	assert.Equal(t, "10.0s", formatDuration(10000*1e6))
 	assert.Equal(t, "2.0m", formatDuration(120*1e9))
 }
 

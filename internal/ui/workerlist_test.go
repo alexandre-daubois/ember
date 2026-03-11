@@ -189,7 +189,7 @@ func TestFormatTime_Idle(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 3200,
 	}
-	assert.Equal(t, "3.2s idle", formatTime(thread))
+	assert.Equal(t, "3200ms idle", formatTime(thread))
 }
 
 func TestFormatTime_IdleSubSecond(t *testing.T) {
@@ -235,7 +235,8 @@ func TestCompactDuration(t *testing.T) {
 		want string
 	}{
 		{250 * time.Millisecond, "250ms"},
-		{3200 * time.Millisecond, "3.2s"},
+		{3200 * time.Millisecond, "3200ms"},
+		{10 * time.Second, "10.0s"},
 		{125 * time.Second, "2.1m"},
 		{3700 * time.Second, "1.0h"},
 		{49 * time.Hour, "2.0d"},
