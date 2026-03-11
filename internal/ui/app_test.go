@@ -188,6 +188,59 @@ func TestGraphGReturns(t *testing.T) {
 	assert.Equal(t, viewDetail, app.mode, "g should return to previous view")
 }
 
+func TestFetchMsg_SkipsWhenAlreadyFetching(t *testing.T) {
+	app := &App{fetching: true}
+	_, cmd := app.Update(tickMsg{})
+
+	assert.True(t, app.fetching, "fetching should remain true")
+	assert.NotNil(t, cmd, "should still return a tick cmd")
+}
+
+func TestFetchMsg_SetsFetchingFlag(t *testing.T) {
+	app := &App{}
+
+	assert.False(t, app.fetching)
+	_, _ = app.Update(tickMsg{})
+	assert.True(t, app.fetching, "fetching should be true after tick starts a fetch")
+}
+
+func TestFetchMsg_ClearsFetchingFlag(t *testing.T) {
+	app := &App{fetching: true}
+
+	_, _ = app.Update(fetchMsg{snap: &fetcher.Snapshot{}})
+	assert.False(t, app.fetching, "fetching should be false after fetchMsg received")
+}
+
+func TestFetchMsg_RecoveryFromStaleZerosRPS(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}}
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{ThreadDebugStates: threads},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	app := &App{
+		leakWatcher: model.NewLeakWatcher(60, 5),
+		leakEnabled: true,
+		stale:       true,
+	}
+	app.state.Update(snap) // seed initial state
+
+	recovery := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{ThreadDebugStates: threads},
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 200000000},
+			},
+		},
+	}
+
+	app.Update(fetchMsg{snap: recovery})
+
+	assert.False(t, app.stale, "should no longer be stale")
+	assert.Equal(t, float64(0), app.state.Derived.RPS, "RPS should be 0 on first tick after stale recovery")
+	assert.Equal(t, float64(0), app.state.Derived.AvgTime, "AvgTime should be 0 on first tick after stale recovery")
+}
+
 func TestFilteredThreads_Sorted(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{
 		{Index: 2, Name: "Thread 2"},

@@ -62,6 +62,7 @@ type App struct {
 	busyHistory  []float64
 	stale       bool
 	lastFresh   time.Time
+	fetching    bool
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -96,19 +97,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		return a, nil
 	case tickMsg:
-		if a.paused {
+		if a.paused || a.fetching {
 			return a, a.doTick()
 		}
+		a.fetching = true
 		return a, tea.Batch(a.doFetch(), a.doTick())
 	case fetchMsg:
+		a.fetching = false
 		a.err = msg.err
 		if msg.snap != nil {
+			wasStale := a.stale
 			hasThreads := len(msg.snap.Threads.ThreadDebugStates) > 0
 			hadThreads := a.state.Current != nil && len(a.state.Current.Threads.ThreadDebugStates) > 0
 
 			if !hasThreads && hadThreads {
 				a.stale = true
 				a.state.Current.Process = msg.snap.Process
+				a.state.Current.Metrics = msg.snap.Metrics
+				a.state.Current.FetchedAt = msg.snap.FetchedAt
 				a.cpuHistory = appendHistory(a.cpuHistory, msg.snap.Process.CPUPercent, graphHistorySize)
 				staleDur := time.Since(a.lastFresh).Truncate(time.Second)
 				if msg.snap.Process.CPUPercent >= 80 {
@@ -122,6 +128,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.stale = false
 			a.lastFresh = time.Now()
 			a.state.Update(msg.snap)
+			if wasStale {
+				a.state.Derived.RPS = 0
+				a.state.Derived.AvgTime = 0
+			}
 			a.clampCursor()
 			if len(msg.snap.Errors) > 0 {
 				a.status = "⚠ " + strings.Join(msg.snap.Errors, " | ")

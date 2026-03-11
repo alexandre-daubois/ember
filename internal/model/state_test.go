@@ -45,11 +45,16 @@ func TestState_Update_CrashCount(t *testing.T) {
 	assert.Equal(t, float64(4), s.Derived.TotalCrashes)
 }
 
+var dummyThreads = fetcher.ThreadsResponse{
+	ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}},
+}
+
 func TestState_Update_RPSAndAvgTime(t *testing.T) {
 	now := time.Now()
 
 	prev := &fetcher.Snapshot{
 		FetchedAt: now.Add(-2 * time.Second),
+		Threads:   dummyThreads,
 		Metrics: fetcher.MetricsSnapshot{
 			Workers: map[string]*fetcher.WorkerMetrics{
 				"w": {RequestCount: 100, RequestTime: 10.0},
@@ -59,6 +64,7 @@ func TestState_Update_RPSAndAvgTime(t *testing.T) {
 
 	curr := &fetcher.Snapshot{
 		FetchedAt: now,
+		Threads:   dummyThreads,
 		Metrics: fetcher.MetricsSnapshot{
 			Workers: map[string]*fetcher.WorkerMetrics{
 				"w": {RequestCount: 200, RequestTime: 20.0},
@@ -96,6 +102,7 @@ func TestState_Update_CaddyFallbackRPS(t *testing.T) {
 
 	prev := &fetcher.Snapshot{
 		FetchedAt: now.Add(-2 * time.Second),
+		Threads:   dummyThreads,
 		Metrics: fetcher.MetricsSnapshot{
 			Workers:                  map[string]*fetcher.WorkerMetrics{},
 			HTTPRequestDurationCount: 100,
@@ -105,6 +112,7 @@ func TestState_Update_CaddyFallbackRPS(t *testing.T) {
 
 	curr := &fetcher.Snapshot{
 		FetchedAt: now,
+		Threads:   dummyThreads,
 		Metrics: fetcher.MetricsSnapshot{
 			Workers:                  map[string]*fetcher.WorkerMetrics{},
 			HTTPRequestDurationCount: 300,
@@ -127,6 +135,7 @@ func TestState_Update_FrankenPHPTakesPriorityOverCaddy(t *testing.T) {
 
 	prev := &fetcher.Snapshot{
 		FetchedAt: now.Add(-1 * time.Second),
+		Threads:   dummyThreads,
 		Metrics: fetcher.MetricsSnapshot{
 			Workers: map[string]*fetcher.WorkerMetrics{
 				"w": {RequestCount: 100, RequestTime: 10.0},
@@ -138,6 +147,7 @@ func TestState_Update_FrankenPHPTakesPriorityOverCaddy(t *testing.T) {
 
 	curr := &fetcher.Snapshot{
 		FetchedAt: now,
+		Threads:   dummyThreads,
 		Metrics: fetcher.MetricsSnapshot{
 			Workers: map[string]*fetcher.WorkerMetrics{
 				"w": {RequestCount: 200, RequestTime: 20.0},
@@ -154,6 +164,178 @@ func TestState_Update_FrankenPHPTakesPriorityOverCaddy(t *testing.T) {
 	// FrankenPHP: 100 reqs in 1s = 100 RPS
 	// Caddy would give: 500 reqs in 1s = 500 RPS, this should NOT be used
 	assert.InDelta(t, 100, s.Derived.RPS, 0.5)
+}
+
+func TestState_Update_NoSpikeAfterStaleMetrics(t *testing.T) {
+	now := time.Now()
+
+	// normal snapshot with real metrics
+	good := &fetcher.Snapshot{
+		FetchedAt: now.Add(-3 * time.Second),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 1000000, RequestTime: 100.0},
+			},
+		},
+	}
+
+	// stale snapshot: metrics failed (Workers nil, counts zero)
+	stale := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads:   fetcher.ThreadsResponse{},
+		Metrics:   fetcher.MetricsSnapshot{},
+	}
+
+	// recovery: fresh data with much higher counters
+	recovery := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 201000000, RequestTime: 20100.0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(good)
+
+	// simulate stale: replace metrics and FetchedAt on Current (as app.go stale path does)
+	s.Current.Metrics = stale.Metrics
+	s.Current.FetchedAt = stale.FetchedAt
+
+	s.Update(recovery)
+
+	// prevCount is 0 (stale metrics), so RPS must be 0, NOT 200M
+	assert.Equal(t, float64(0), s.Derived.RPS, "RPS should be 0 after stale recovery, not a spike")
+}
+
+func TestState_Update_NoSpikeAfterStaleMetricsWithData(t *testing.T) {
+	now := time.Now()
+
+	// normal snapshot
+	good := &fetcher.Snapshot{
+		FetchedAt: now.Add(-3 * time.Second),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 1000000, RequestTime: 100.0},
+			},
+		},
+	}
+
+	// stale but metrics endpoint succeeded — counters are fresh
+	staleFresh := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads:   fetcher.ThreadsResponse{},
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 200999950, RequestTime: 20099.0},
+			},
+		},
+	}
+
+	recovery := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 201000000, RequestTime: 20100.0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(good)
+
+	// simulate a stale path: update metrics and FetchedAt to latest values
+	s.Current.Metrics = staleFresh.Metrics
+	s.Current.FetchedAt = staleFresh.FetchedAt
+
+	s.Update(recovery)
+
+	// delta = 201000000 - 200999950 = 50 reqs
+	// dt = 1s (Previous.FetchedAt from staleFresh, Current.FetchedAt from recovery)
+	// RPS = 50/1 = 50
+	assert.InDelta(t, 50, s.Derived.RPS, 1, "RPS should reflect only the small delta, not the full gap")
+}
+
+func TestState_Update_NoSpikeWhenDtTooSmall(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-50 * time.Millisecond),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 1000000, RequestTime: 100.0},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 1000100, RequestTime: 101.0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	// dt = 50ms < 100ms threshold, rate computation should be skipped
+	assert.Equal(t, float64(0), s.Derived.RPS, "RPS should be 0 when dt < 100ms")
+	assert.Equal(t, float64(0), s.Derived.AvgTime, "AvgTime should be 0 when dt < 100ms")
+}
+
+func TestState_Update_BurstResponsesNoSpike(t *testing.T) {
+	now := time.Now()
+
+	// simulate burst: 3 snapshots arriving within milliseconds
+	snap1 := &fetcher.Snapshot{
+		FetchedAt: now.Add(-10 * time.Millisecond),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 200000000, RequestTime: 20000.0},
+			},
+		},
+	}
+
+	snap2 := &fetcher.Snapshot{
+		FetchedAt: now.Add(-5 * time.Millisecond),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 200000100, RequestTime: 20001.0},
+			},
+		},
+	}
+
+	snap3 := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 200000200, RequestTime: 20002.0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap1)
+	s.Update(snap2)
+
+	assert.Equal(t, float64(0), s.Derived.RPS, "RPS should be 0 between burst responses (dt < 100ms)")
+
+	s.Update(snap3)
+
+	assert.Equal(t, float64(0), s.Derived.RPS, "RPS should still be 0 between burst responses")
 }
 
 func TestFormatUptime(t *testing.T) {

@@ -102,7 +102,7 @@ func (s *State) computeDerived() DerivedMetrics {
 	}
 
 	dt := s.Current.FetchedAt.Sub(s.Previous.FetchedAt).Seconds()
-	if dt <= 0 {
+	if dt < 0.1 {
 		return d
 	}
 
@@ -123,6 +123,12 @@ func (s *State) computeDerived() DerivedMetrics {
 		currTime = s.Current.Metrics.HTTPRequestDurationSum
 		prevCount = s.Previous.Metrics.HTTPRequestDurationCount
 		prevTime = s.Previous.Metrics.HTTPRequestDurationSum
+	}
+
+	// if either snapshot had no metrics data (fetch failed for that tick),
+	// the delta is meaningless, so skip rate calculations
+	if prevCount == 0 || currCount == 0 {
+		return d
 	}
 
 	deltaCount := currCount - prevCount

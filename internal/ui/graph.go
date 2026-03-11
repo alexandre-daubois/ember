@@ -85,5 +85,6 @@ func renderSingleGraph(p graphPanel, width, height int) string {
 	)
 
 	header := lipgloss.NewStyle().Bold(true).Foreground(ember).Render(label)
-	return "\n" + header + "\n" + chart
+	content := "\n" + header + "\n" + chart
+	return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(content)
 }
