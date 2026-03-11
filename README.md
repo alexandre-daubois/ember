@@ -7,7 +7,6 @@ Understand why your app is on fire by monitoring threads, workers, memory, reque
 ## Features
 
 - Per-thread introspection (URI, HTTP method, duration, memory)
-- Memory leak detection via linear regression on idle snapshots
 - Live RPS and average response time with sparkline history
 - Latency percentiles (P50, P95, P99) over a rolling 5-minute window
 - Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
@@ -73,7 +72,6 @@ Ember auto-detects the FrankenPHP process and connects to the Caddy admin API.
 | `Enter` | Thread detail panel |
 | `s` / `S` | Cycle sort field |
 | `p` | Pause / resume |
-| `l` | Toggle leak watcher |
 | `r` | Restart workers |
 | `/` | Filter threads |
 | `g` | Full-screen graphs |

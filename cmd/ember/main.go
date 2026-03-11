@@ -20,8 +20,6 @@ type Config struct {
 	Addr          string
 	Interval      time.Duration
 	SlowThreshold int
-	LeakThreshold int
-	LeakWindow    int
 	NoColor       bool
 	JSONMode      bool
 	PID           int
@@ -35,8 +33,6 @@ func main() {
 	flag.StringVar(&cfg.Addr, "addr", "http://localhost:2019", "Caddy admin API address")
 	flag.DurationVar(&cfg.Interval, "interval", 1*time.Second, "polling interval")
 	flag.IntVar(&cfg.SlowThreshold, "slow-threshold", 500, "slow request threshold (ms)")
-	flag.IntVar(&cfg.LeakThreshold, "leak-threshold", 5, "leak detection threshold (MB)")
-	flag.IntVar(&cfg.LeakWindow, "leak-window", 20, "leak watcher sample window")
 	flag.BoolVar(&cfg.NoColor, "no-color", false, "disable colors")
 	flag.BoolVar(&cfg.JSONMode, "json", false, "JSON output mode")
 	flag.IntVar(&cfg.PID, "pid", 0, "FrankenPHP process PID (auto-detected if not set)")
@@ -73,8 +69,6 @@ func main() {
 	app := ui.NewApp(f, ui.Config{
 		Interval:      cfg.Interval,
 		SlowThreshold: time.Duration(cfg.SlowThreshold) * time.Millisecond,
-		LeakThreshold: cfg.LeakThreshold,
-		LeakWindow:    cfg.LeakWindow,
 		NoColor:       cfg.NoColor,
 		Version:       version,
 	})

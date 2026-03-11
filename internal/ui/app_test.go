@@ -7,7 +7,6 @@ import (
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -148,25 +147,6 @@ func TestFilteredThreads_NoMatch(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func TestLeakToggle(t *testing.T) {
-	app := &App{
-		leakWatcher: model.NewLeakWatcher(60, 5),
-		leakEnabled: true,
-	}
-
-	require.True(t, app.leakEnabled, "leak should start enabled")
-
-	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-
-	assert.False(t, app.leakEnabled, "leak should be disabled after pressing l")
-	assert.Equal(t, "leak watcher disabled", app.status)
-
-	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-
-	assert.True(t, app.leakEnabled, "leak should be re-enabled after pressing l again")
-	assert.Equal(t, "leak watcher enabled", app.status)
-}
-
 func TestGraphToggle(t *testing.T) {
 	app := &App{mode: viewList}
 
@@ -220,9 +200,7 @@ func TestFetchMsg_RecoveryFromStaleZerosRPS(t *testing.T) {
 	}
 
 	app := &App{
-		leakWatcher: model.NewLeakWatcher(60, 5),
-		leakEnabled: true,
-		stale:       true,
+		stale: true,
 	}
 	app.state.Update(snap) // seed initial state
 
@@ -250,9 +228,7 @@ func TestFetchMsg_RecoveryFromStaleResetsPercentiles(t *testing.T) {
 	}
 
 	app := &App{
-		leakWatcher: model.NewLeakWatcher(60, 5),
-		leakEnabled: true,
-		stale:       true,
+		stale: true,
 	}
 	now := time.Now()
 	app.state.Update(snap)

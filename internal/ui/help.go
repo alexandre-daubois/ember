@@ -6,15 +6,10 @@ import (
 	"github.com/alexandredaubois/ember/internal/model"
 )
 
-func renderHelp(sortBy model.SortField, paused bool, leakEnabled bool, width int) string {
+func renderHelp(sortBy model.SortField, paused bool, width int) string {
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
-	}
-
-	leakLabel := "leak:on"
-	if !leakEnabled {
-		leakLabel = "leak:off"
 	}
 
 	type binding struct {
@@ -25,7 +20,6 @@ func renderHelp(sortBy model.SortField, paused bool, leakEnabled bool, width int
 		{"↑/↓", "navigate"},
 		{"s/S", "sort(" + sortBy.String() + ")"},
 		{"p", pauseLabel},
-		{"l", leakLabel},
 		{"r", "restart"},
 		{"g", "graphs"},
 		{"/", "filter"},

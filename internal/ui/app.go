@@ -26,8 +26,6 @@ const (
 type Config struct {
 	Interval      time.Duration
 	SlowThreshold time.Duration
-	LeakThreshold int
-	LeakWindow    int
 	NoColor       bool
 	Version       string
 }
@@ -43,8 +41,6 @@ type App struct {
 	fetcher     fetcher.Fetcher
 	config      Config
 	state       model.State
-	leakWatcher *model.LeakWatcher
-	leakEnabled bool
 	cursor      int
 	sortBy      model.SortField
 	paused      bool
@@ -72,8 +68,6 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	return &App{
 		fetcher:     f,
 		config:      cfg,
-		leakWatcher: model.NewLeakWatcher(cfg.LeakWindow, cfg.LeakThreshold),
-		leakEnabled: true,
 	}
 }
 
@@ -147,13 +141,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.rssHistory = appendHistory(a.rssHistory, float64(msg.snap.Process.RSS)/1024/1024, graphHistorySize)
 			a.queueHistory = appendHistory(a.queueHistory, msg.snap.Metrics.QueueDepth, graphHistorySize)
 			a.busyHistory = appendHistory(a.busyHistory, float64(a.state.Derived.TotalBusy), graphHistorySize)
-			if a.leakEnabled {
-				for _, t := range msg.snap.Threads.ThreadDebugStates {
-					if t.IsWaiting && t.MemoryUsage > 0 {
-						a.leakWatcher.Record(t.Index, t.MemoryUsage)
-					}
-				}
-			}
 		}
 		return a, nil
 	case restartResultMsg:
@@ -202,7 +189,7 @@ func (a *App) View() string {
 	listWidth := a.width - panelWidth
 
 	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.rpsHistory, sparklineSize), lastN(a.cpuHistory, sparklineSize), a.stale)
-	help := renderHelp(a.sortBy, a.paused, a.leakEnabled, listWidth)
+	help := renderHelp(a.sortBy, a.paused, listWidth)
 
 	threads := a.filteredThreads()
 	totalCount := 0
@@ -211,8 +198,6 @@ func (a *App) View() string {
 	}
 	workerList := renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
 		slowThreshold: a.config.SlowThreshold,
-		leakWatcher:   a.leakWatcher,
-		leakEnabled:   a.leakEnabled,
 	}, totalCount)
 
 	var statusLine string
@@ -251,12 +236,11 @@ func (a *App) View() string {
 
 	if a.mode == viewDetail {
 		if t, ok := a.selectedThread(); ok {
-			ls := a.leakWatcher.Status(t.Index)
 			if sidePanel {
-				panel := renderDetailPanel(t, ls, panelWidth, a.height)
+				panel := renderDetailPanel(t, panelWidth, a.height)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
 			}
-			panel := renderDetailPanel(t, ls, a.width, detailPanelHeight)
+			panel := renderDetailPanel(t, a.width, detailPanelHeight)
 			return lipgloss.JoinVertical(lipgloss.Left, base, panel)
 		}
 	}
@@ -317,13 +301,6 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		a.mode = viewFilter
 		a.filter = ""
-	case "l":
-		a.leakEnabled = !a.leakEnabled
-		if a.leakEnabled {
-			a.status = "leak watcher enabled"
-		} else {
-			a.status = "leak watcher disabled"
-		}
 	case "g":
 		a.prevMode = a.mode
 		a.mode = viewGraph

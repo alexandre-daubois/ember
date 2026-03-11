@@ -2,12 +2,10 @@ package ui
 
 import (
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
-	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -23,7 +21,7 @@ var (
 	sectionStyle     = lipgloss.NewStyle().Foreground(subtle)
 )
 
-func renderDetailPanel(t fetcher.ThreadDebugState, leakStatus model.LeakStatus, width, height int) string {
+func renderDetailPanel(t fetcher.ThreadDebugState, width, height int) string {
 	inner := width - 4
 	if inner < 10 {
 		inner = 10
@@ -76,24 +74,11 @@ func renderDetailPanel(t fetcher.ThreadDebugState, leakStatus model.LeakStatus, 
 		lines = append(lines, "")
 		lines = append(lines, sectionHeader("Resources", inner))
 		if t.MemoryUsage > 0 {
-			memLine := formatBytes(t.MemoryUsage)
-			if len(leakStatus.Samples) >= 2 {
-				spark := renderMemSparkline(leakStatus.Samples, inner-12)
-				memLine += "  " + spark
-			}
-			lines = append(lines, detailKV("Memory", memLine))
+			lines = append(lines, detailKV("Memory", formatBytes(t.MemoryUsage)))
 		}
 		if t.RequestCount > 0 {
 			lines = append(lines, detailKV("Requests", formatNumber(t.RequestCount)))
 		}
-	}
-
-	if leakStatus.Leaking {
-		lines = append(lines, "")
-		lines = append(lines, leakStyle.Render("  ⚠ Possible memory leak"))
-		slopeStr := fmt.Sprintf("+%s/sample", formatBytes(int64(math.Abs(leakStatus.Slope))))
-		rangeStr := fmt.Sprintf("%s → %s", formatBytes(leakStatus.MinMem), formatBytes(leakStatus.MaxMem))
-		lines = append(lines, greyStyle.Render("  "+slopeStr+"  "+rangeStr))
 	}
 
 	// --- Footer ---

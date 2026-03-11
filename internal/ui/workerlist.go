@@ -14,8 +14,6 @@ import (
 
 type renderOpts struct {
 	slowThreshold time.Duration
-	leakWatcher   *model.LeakWatcher
-	leakEnabled   bool
 }
 
 // fixed column widths (excluding URI which is dynamic)
@@ -119,14 +117,6 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 
 	timeStr, timeStyle := formatTimeWithStyle(t, opts.slowThreshold)
 
-	var suffix string
-	if opts.leakEnabled && opts.leakWatcher != nil {
-		ls := opts.leakWatcher.Status(t.Index)
-		if ls.Leaking {
-			suffix = leakStyle.Render(" ⚠ leak?")
-		}
-	}
-
 	method := "—"
 	uri := "—"
 	if t.IsBusy && t.CurrentMethod != "" {
@@ -177,12 +167,9 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		uriStr = zebraStyle.Render(uriStr)
 		memFmt = zebraStyle.Render(memFmt)
 		reqsFmt = zebraStyle.Render(reqsFmt)
-		if suffix != "" {
-			suffix = leakStyle.Background(zebraBg).Render(" ⚠ leak?")
-		}
 	}
 
-	row := fmt.Sprintf("%s%s%s%s%s%s%s%s",
+	row := fmt.Sprintf("%s%s%s%s%s%s%s",
 		indexPart,
 		style.Render(fmt.Sprintf("%-*s", colState, stateIcon)),
 		methodStr,
@@ -190,7 +177,6 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		timeStyle.Render(fmt.Sprintf("%*s", colTime, timeStr)),
 		memFmt,
 		reqsFmt,
-		suffix,
 	)
 
 	if selected {

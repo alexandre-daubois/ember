@@ -8,8 +8,6 @@ var (
 	ember  = lipgloss.AdaptiveColor{Light: "#CC4400", Dark: "#FF6B35"}
 	red    = lipgloss.AdaptiveColor{Light: "#CC0000", Dark: "#FF4444"}
 	warn   = lipgloss.AdaptiveColor{Light: "#CC6600", Dark: "#FF8C00"}
-	leak   = lipgloss.AdaptiveColor{Light: "#CC3300", Dark: "#FF6347"}
-
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(ember)
@@ -34,8 +32,6 @@ var (
 	greyStyle   = lipgloss.NewStyle().Foreground(subtle)
 	warnStyle   = lipgloss.NewStyle().Foreground(warn)
 	dangerStyle = lipgloss.NewStyle().Bold(true).Foreground(red)
-	leakStyle   = lipgloss.NewStyle().Foreground(leak).Bold(true)
-
 	helpStyle    = lipgloss.NewStyle().Foreground(subtle)
 	helpKeyStyle = lipgloss.NewStyle().Foreground(ember).Bold(true)
 
