@@ -38,22 +38,22 @@ func TestTruncateURI(t *testing.T) {
 
 func TestRenderDetailPanel_ContainsThreadInfo(t *testing.T) {
 	thread := fetcher.ThreadDebugState{
-		Index:        5,
-		Name:         "Worker PHP Thread - /app/worker.php",
-		IsBusy:       true,
+		Index:         5,
+		Name:          "Worker PHP Thread - /app/worker.php",
+		IsBusy:        true,
 		CurrentMethod: "POST",
-		CurrentURI:   "/api/users",
-		MemoryUsage:  10 * 1024 * 1024,
-		RequestCount: 1234,
+		CurrentURI:    "/api/users",
+		MemoryUsage:   10 * 1024 * 1024,
+		RequestCount:  1234,
 	}
-	panel := renderDetailPanel(thread, model.LeakStatus{}, 40, 20)
+	panel := renderDetailPanel(thread, model.LeakStatus{}, 44, 25)
 
 	assert.Contains(t, panel, "Thread #5")
 	assert.Contains(t, panel, "POST")
 	assert.Contains(t, panel, "/api/users")
 	assert.Contains(t, panel, "10 MB")
 	assert.Contains(t, panel, "1,234")
-	assert.Contains(t, panel, "busy")
+	assert.Contains(t, panel, "BUSY")
 }
 
 func TestRenderDetailPanel_IdleThread(t *testing.T) {
@@ -63,19 +63,26 @@ func TestRenderDetailPanel_IdleThread(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 5000,
 	}
-	panel := renderDetailPanel(thread, model.LeakStatus{}, 40, 20)
+	panel := renderDetailPanel(thread, model.LeakStatus{}, 44, 25)
 
 	assert.Contains(t, panel, "Thread #2")
-	assert.Contains(t, panel, "idle")
+	assert.Contains(t, panel, "IDLE")
 	assert.Contains(t, panel, "5.0s")
 }
 
 func TestRenderDetailPanel_LeakWarning(t *testing.T) {
 	thread := fetcher.ThreadDebugState{Index: 0, IsWaiting: true}
-	leaking := model.LeakStatus{Leaking: true, Slope: 100}
-	panel := renderDetailPanel(thread, leaking, 40, 20)
+	leaking := model.LeakStatus{
+		Leaking: true,
+		Slope:   100,
+		MinMem:  8 * 1024 * 1024,
+		MaxMem:  12 * 1024 * 1024,
+	}
+	panel := renderDetailPanel(thread, leaking, 44, 25)
 
 	assert.Contains(t, panel, "leak")
+	assert.Contains(t, panel, "8 MB")
+	assert.Contains(t, panel, "12 MB")
 }
 
 func TestRenderDetailPanel_NameTruncation(t *testing.T) {
@@ -83,9 +90,55 @@ func TestRenderDetailPanel_NameTruncation(t *testing.T) {
 		Index: 0,
 		Name:  strings.Repeat("A", 100),
 	}
-	panel := renderDetailPanel(thread, model.LeakStatus{}, 30, 10)
+	panel := renderDetailPanel(thread, model.LeakStatus{}, 30, 15)
 
 	assert.Contains(t, panel, "…")
+}
+
+func TestRenderDetailPanel_WorkerScript(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:   3,
+		Name:    "Worker PHP Thread - /app/worker.php",
+		IsBusy:  true,
+	}
+	panel := renderDetailPanel(thread, model.LeakStatus{}, 44, 25)
+
+	assert.Contains(t, panel, "Thread #3")
+	assert.Contains(t, panel, "worker")
+	assert.Contains(t, panel, "/app/worker.php")
+}
+
+func TestRenderDetailPanel_SectionHeaders(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:         1,
+		Name:          "Thread",
+		IsBusy:        true,
+		CurrentMethod: "GET",
+		CurrentURI:    "/test",
+		MemoryUsage:   5 * 1024 * 1024,
+		RequestCount:  42,
+	}
+	panel := renderDetailPanel(thread, model.LeakStatus{}, 44, 25)
+
+	assert.Contains(t, panel, "Request")
+	assert.Contains(t, panel, "Resources")
+}
+
+func TestRenderDetailPanel_MemSparkline(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:       1,
+		Name:        "Thread",
+		IsWaiting:   true,
+		MemoryUsage: 5 * 1024 * 1024,
+	}
+	leakStatus := model.LeakStatus{
+		Samples: []int64{1024, 2048, 3072, 4096, 5120},
+		MinMem:  1024,
+		MaxMem:  5120,
+	}
+	panel := renderDetailPanel(thread, leakStatus, 44, 25)
+
+	assert.Contains(t, panel, "5 MB")
 }
 
 func TestDetailPanel_SideLayout(t *testing.T) {
@@ -94,7 +147,7 @@ func TestDetailPanel_SideLayout(t *testing.T) {
 		{Index: 1, Name: "Thread 1", IsBusy: true},
 	})
 	app.mode = viewDetail
-	app.width = 120
+	app.width = 130
 	app.height = 30
 	app.leakWatcher = model.NewLeakWatcher(10, 5)
 
@@ -110,7 +163,7 @@ func TestDetailPanel_BottomLayout(t *testing.T) {
 		{Index: 1, Name: "Thread 1", IsBusy: true},
 	})
 	app.mode = viewDetail
-	app.width = 70 // below detailSideThreshold
+	app.width = 70
 	app.height = 30
 	app.leakWatcher = model.NewLeakWatcher(10, 5)
 
@@ -148,4 +201,32 @@ func TestDetailPanel_EscClosesPanel(t *testing.T) {
 
 	app.handleDetailKey(tea.KeyMsg{Type: tea.KeyEsc})
 	assert.Equal(t, viewList, app.mode)
+}
+
+func TestRenderStateBadge(t *testing.T) {
+	busy := renderStateBadge(fetcher.ThreadDebugState{IsBusy: true})
+	assert.Contains(t, busy, "BUSY")
+
+	idle := renderStateBadge(fetcher.ThreadDebugState{IsWaiting: true})
+	assert.Contains(t, idle, "IDLE")
+
+	other := renderStateBadge(fetcher.ThreadDebugState{State: "starting"})
+	assert.Contains(t, other, "STARTING")
+}
+
+func TestFormatDuration(t *testing.T) {
+	assert.Equal(t, "500ms", formatDuration(500*1e6))
+	assert.Equal(t, "1.5s", formatDuration(1500*1e6))
+	assert.Equal(t, "2.0m", formatDuration(120*1e9))
+}
+
+func TestRenderMemSparkline_Empty(t *testing.T) {
+	assert.Equal(t, "", renderMemSparkline(nil, 10))
+	assert.Equal(t, "", renderMemSparkline([]int64{100}, 10))
+}
+
+func TestRenderMemSparkline_Trend(t *testing.T) {
+	samples := []int64{100, 200, 300, 400, 500}
+	result := renderMemSparkline(samples, 10)
+	assert.NotEmpty(t, result)
 }
