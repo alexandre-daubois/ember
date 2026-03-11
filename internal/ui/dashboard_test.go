@@ -36,13 +36,22 @@ func TestRenderSparkline_MaxIsHighestBlock(t *testing.T) {
 	assert.Contains(t, got, "▁", "zero value should produce lowest block")
 }
 
-func TestAppendSparkline_Caps(t *testing.T) {
+func TestAppendHistory_CapsAtSparkline(t *testing.T) {
 	var h []float64
 	for i := 0; i < 50; i++ {
-		h = appendSparkline(h, float64(i))
+		h = appendHistory(h, float64(i), sparklineSize)
 	}
 	assert.Len(t, h, sparklineSize)
 	assert.Equal(t, float64(49), h[len(h)-1])
+}
+
+func TestAppendHistory_CapsAtGraphSize(t *testing.T) {
+	var h []float64
+	for i := 0; i < 500; i++ {
+		h = appendHistory(h, float64(i), graphHistorySize)
+	}
+	assert.Len(t, h, graphHistorySize)
+	assert.Equal(t, float64(499), h[len(h)-1])
 }
 
 func TestWorkerScript(t *testing.T) {

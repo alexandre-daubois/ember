@@ -27,6 +27,7 @@ func renderHelp(sortBy model.SortField, paused bool, leakEnabled bool, width int
 		{"p", pauseLabel},
 		{"l", leakLabel},
 		{"r", "restart"},
+		{"g", "graphs"},
 		{"/", "filter"},
 		{"q", "quit"},
 	}

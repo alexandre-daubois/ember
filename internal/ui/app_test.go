@@ -166,6 +166,28 @@ func TestLeakToggle(t *testing.T) {
 	assert.Equal(t, "leak watcher enabled", app.status)
 }
 
+func TestGraphToggle(t *testing.T) {
+	app := &App{mode: viewList}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.Equal(t, viewGraph, app.mode, "pressing g should switch to graph view")
+	assert.Equal(t, viewList, app.prevMode, "prevMode should remember list")
+}
+
+func TestGraphEscReturns(t *testing.T) {
+	app := &App{mode: viewGraph, prevMode: viewList}
+
+	app.handleGraphKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "Esc should return to previous view")
+}
+
+func TestGraphGReturns(t *testing.T) {
+	app := &App{mode: viewGraph, prevMode: viewDetail}
+
+	app.handleGraphKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.Equal(t, viewDetail, app.mode, "g should return to previous view")
+}
+
 func TestFilteredThreads_Sorted(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{
 		{Index: 2, Name: "Thread 2"},

@@ -20,6 +20,7 @@ const (
 	viewDetail
 	viewFilter
 	viewConfirmRestart
+	viewGraph
 )
 
 type Config struct {
@@ -36,6 +37,7 @@ type restarter interface {
 }
 
 const sparklineSize = 15
+const graphHistorySize = 300
 
 type App struct {
 	fetcher     fetcher.Fetcher
@@ -50,10 +52,14 @@ type App struct {
 	height      int
 	err         error
 	mode        viewMode
+	prevMode    viewMode
 	filter      string
 	status      string
 	rpsHistory  []float64
 	cpuHistory  []float64
+	rssHistory  []float64
+	queueHistory []float64
+	busyHistory  []float64
 	stale       bool
 	lastFresh   time.Time
 }
@@ -103,7 +109,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !hasThreads && hadThreads {
 				a.stale = true
 				a.state.Current.Process = msg.snap.Process
-				a.cpuHistory = appendSparkline(a.cpuHistory, msg.snap.Process.CPUPercent)
+				a.cpuHistory = appendHistory(a.cpuHistory, msg.snap.Process.CPUPercent, graphHistorySize)
 				staleDur := time.Since(a.lastFresh).Truncate(time.Second)
 				if msg.snap.Process.CPUPercent >= 80 {
 					a.status = fmt.Sprintf("⚠ High load — data stale %s", staleDur)
@@ -122,8 +128,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				a.status = ""
 			}
-			a.rpsHistory = appendSparkline(a.rpsHistory, a.state.Derived.RPS)
-			a.cpuHistory = appendSparkline(a.cpuHistory, msg.snap.Process.CPUPercent)
+			a.rpsHistory = appendHistory(a.rpsHistory, a.state.Derived.RPS, graphHistorySize)
+			a.cpuHistory = appendHistory(a.cpuHistory, msg.snap.Process.CPUPercent, graphHistorySize)
+			a.rssHistory = appendHistory(a.rssHistory, float64(msg.snap.Process.RSS)/1024/1024, graphHistorySize)
+			a.queueHistory = appendHistory(a.queueHistory, msg.snap.Metrics.QueueDepth, graphHistorySize)
+			a.busyHistory = appendHistory(a.busyHistory, float64(a.state.Derived.TotalBusy), graphHistorySize)
 			if a.leakEnabled {
 				for _, t := range msg.snap.Threads.ThreadDebugStates {
 					if t.IsWaiting && t.MemoryUsage > 0 {
@@ -144,12 +153,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-func appendSparkline(history []float64, val float64) []float64 {
+func appendHistory(history []float64, val float64, maxSize int) []float64 {
 	history = append(history, val)
-	if len(history) > sparklineSize {
-		history = history[len(history)-sparklineSize:]
+	if len(history) > maxSize {
+		history = history[len(history)-maxSize:]
 	}
 	return history
+}
+
+func lastN(history []float64, n int) []float64 {
+	if len(history) <= n {
+		return history
+	}
+	return history[len(history)-n:]
 }
 
 func (a *App) View() string {
@@ -171,7 +187,7 @@ func (a *App) View() string {
 	}
 	listWidth := a.width - panelWidth
 
-	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, a.rpsHistory, a.cpuHistory, a.stale)
+	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.rpsHistory, sparklineSize), lastN(a.cpuHistory, sparklineSize), a.stale)
 	help := renderHelp(a.sortBy, a.paused, a.leakEnabled, listWidth)
 
 	threads := a.filteredThreads()
@@ -198,14 +214,24 @@ func (a *App) View() string {
 	}
 
 	parts := []string{dashboard}
-	if filterLine != "" {
-		parts = append(parts, filterLine)
+	if a.mode == viewGraph {
+		dashLines := strings.Count(dashboard, "\n") + 1
+		graphAreaHeight := a.height - dashLines - 2
+		if graphAreaHeight < 5 {
+			graphAreaHeight = 5
+		}
+		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.cpuHistory, a.rpsHistory, a.rssHistory, a.queueHistory, a.busyHistory))
+		parts = append(parts, helpStyle.Width(listWidth).Render(" "+helpKeyStyle.Render("g/Esc")+" back  "+helpKeyStyle.Render("q")+" quit"))
+	} else {
+		if filterLine != "" {
+			parts = append(parts, filterLine)
+		}
+		parts = append(parts, workerList)
+		if statusLine != "" {
+			parts = append(parts, statusLine)
+		}
+		parts = append(parts, help)
 	}
-	parts = append(parts, workerList)
-	if statusLine != "" {
-		parts = append(parts, statusLine)
-	}
-	parts = append(parts, help)
 
 	base := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
@@ -236,9 +262,21 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleDetailKey(msg)
 	case viewConfirmRestart:
 		return a.handleConfirmKey(msg)
+	case viewGraph:
+		return a.handleGraphKey(msg)
 	default:
 		return a.handleListKey(msg)
 	}
+}
+
+func (a *App) handleGraphKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "g", "q":
+		a.mode = a.prevMode
+	case "ctrl+c":
+		return a, tea.Quit
+	}
+	return a, nil
 }
 
 func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -272,6 +310,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			a.status = "leak watcher disabled"
 		}
+	case "g":
+		a.prevMode = a.mode
+		a.mode = viewGraph
 	}
 	return a, nil
 }
