@@ -2,6 +2,7 @@ package ui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
@@ -239,6 +240,36 @@ func TestFetchMsg_RecoveryFromStaleZerosRPS(t *testing.T) {
 	assert.False(t, app.stale, "should no longer be stale")
 	assert.Equal(t, float64(0), app.state.Derived.RPS, "RPS should be 0 on first tick after stale recovery")
 	assert.Equal(t, float64(0), app.state.Derived.AvgTime, "AvgTime should be 0 on first tick after stale recovery")
+}
+
+func TestFetchMsg_RecoveryFromStaleResetsPercentiles(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}}
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{ThreadDebugStates: threads},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	app := &App{
+		leakWatcher: model.NewLeakWatcher(60, 5),
+		leakEnabled: true,
+		stale:       true,
+	}
+	now := time.Now()
+	app.state.Update(snap)
+	app.state.Percentiles.Record(150.0, now)
+	app.state.Percentiles.Record(250.0, now)
+	assert.Equal(t, 2, app.state.Percentiles.Count(now))
+
+	recovery := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{ThreadDebugStates: threads},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	app.Update(fetchMsg{snap: recovery})
+
+	assert.False(t, app.stale)
+	assert.False(t, app.state.Derived.HasPercentiles)
+	assert.Equal(t, 0, app.state.Percentiles.Count(now))
 }
 
 func TestFilteredThreads_Sorted(t *testing.T) {

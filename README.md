@@ -9,6 +9,7 @@ Understand why your app is on fire by monitoring threads, workers, memory, reque
 - Per-thread introspection (URI, HTTP method, duration, memory)
 - Memory leak detection via linear regression on idle snapshots
 - Live RPS and average response time with sparkline history
+- Latency percentiles (P50, P95, P99) over a rolling 5-minute window
 - Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
 - Sorting, live filtering, and detail panel
 - Graceful worker restart from the TUI

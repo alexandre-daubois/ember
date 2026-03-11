@@ -7,6 +7,8 @@ import (
 	"github.com/alexandredaubois/ember/internal/fetcher"
 )
 
+const percentileExpiry = DefaultPercentileExpiry
+
 type SortField int
 
 const (
@@ -59,23 +61,64 @@ func (s SortField) Prev() SortField {
 }
 
 type State struct {
-	Current  *fetcher.Snapshot
-	Previous *fetcher.Snapshot
-	Derived  DerivedMetrics
+	Current     *fetcher.Snapshot
+	Previous    *fetcher.Snapshot
+	Derived     DerivedMetrics
+	Percentiles *PercentileTracker
 }
 
 type DerivedMetrics struct {
-	RPS          float64
-	AvgTime      float64
-	TotalIdle    int
-	TotalBusy    int
-	TotalCrashes float64
+	RPS            float64
+	AvgTime        float64
+	TotalIdle      int
+	TotalBusy      int
+	TotalCrashes   float64
+	P50            float64
+	P95            float64
+	P99            float64
+	HasPercentiles bool
 }
 
 func (s *State) Update(snap *fetcher.Snapshot) {
+	if s.Percentiles == nil {
+		s.Percentiles = NewPercentileTracker(percentileExpiry)
+	}
+	s.detectCompletedRequests(snap)
 	s.Previous = s.Current
 	s.Current = snap
 	s.Derived = s.computeDerived()
+}
+
+func (s *State) detectCompletedRequests(newSnap *fetcher.Snapshot) {
+	if s.Current == nil {
+		return
+	}
+
+	prevByIndex := make(map[int]fetcher.ThreadDebugState, len(s.Current.Threads.ThreadDebugStates))
+	for _, t := range s.Current.Threads.ThreadDebugStates {
+		prevByIndex[t.Index] = t
+	}
+
+	for _, curr := range newSnap.Threads.ThreadDebugStates {
+		prev, ok := prevByIndex[curr.Index]
+		if !ok || !prev.IsBusy || prev.RequestStartedAt <= 0 {
+			continue
+		}
+
+		completed := !curr.IsBusy || curr.RequestStartedAt != prev.RequestStartedAt
+		if completed {
+			// Estimate when the request ended: midpoint between the two polls
+			// reduces max error from interval to interval/2.
+			// If the request started after the midpoint (short-lived request),
+			// fall back to currentFetchedAt as end estimate.
+			endEstimate := (s.Current.FetchedAt.UnixMilli() + newSnap.FetchedAt.UnixMilli()) / 2
+			if prev.RequestStartedAt >= endEstimate {
+				endEstimate = newSnap.FetchedAt.UnixMilli()
+			}
+			durationMs := float64(endEstimate - prev.RequestStartedAt)
+			s.Percentiles.Record(durationMs, newSnap.FetchedAt)
+		}
+	}
 }
 
 func (s *State) computeDerived() DerivedMetrics {
@@ -95,6 +138,25 @@ func (s *State) computeDerived() DerivedMetrics {
 
 	for _, w := range s.Current.Metrics.Workers {
 		d.TotalCrashes += w.Crashes
+	}
+
+	// Percentiles: prefer Prometheus histogram buckets, fall back to thread-based tracker
+	if s.Previous != nil && len(s.Current.Metrics.DurationBuckets) > 0 && len(s.Previous.Metrics.DurationBuckets) > 0 {
+		p50, p95, p99, ok := HistogramPercentiles(s.Previous.Metrics.DurationBuckets, s.Current.Metrics.DurationBuckets)
+		if ok {
+			d.P50 = p50
+			d.P95 = p95
+			d.P99 = p99
+			d.HasPercentiles = true
+		}
+	} else if s.Percentiles != nil {
+		p50, p95, p99, ok := s.Percentiles.Percentiles(s.Current.FetchedAt)
+		if ok {
+			d.P50 = p50
+			d.P95 = p95
+			d.P99 = p99
+			d.HasPercentiles = true
+		}
 	}
 
 	if s.Previous == nil {

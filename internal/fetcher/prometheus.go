@@ -3,6 +3,7 @@ package fetcher
 import (
 	"fmt"
 	"io"
+	"slices"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -55,7 +56,7 @@ func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
 
 	// Caddy HTTP metrics (available with `metrics` directive)
 	snap.HTTPRequestsTotal = sumCounter(families, "caddy_http_requests_total")
-	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount = histogramSumCount(families, "caddy_http_request_duration_seconds")
+	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount, snap.DurationBuckets = histogramData(families, "caddy_http_request_duration_seconds")
 	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
 	snap.HasHTTPMetrics = snap.HTTPRequestsTotal > 0 || snap.HTTPRequestDurationCount > 0
 
@@ -74,19 +75,38 @@ func sumCounter(families map[string]*dto.MetricFamily, name string) float64 {
 	return total
 }
 
-func histogramSumCount(families map[string]*dto.MetricFamily, name string) (float64, float64) {
+func histogramData(families map[string]*dto.MetricFamily, name string) (float64, float64, []HistogramBucket) {
 	fam, ok := families[name]
 	if !ok {
-		return 0, 0
+		return 0, 0, nil
 	}
 	var sumTotal, countTotal float64
+	bucketMap := make(map[float64]float64)
 	for _, m := range fam.GetMetric() {
 		if h := m.GetHistogram(); h != nil {
 			sumTotal += h.GetSampleSum()
 			countTotal += float64(h.GetSampleCount())
+			for _, b := range h.GetBucket() {
+				bucketMap[b.GetUpperBound()] += float64(b.GetCumulativeCount())
+			}
 		}
 	}
-	return sumTotal, countTotal
+
+	var buckets []HistogramBucket
+	for ub, count := range bucketMap {
+		buckets = append(buckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
+	}
+	slices.SortFunc(buckets, func(a, b HistogramBucket) int {
+		if a.UpperBound < b.UpperBound {
+			return -1
+		}
+		if a.UpperBound > b.UpperBound {
+			return 1
+		}
+		return 0
+	})
+
+	return sumTotal, countTotal, buckets
 }
 
 func scalarValue(families map[string]*dto.MetricFamily, name string) float64 {

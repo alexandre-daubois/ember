@@ -131,6 +131,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if wasStale {
 				a.state.Derived.RPS = 0
 				a.state.Derived.AvgTime = 0
+				a.state.Derived.HasPercentiles = false
+				if a.state.Percentiles != nil {
+					a.state.Percentiles.Reset()
+				}
 			}
 			a.clampCursor()
 			if len(msg.snap.Errors) > 0 {

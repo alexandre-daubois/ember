@@ -383,3 +383,255 @@ func TestSortField_NextPrev_Inverse(t *testing.T) {
 		assert.Equal(t, start, start.Prev().Next(), "Prev().Next() should return to %v", start)
 	}
 }
+
+func TestState_Update_DetectsCompletedRequest(t *testing.T) {
+	now := time.Now()
+	reqStart := now.Add(-200 * time.Millisecond).UnixMilli()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: reqStart},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 100, RequestTime: 10.0},
+		}},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsWaiting: true},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 101, RequestTime: 10.2},
+		}},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.True(t, s.Derived.HasPercentiles)
+	expectedMs := float64(now.UnixMilli() - reqStart)
+	assert.InDelta(t, expectedMs, s.Derived.P50, 1)
+}
+
+func TestState_Update_DetectsRequestSwitch(t *testing.T) {
+	now := time.Now()
+	reqStart1 := now.Add(-500 * time.Millisecond).UnixMilli()
+	reqStart2 := now.Add(-50 * time.Millisecond).UnixMilli()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: reqStart1},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 100, RequestTime: 10.0},
+		}},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: reqStart2},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 101, RequestTime: 10.5},
+		}},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.True(t, s.Derived.HasPercentiles)
+	expectedMs := float64(now.UnixMilli() - reqStart1)
+	assert.InDelta(t, expectedMs, s.Derived.P50, 1)
+}
+
+func TestState_Update_NoPreviousNoPercentiles(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: time.Now().UnixMilli()},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	var s State
+	s.Update(snap)
+
+	assert.False(t, s.Derived.HasPercentiles)
+}
+
+func TestState_Update_StillBusySameRequest(t *testing.T) {
+	now := time.Now()
+	reqStart := now.Add(-500 * time.Millisecond).UnixMilli()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: reqStart},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 100, RequestTime: 10.0},
+		}},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: reqStart},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 100, RequestTime: 10.0},
+		}},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.False(t, s.Derived.HasPercentiles)
+}
+
+func TestState_Update_MultipleCompletedRequests(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: now.Add(-100 * time.Millisecond).UnixMilli()},
+				{Index: 1, IsBusy: true, RequestStartedAt: now.Add(-200 * time.Millisecond).UnixMilli()},
+				{Index: 2, IsBusy: true, RequestStartedAt: now.Add(-300 * time.Millisecond).UnixMilli()},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 100, RequestTime: 10.0},
+		}},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsWaiting: true},
+				{Index: 1, IsWaiting: true},
+				{Index: 2, IsWaiting: true},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 103, RequestTime: 10.6},
+		}},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.True(t, s.Derived.HasPercentiles)
+	assert.Equal(t, 3, s.Percentiles.Count(now))
+}
+
+func TestState_Update_HistogramTakesPriorityOverThreadBased(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: now.Add(-5 * time.Second).UnixMilli()},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets: []fetcher.HistogramBucket{
+				{UpperBound: 0.01, CumulativeCount: 0},
+				{UpperBound: 0.05, CumulativeCount: 0},
+				{UpperBound: 0.1, CumulativeCount: 0},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsWaiting: true},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets: []fetcher.HistogramBucket{
+				{UpperBound: 0.01, CumulativeCount: 50},
+				{UpperBound: 0.05, CumulativeCount: 90},
+				{UpperBound: 0.1, CumulativeCount: 100},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.True(t, s.Derived.HasPercentiles)
+	// Histogram says P50 falls in [0.01, 0.05] bucket → ~20ms
+	// Thread-based would give ~5000ms (very different)
+	// If histogram wins, P50 should be in the low ms range
+	assert.Less(t, s.Derived.P50, 100.0, "should use histogram, not thread-based")
+}
+
+func TestState_Update_MidpointEstimation(t *testing.T) {
+	now := time.Now()
+	// Request started 3 seconds ago — well before both snapshots
+	reqStart := now.Add(-3 * time.Second).UnixMilli()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: reqStart},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 100, RequestTime: 10.0},
+		}},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsWaiting: true},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{
+			"w": {RequestCount: 101, RequestTime: 10.2},
+		}},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.True(t, s.Derived.HasPercentiles)
+	// Midpoint of [now-1s, now] = now-500ms
+	// Duration = (now-500ms) - (now-3s) = 2500ms
+	assert.InDelta(t, 2500, s.Derived.P50, 5)
+}

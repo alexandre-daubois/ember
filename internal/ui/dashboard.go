@@ -100,6 +100,12 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s  Queue %s",
 		rpsFmt, rpsSpark, avgRaw, inflightStr, queueRaw)
 
+	var percLine string
+	if d.HasPercentiles {
+		percLine = fmt.Sprintf(" P50 %s  P95 %s  P99 %s",
+			formatPercentile(d.P50), formatPercentile(d.P95), formatPercentile(d.P99))
+	}
+
 	// thread bar with colored legend
 	threadInactive := threadTotal - threadBusy - threadIdle
 	legend := fmt.Sprintf(" %s %s %s",
@@ -119,7 +125,11 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
 
 	var lines []string
-	lines = append(lines, titleLine, line1, line2, line3)
+	lines = append(lines, titleLine, line1, line2)
+	if percLine != "" {
+		lines = append(lines, percLine)
+	}
+	lines = append(lines, line3)
 
 	if !hasWorkerMetrics && !hasHTTPMetrics {
 		lines = append(lines, warnStyle.Render(" ⚠ No metrics — add `metrics` to Caddyfile global block"))
@@ -174,6 +184,18 @@ func countWorkerScripts(threads []fetcher.ThreadDebugState) int {
 		}
 	}
 	return len(seen)
+}
+
+func formatPercentile(ms float64) string {
+	text := fmt.Sprintf("%-10s", fmt.Sprintf("%.1fms", ms))
+	switch {
+	case ms >= 1000:
+		return dangerStyle.Render(text)
+	case ms >= 500:
+		return warnStyle.Render(text)
+	default:
+		return text
+	}
 }
 
 var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}

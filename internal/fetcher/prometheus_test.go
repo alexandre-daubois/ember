@@ -127,6 +127,28 @@ func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
 	assert.True(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be true when Caddy metrics are present")
 }
 
+func TestParsePrometheusMetrics_CaddyHistogramBuckets(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
+	require.NoError(t, err)
+
+	require.Len(t, snap.DurationBuckets, 3, "should parse 3 histogram buckets")
+
+	assert.Equal(t, 0.005, snap.DurationBuckets[0].UpperBound)
+	assert.Equal(t, float64(50), snap.DurationBuckets[0].CumulativeCount)
+
+	assert.Equal(t, 0.01, snap.DurationBuckets[1].UpperBound)
+	assert.Equal(t, float64(100), snap.DurationBuckets[1].CumulativeCount)
+
+	assert.True(t, snap.DurationBuckets[2].UpperBound > 1e300, "+Inf bucket")
+	assert.Equal(t, float64(160), snap.DurationBuckets[2].CumulativeCount)
+}
+
+func TestParsePrometheusMetrics_NoBucketsWithoutHistogram(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+	require.NoError(t, err)
+	assert.Empty(t, snap.DurationBuckets)
+}
+
 func TestParsePrometheusMetrics_HasHTTPMetrics_False(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)

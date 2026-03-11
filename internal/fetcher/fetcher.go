@@ -46,11 +46,17 @@ type MetricsSnapshot struct {
 	Workers      map[string]*WorkerMetrics `json:"workers"`
 
 	// Caddy HTTP metrics (require `metrics` directive in Caddyfile)
-	HTTPRequestsTotal        float64 `json:"httpRequestsTotal"`
-	HTTPRequestDurationSum   float64 `json:"httpRequestDurationSum"`
-	HTTPRequestDurationCount float64 `json:"httpRequestDurationCount"`
-	HTTPRequestsInFlight     float64 `json:"httpRequestsInFlight"`
-	HasHTTPMetrics           bool    `json:"hasHttpMetrics"`
+	HTTPRequestsTotal        float64           `json:"httpRequestsTotal"`
+	HTTPRequestDurationSum   float64           `json:"httpRequestDurationSum"`
+	HTTPRequestDurationCount float64           `json:"httpRequestDurationCount"`
+	HTTPRequestsInFlight     float64           `json:"httpRequestsInFlight"`
+	DurationBuckets          []HistogramBucket `json:"durationBuckets,omitempty"`
+	HasHTTPMetrics           bool              `json:"hasHttpMetrics"`
+}
+
+type HistogramBucket struct {
+	UpperBound      float64 `json:"upperBound"`
+	CumulativeCount float64 `json:"cumulativeCount"`
 }
 
 type ProcessMetrics struct {
