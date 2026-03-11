@@ -2,7 +2,7 @@
 
 Understand why your app is on fire by monitoring threads, workers, memory, request rates and more.
 
-![ember screenshot](https://github.com/alexandredaubois/ember/assets/img.png)
+![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/img.png?raw=true)
 
 ## Install
 
