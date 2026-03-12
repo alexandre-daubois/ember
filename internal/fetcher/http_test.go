@@ -284,6 +284,128 @@ func TestDoWithRetry_RespectsContext(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestFetchServerNames_OK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/apps/http/servers" {
+			w.WriteHeader(200)
+			json.NewEncoder(w).Encode(map[string]any{
+				"main": map[string]any{"listen": []string{":443"}},
+				"api":  map[string]any{"listen": []string{":9443"}},
+				"app":  map[string]any{"listen": []string{":8443"}},
+			})
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	names := f.FetchServerNames(context.Background())
+	require.Equal(t, []string{"api", "app", "main"}, names, "should return sorted server names")
+	assert.Equal(t, names, f.ServerNames(), "should persist in fetcher")
+}
+
+func TestFetchServerNames_BadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	names := f.FetchServerNames(context.Background())
+	assert.Nil(t, names)
+}
+
+func TestFetchServerNames_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/apps/http/servers" {
+			w.WriteHeader(200)
+			w.Write([]byte("not json"))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	names := f.FetchServerNames(context.Background())
+	assert.Nil(t, names)
+}
+
+func TestFetchServerNames_Empty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/apps/http/servers" {
+			w.WriteHeader(200)
+			w.Write([]byte("{}"))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	names := f.FetchServerNames(context.Background())
+	assert.Empty(t, names)
+}
+
+func TestFetch_SeedsServerNames(t *testing.T) {
+	metricsText := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{server="main",code="200"} 50
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 50
+caddy_http_request_duration_seconds_sum{server="main"} 1.0
+caddy_http_request_duration_seconds_count{server="main"} 50
+`
+	srv := newTestServer(404, nil, 200, metricsText)
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	f.serverNames = []string{"main", "app", "api"}
+
+	snap, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, snap.Metrics.Hosts)
+
+	// "main" has real data from metrics
+	main := snap.Metrics.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, float64(50), main.RequestsTotal)
+
+	// "app" and "api" should be seeded with empty entries
+	app := snap.Metrics.Hosts["app"]
+	require.NotNil(t, app, "app should be seeded")
+	assert.Equal(t, "app", app.Host)
+	assert.Equal(t, float64(0), app.RequestsTotal)
+	assert.NotNil(t, app.StatusCodes)
+	assert.NotNil(t, app.Methods)
+
+	api := snap.Metrics.Hosts["api"]
+	require.NotNil(t, api, "api should be seeded")
+	assert.Equal(t, "api", api.Host)
+}
+
+func TestFetch_SeedsDoNotOverwriteExisting(t *testing.T) {
+	metricsText := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{server="main",code="200"} 100
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{server="main"} 5.0
+caddy_http_request_duration_seconds_count{server="main"} 100
+`
+	srv := newTestServer(404, nil, 200, metricsText)
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	f.serverNames = []string{"main"}
+
+	snap, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+
+	main := snap.Metrics.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, float64(100), main.RequestsTotal, "seeding should not overwrite existing host data")
+}
+
 func TestFetchThreads_PerRequestTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(requestTimeout + time.Second)

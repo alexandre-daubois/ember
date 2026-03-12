@@ -38,13 +38,16 @@ type WorkerMetrics struct {
 }
 
 type HostMetrics struct {
-	Host            string            `json:"host"`
-	RequestsTotal   float64           `json:"requestsTotal"`
-	DurationSum     float64           `json:"durationSum"`
-	DurationCount   float64           `json:"durationCount"`
-	InFlight        float64           `json:"inFlight"`
-	DurationBuckets []HistogramBucket `json:"durationBuckets,omitempty"`
-	StatusCodes     map[int]float64   `json:"statusCodes,omitempty"`
+	Host              string             `json:"host"`
+	RequestsTotal     float64            `json:"requestsTotal"`
+	DurationSum       float64            `json:"durationSum"`
+	DurationCount     float64            `json:"durationCount"`
+	InFlight          float64            `json:"inFlight"`
+	DurationBuckets   []HistogramBucket  `json:"durationBuckets,omitempty"`
+	StatusCodes       map[int]float64    `json:"statusCodes,omitempty"`
+	Methods           map[string]float64 `json:"methods,omitempty"`
+	ResponseSizeSum   float64            `json:"responseSizeSum"`
+	ResponseSizeCount float64            `json:"responseSizeCount"`
 }
 
 type MetricsSnapshot struct {

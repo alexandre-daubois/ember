@@ -21,11 +21,11 @@ const (
 )
 
 type HTTPFetcher struct {
-	baseURL        string
-	httpClient     *http.Client
-	procHandle     *processHandle
-	hasFrankenPHP  bool
-	serverNames    []string
+	baseURL       string
+	httpClient    *http.Client
+	procHandle    *processHandle
+	hasFrankenPHP bool
+	serverNames   []string
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
@@ -161,6 +161,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 				metrics.Hosts[name] = &HostMetrics{
 					Host:        name,
 					StatusCodes: make(map[int]float64),
+					Methods:     make(map[string]float64),
 				}
 			}
 		}

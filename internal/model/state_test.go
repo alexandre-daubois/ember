@@ -6,6 +6,7 @@ import (
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestState_Update_CountsIdleBusy(t *testing.T) {
@@ -739,8 +740,8 @@ func TestComputeHostDerived_RPSAndAvg(t *testing.T) {
 	assert.Len(t, s.HostDerived, 1)
 	hd := s.HostDerived[0]
 	assert.Equal(t, "example.com", hd.Host)
-	assert.InDelta(t, 50, hd.RPS, 0.5)          // 100 reqs / 2s
-	assert.InDelta(t, 100, hd.AvgTime, 1)        // (10s / 100 reqs) * 1000
+	assert.InDelta(t, 50, hd.RPS, 0.5)    // 100 reqs / 2s
+	assert.InDelta(t, 100, hd.AvgTime, 1) // (10s / 100 reqs) * 1000
 	assert.Equal(t, float64(5), hd.InFlight)
 	assert.InDelta(t, 40, hd.StatusCodes[200], 1) // (160-80)/2
 	assert.InDelta(t, 10, hd.StatusCodes[404], 1) // (40-20)/2
@@ -873,6 +874,117 @@ func TestComputeHostDerived_NewHostNotInPrevious(t *testing.T) {
 	assert.NotNil(t, newHost)
 	assert.Equal(t, float64(0), newHost.RPS, "new host with no previous should have 0 RPS")
 	assert.Equal(t, float64(1), newHost.InFlight)
+}
+
+func TestComputeMethodRates(t *testing.T) {
+	curr := map[string]float64{"GET": 100, "POST": 20, "PUT": 5}
+	prev := map[string]float64{"GET": 80, "POST": 10}
+	dt := 2.0
+
+	rates := computeMethodRates(curr, prev, dt)
+	assert.InDelta(t, 10, rates["GET"], 0.01)  // (100-80)/2
+	assert.InDelta(t, 5, rates["POST"], 0.01)  // (20-10)/2
+	assert.InDelta(t, 2.5, rates["PUT"], 0.01) // (5-0)/2
+}
+
+func TestComputeMethodRates_Empty(t *testing.T) {
+	assert.Nil(t, computeMethodRates(nil, nil, 1.0))
+	assert.Nil(t, computeMethodRates(map[string]float64{}, map[string]float64{}, 1.0))
+	assert.Nil(t, computeMethodRates(map[string]float64{"GET": 10}, nil, 0))
+}
+
+func TestComputeMethodRates_NoDelta(t *testing.T) {
+	same := map[string]float64{"GET": 50}
+	assert.Nil(t, computeMethodRates(same, same, 1.0))
+}
+
+func TestComputeHostDerived_MethodRates(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-2 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:          "test.com",
+					DurationCount: 100,
+					DurationSum:   5.0,
+					Methods:       map[string]float64{"GET": 80, "POST": 20},
+					StatusCodes:   map[int]float64{},
+				},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:          "test.com",
+					DurationCount: 200,
+					DurationSum:   15.0,
+					Methods:       map[string]float64{"GET": 160, "POST": 40},
+					StatusCodes:   map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	require.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assert.InDelta(t, 40, hd.MethodRates["GET"], 0.5)  // (160-80)/2
+	assert.InDelta(t, 10, hd.MethodRates["POST"], 0.5) // (40-20)/2
+}
+
+func TestComputeHostDerived_AvgResponseSize(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:              "test.com",
+					ResponseSizeSum:   500000,
+					ResponseSizeCount: 100,
+					StatusCodes:       map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	require.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assert.InDelta(t, 5000, hd.AvgResponseSize, 1) // 500000/100
+}
+
+func TestComputeHostDerived_TotalRequests(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:          "test.com",
+					RequestsTotal: 1234,
+					StatusCodes:   map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	require.Len(t, s.HostDerived, 1)
+	assert.Equal(t, float64(1234), s.HostDerived[0].TotalRequests)
 }
 
 func TestState_Update_DerivedP90FromHistogram(t *testing.T) {

@@ -366,6 +366,72 @@ caddy_http_requests_total{host="example.com",handler="subroute",server="srv0"} 1
 	assert.False(t, hasServer, "should not use server label when host exists")
 }
 
+func TestPerHostMetrics_MethodExtraction(t *testing.T) {
+	metrics := `# HELP caddy_http_requests_total Counter.
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{server="main",code="200",method="GET"} 80
+caddy_http_requests_total{server="main",code="200",method="POST"} 15
+caddy_http_requests_total{server="main",code="404",method="GET"} 5
+caddy_http_requests_total{server="api",code="200",method="GET"} 30
+caddy_http_requests_total{server="api",code="200",method="PUT"} 10
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{server="main"} 5.0
+caddy_http_request_duration_seconds_count{server="main"} 100
+caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
+caddy_http_request_duration_seconds_sum{server="api"} 2.0
+caddy_http_request_duration_seconds_count{server="api"} 40
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	main := snap.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, float64(85), main.Methods["GET"]) // 80 + 5
+	assert.Equal(t, float64(15), main.Methods["POST"])
+
+	api := snap.Hosts["api"]
+	require.NotNil(t, api)
+	assert.Equal(t, float64(30), api.Methods["GET"])
+	assert.Equal(t, float64(10), api.Methods["PUT"])
+}
+
+func TestPerHostMetrics_ResponseSizeExtraction(t *testing.T) {
+	metrics := `# HELP caddy_http_response_size_bytes Histogram of response sizes.
+# TYPE caddy_http_response_size_bytes histogram
+caddy_http_response_size_bytes_bucket{server="main",le="1000"} 50
+caddy_http_response_size_bytes_bucket{server="main",le="+Inf"} 100
+caddy_http_response_size_bytes_sum{server="main"} 500000
+caddy_http_response_size_bytes_count{server="main"} 100
+caddy_http_response_size_bytes_bucket{server="api",le="1000"} 30
+caddy_http_response_size_bytes_bucket{server="api",le="+Inf"} 40
+caddy_http_response_size_bytes_sum{server="api"} 200000
+caddy_http_response_size_bytes_count{server="api"} 40
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{server="main"} 100
+caddy_http_requests_total{server="api"} 40
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{server="main"} 5.0
+caddy_http_request_duration_seconds_count{server="main"} 100
+caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
+caddy_http_request_duration_seconds_sum{server="api"} 2.0
+caddy_http_request_duration_seconds_count{server="api"} 40
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	main := snap.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, float64(500000), main.ResponseSizeSum)
+	assert.Equal(t, float64(100), main.ResponseSizeCount)
+
+	api := snap.Hosts["api"]
+	require.NotNil(t, api)
+	assert.Equal(t, float64(200000), api.ResponseSizeSum)
+	assert.Equal(t, float64(40), api.ResponseSizeCount)
+}
+
 func TestParsePrometheusMetrics_Mixed(t *testing.T) {
 	mixed := sampleMetrics + sampleCaddyMetrics
 	snap, err := parsePrometheusMetrics(strings.NewReader(mixed))

@@ -124,13 +124,16 @@ func (s HostSortField) Prev() HostSortField {
 }
 
 type HostDerived struct {
-	Host                   string
-	RPS                    float64
-	AvgTime                float64
-	InFlight               float64
-	P50, P90, P95, P99     float64
-	HasPercentiles         bool
-	StatusCodes            map[int]float64
+	Host               string
+	RPS                float64
+	AvgTime            float64
+	InFlight           float64
+	P50, P90, P95, P99 float64
+	HasPercentiles     bool
+	StatusCodes        map[int]float64
+	MethodRates        map[string]float64
+	AvgResponseSize    float64
+	TotalRequests      float64
 }
 
 type State struct {
@@ -294,8 +297,13 @@ func (s *State) computeHostDerived() []HostDerived {
 	var result []HostDerived
 	for host, curr := range s.Current.Metrics.Hosts {
 		hd := HostDerived{
-			Host:     host,
-			InFlight: curr.InFlight,
+			Host:          host,
+			InFlight:      curr.InFlight,
+			TotalRequests: curr.RequestsTotal,
+		}
+
+		if curr.ResponseSizeCount > 0 {
+			hd.AvgResponseSize = curr.ResponseSizeSum / curr.ResponseSizeCount
 		}
 
 		if s.Previous != nil && dt >= 0.1 {
@@ -307,8 +315,8 @@ func (s *State) computeHostDerived() []HostDerived {
 					hd.AvgTime = (deltaSum / deltaCount) * 1000
 				}
 
-				// Status code rates (per second)
 				hd.StatusCodes = computeStatusCodeRates(curr.StatusCodes, prev.StatusCodes, dt)
+				hd.MethodRates = computeMethodRates(curr.Methods, prev.Methods, dt)
 
 				if len(curr.DurationBuckets) > 0 && len(prev.DurationBuckets) > 0 {
 					p50, p90, p95, p99, ok := HistogramPercentiles(prev.DurationBuckets, curr.DurationBuckets)
@@ -326,6 +334,24 @@ func (s *State) computeHostDerived() []HostDerived {
 		result = append(result, hd)
 	}
 	return result
+}
+
+func computeMethodRates(curr, prev map[string]float64, dt float64) map[string]float64 {
+	if len(curr) == 0 || dt <= 0 {
+		return nil
+	}
+	rates := make(map[string]float64)
+	for method, currCount := range curr {
+		prevCount := prev[method]
+		delta := currCount - prevCount
+		if delta > 0 {
+			rates[method] = delta / dt
+		}
+	}
+	if len(rates) == 0 {
+		return nil
+	}
+	return rates
 }
 
 func computeStatusCodeRates(curr, prev map[int]float64, dt float64) map[int]float64 {

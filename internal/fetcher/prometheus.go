@@ -218,7 +218,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 	getOrCreate := func(host string) *HostMetrics {
 		hm, ok := hosts[host]
 		if !ok {
-			hm = &HostMetrics{Host: host, StatusCodes: make(map[int]float64)}
+			hm = &HostMetrics{Host: host, StatusCodes: make(map[int]float64), Methods: make(map[string]float64)}
 			hosts[host] = hm
 		}
 		return hm
@@ -240,6 +240,9 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 					hm.StatusCodes[c] += v
 					hostsWithCounterCodes[host] = true
 				}
+			}
+			if method := labelValue(m, "method"); method != "" {
+				hm.Methods[method] += v
 			}
 		}
 	}
@@ -283,6 +286,22 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 					})
 				}
 			}
+		}
+	}
+
+	if fam, ok := families["caddy_http_response_size_bytes"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := hostOrServer(m)
+			if host == "" {
+				continue
+			}
+			h := m.GetHistogram()
+			if h == nil {
+				continue
+			}
+			hm := getOrCreate(host)
+			hm.ResponseSizeSum += h.GetSampleSum()
+			hm.ResponseSizeCount += float64(h.GetSampleCount())
 		}
 	}
 

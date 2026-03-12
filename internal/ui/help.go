@@ -26,6 +26,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 
 	bindings := []binding{
 		{"↑/↓", "navigate"},
+		{"Enter", "detail"},
 		{"s/S", "sort(" + sortLabel + ")"},
 		{"p", pauseLabel},
 	}

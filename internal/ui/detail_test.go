@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandredaubois/ember/internal/model"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestFormatBytes(t *testing.T) {
@@ -81,9 +82,9 @@ func TestRenderDetailPanel_NameTruncation(t *testing.T) {
 
 func TestRenderDetailPanel_WorkerScript(t *testing.T) {
 	thread := fetcher.ThreadDebugState{
-		Index:   3,
-		Name:    "Worker PHP Thread - /app/worker.php",
-		IsBusy:  true,
+		Index:  3,
+		Name:   "Worker PHP Thread - /app/worker.php",
+		IsBusy: true,
 	}
 	panel := renderDetailPanel(thread, 44, 25)
 
@@ -205,4 +206,195 @@ func TestRenderMemSparkline_Trend(t *testing.T) {
 	samples := []int64{100, 200, 300, 400, 500}
 	result := renderMemSparkline(samples, 10)
 	assert.NotEmpty(t, result)
+}
+
+// --- Host detail panel tests ---
+
+func TestRenderHostDetailPanel_BasicInfo(t *testing.T) {
+	h := model.HostDerived{
+		Host:          "api.example.com",
+		RPS:           42.5,
+		InFlight:      3,
+		AvgTime:       12.5,
+		TotalRequests: 5000,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "api.example.com")
+	assert.Contains(t, panel, "Traffic")
+	assert.Contains(t, panel, "42/s")
+	assert.Contains(t, panel, "5,000")
+	assert.Contains(t, panel, "Latency")
+	assert.Contains(t, panel, "12.5ms")
+}
+
+func TestRenderHostDetailPanel_WithPercentiles(t *testing.T) {
+	h := model.HostDerived{
+		Host:           "test.com",
+		HasPercentiles: true,
+		P50:            5.0,
+		P90:            15.0,
+		P95:            25.0,
+		P99:            50.0,
+		AvgTime:        10.0,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "P50")
+	assert.Contains(t, panel, "5.0ms")
+	assert.Contains(t, panel, "P90")
+	assert.Contains(t, panel, "15.0ms")
+	assert.Contains(t, panel, "P95")
+	assert.Contains(t, panel, "25.0ms")
+	assert.Contains(t, panel, "P99")
+	assert.Contains(t, panel, "50.0ms")
+}
+
+func TestRenderHostDetailPanel_NoPercentiles(t *testing.T) {
+	h := model.HostDerived{
+		Host:           "test.com",
+		HasPercentiles: false,
+		AvgTime:        0,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Latency")
+	assert.Contains(t, panel, "—")
+}
+
+func TestRenderHostDetailPanel_StatusCodes(t *testing.T) {
+	h := model.HostDerived{
+		Host: "test.com",
+		StatusCodes: map[int]float64{
+			200: 40.0,
+			301: 5.0,
+			404: 2.5,
+			500: 0.5,
+		},
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Status Codes")
+	assert.Contains(t, panel, "200")
+	assert.Contains(t, panel, "301")
+	assert.Contains(t, panel, "404")
+	assert.Contains(t, panel, "500")
+}
+
+func TestRenderHostDetailPanel_Methods(t *testing.T) {
+	h := model.HostDerived{
+		Host:        "test.com",
+		MethodRates: map[string]float64{"GET": 40.0, "POST": 10.0},
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Methods")
+	assert.Contains(t, panel, "GET")
+	assert.Contains(t, panel, "POST")
+	assert.Contains(t, panel, "80%")
+	assert.Contains(t, panel, "20%")
+}
+
+func TestRenderHostDetailPanel_ResponseSize(t *testing.T) {
+	h := model.HostDerived{
+		Host:            "test.com",
+		AvgResponseSize: 4096,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Response Size")
+	assert.Contains(t, panel, "4 KB")
+}
+
+func TestRenderHostDetailPanel_StarHost(t *testing.T) {
+	h := model.HostDerived{
+		Host: "*",
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "* (All traffic)")
+}
+
+func TestRenderHostDetailPanel_Footer(t *testing.T) {
+	h := model.HostDerived{Host: "test.com"}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Esc")
+	assert.Contains(t, panel, "close")
+}
+
+func TestHostDetailPanel_SideLayout(t *testing.T) {
+	app := newAppWithHosts([]model.HostDerived{
+		{Host: "example.com", RPS: 10, StatusCodes: map[int]float64{200: 10}},
+		{Host: "api.com", RPS: 5, StatusCodes: map[int]float64{200: 5}},
+	})
+	app.mode = viewDetail
+	app.width = 130
+	app.height = 30
+
+	view := app.View()
+	require.NotEmpty(t, view)
+	assert.Contains(t, view, "example.com")
+	assert.Contains(t, view, "Traffic")
+}
+
+func TestHostDetailPanel_BottomLayout(t *testing.T) {
+	app := newAppWithHosts([]model.HostDerived{
+		{Host: "example.com", RPS: 10, StatusCodes: map[int]float64{200: 10}},
+	})
+	app.mode = viewDetail
+	app.width = 70
+	app.height = 30
+
+	view := app.View()
+	require.NotEmpty(t, view)
+	assert.Contains(t, view, "example.com")
+}
+
+func TestHostDetailPanel_EnterOpensDetail(t *testing.T) {
+	app := newAppWithHosts([]model.HostDerived{
+		{Host: "example.com", StatusCodes: map[int]float64{}},
+	})
+	app.mode = viewList
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, viewDetail, app.mode)
+}
+
+func TestHostDetailPanel_RestartNotAvailable(t *testing.T) {
+	app := newAppWithHosts([]model.HostDerived{
+		{Host: "example.com", StatusCodes: map[int]float64{}},
+	})
+	app.mode = viewDetail
+
+	app.handleDetailKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	assert.Equal(t, viewDetail, app.mode, "r should not trigger restart on Caddy tab")
+}
+
+func newAppWithHosts(hosts []model.HostDerived) *App {
+	hostMetrics := make(map[string]*fetcher.HostMetrics)
+	for _, h := range hosts {
+		hostMetrics[h.Host] = &fetcher.HostMetrics{
+			Host:        h.Host,
+			StatusCodes: make(map[int]float64),
+			Methods:     make(map[string]float64),
+		}
+	}
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:        map[string]*fetcher.WorkerMetrics{},
+			Hosts:          hostMetrics,
+			HasHTTPMetrics: true,
+		},
+	}
+	app := &App{
+		activeTab: TabCaddy,
+		tabs:      []Tab{TabCaddy},
+		tabStates: map[Tab]*tabState{TabCaddy: {}},
+		width:     120,
+		height:    30,
+	}
+	app.state.Update(snap)
+	app.state.HostDerived = hosts
+	return app
 }

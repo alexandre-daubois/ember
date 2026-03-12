@@ -51,27 +51,27 @@ const sparklineSize = 15
 const graphHistorySize = 300
 
 type App struct {
-	fetcher     fetcher.Fetcher
-	config      Config
-	state       model.State
-	cursor      int
-	sortBy      model.SortField
-	paused      bool
-	width       int
-	height      int
-	err         error
-	mode        viewMode
-	prevMode    viewMode
-	filter      string
-	status      string
-	rpsHistory  []float64
-	cpuHistory  []float64
-	rssHistory  []float64
+	fetcher      fetcher.Fetcher
+	config       Config
+	state        model.State
+	cursor       int
+	sortBy       model.SortField
+	paused       bool
+	width        int
+	height       int
+	err          error
+	mode         viewMode
+	prevMode     viewMode
+	filter       string
+	status       string
+	rpsHistory   []float64
+	cpuHistory   []float64
+	rssHistory   []float64
 	queueHistory []float64
 	busyHistory  []float64
-	stale       bool
-	lastFresh   time.Time
-	fetching    bool
+	stale        bool
+	lastFresh    time.Time
+	fetching     bool
 
 	activeTab     Tab
 	tabs          []Tab
@@ -297,7 +297,16 @@ func (a *App) View() string {
 	base := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	if a.mode == viewDetail {
-		if t, ok := a.selectedThread(); ok {
+		if a.activeTab == TabCaddy {
+			if h, ok := a.selectedHost(); ok {
+				if sidePanel {
+					panel := renderHostDetailPanel(h, panelWidth, a.height)
+					return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
+				}
+				panel := renderHostDetailPanel(h, a.width, detailPanelHeight+6)
+				return lipgloss.JoinVertical(lipgloss.Left, base, panel)
+			}
+		} else if t, ok := a.selectedThread(); ok {
 			if sidePanel {
 				panel := renderDetailPanel(t, panelWidth, a.height)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
@@ -378,9 +387,7 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		a.paused = !a.paused
 	case "enter":
-		if a.activeTab == TabFrankenPHP {
-			a.mode = viewDetail
-		}
+		a.mode = viewDetail
 	case "r":
 		if a.activeTab == TabFrankenPHP {
 			a.mode = viewConfirmRestart
@@ -407,7 +414,9 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.cursor++
 		a.clampCursor()
 	case "r":
-		a.mode = viewConfirmRestart
+		if a.activeTab == TabFrankenPHP {
+			a.mode = viewConfirmRestart
+		}
 	}
 	return a, nil
 }
@@ -488,6 +497,14 @@ func (a *App) selectedThread() (fetcher.ThreadDebugState, bool) {
 		return threads[a.cursor], true
 	}
 	return fetcher.ThreadDebugState{}, false
+}
+
+func (a *App) selectedHost() (model.HostDerived, bool) {
+	hosts := a.filteredHosts()
+	if a.cursor >= 0 && a.cursor < len(hosts) {
+		return hosts[a.cursor], true
+	}
+	return model.HostDerived{}, false
 }
 
 func (a *App) clampCursor() {
