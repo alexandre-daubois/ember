@@ -63,6 +63,7 @@ func main() {
 
 	f := fetcher.NewHTTPFetcher(cfg.Addr, pid)
 	hasFrankenPHP := f.DetectFrankenPHP(ctx)
+	f.FetchServerNames(ctx)
 
 	if cfg.JSONMode {
 		runJSON(ctx, f, cfg.Interval)

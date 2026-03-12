@@ -35,7 +35,7 @@ func uriWidth(totalWidth int) int {
 	return w
 }
 
-func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts, totalCount int) string {
+func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts) string {
 	if len(threads) == 0 {
 		return greyStyle.Render(" No threads")
 	}
@@ -61,13 +61,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 		colMem, colHead("Mem", model.SortByMemory, colMem, true),
 		colReqs, colHead("Reqs", model.SortByRequests, colReqs, true),
 	)
-	var countBadge string
-	if totalCount > 0 && len(threads) < totalCount {
-		countBadge = greyStyle.Render(fmt.Sprintf(" [%d/%d]", len(threads), totalCount))
-	} else if totalCount > 0 {
-		countBadge = greyStyle.Render(fmt.Sprintf(" [%d]", totalCount))
-	}
-	headerLine := tableHeaderStyle.Width(width).Render(header + countBadge)
+	headerLine := tableHeaderStyle.Width(width).Render(header)
 
 	var rows []string
 	lastGroup := ""

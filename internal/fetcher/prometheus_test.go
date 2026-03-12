@@ -204,18 +204,18 @@ func TestPerHostMetrics_GroupsByHost(t *testing.T) {
 	assert.Equal(t, float64(2), api.StatusCodes[500])
 }
 
-func TestPerHostMetrics_FallbackWhenNoHostLabels(t *testing.T) {
+func TestPerHostMetrics_GroupsByServerLabel(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
 	require.NoError(t, err)
 
-	require.Len(t, snap.Hosts, 1, "should create a fallback '*' entry")
-	star := snap.Hosts["*"]
-	require.NotNil(t, star)
-	assert.Equal(t, float64(160), star.RequestsTotal)
-	assert.Equal(t, 12.5, star.DurationSum)
-	assert.Equal(t, float64(42), star.InFlight)
-	assert.Equal(t, float64(150), star.StatusCodes[200])
-	assert.Equal(t, float64(10), star.StatusCodes[404])
+	require.Len(t, snap.Hosts, 1, "should group by server label")
+	srv := snap.Hosts["srv0"]
+	require.NotNil(t, srv)
+	assert.Equal(t, float64(160), srv.RequestsTotal)
+	assert.Equal(t, 12.5, srv.DurationSum)
+	assert.Equal(t, float64(42), srv.InFlight)
+	assert.Equal(t, float64(150), srv.StatusCodes[200])
+	assert.Equal(t, float64(10), srv.StatusCodes[404])
 }
 
 const sampleRealCaddyMetrics = `# HELP caddy_http_requests_total Counter of HTTP(S) requests made.
@@ -236,17 +236,17 @@ caddy_http_request_duration_seconds_count{code="404",handler="subroute",method="
 caddy_http_requests_in_flight{handler="subroute",server="srv0"} 5
 `
 
-func TestFallbackStatusCodesFromHistogram(t *testing.T) {
+func TestStatusCodesFromHistogram_ServerLabel(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleRealCaddyMetrics))
 	require.NoError(t, err)
 
 	require.Len(t, snap.Hosts, 1)
-	star := snap.Hosts["*"]
-	require.NotNil(t, star)
-	assert.Equal(t, float64(3236), star.RequestsTotal)
-	assert.Equal(t, float64(5), star.InFlight)
-	assert.Equal(t, float64(704), star.StatusCodes[200], "should extract 200 from histogram count")
-	assert.Equal(t, float64(1828), star.StatusCodes[404], "should extract 404 from histogram count")
+	srv := snap.Hosts["srv0"]
+	require.NotNil(t, srv)
+	assert.Equal(t, float64(3236), srv.RequestsTotal)
+	assert.Equal(t, float64(5), srv.InFlight)
+	assert.Equal(t, float64(704), srv.StatusCodes[200], "should extract 200 from histogram count")
+	assert.Equal(t, float64(1828), srv.StatusCodes[404], "should extract 404 from histogram count")
 }
 
 const samplePerHostNoCounterCodes = `# HELP caddy_http_requests_total Counter of HTTP(S) requests made.
@@ -297,6 +297,73 @@ func TestStatusCodesFromHistogram_NoHistogram(t *testing.T) {
 	require.NoError(t, err)
 	// FrankenPHP-only metrics have no histogram → nil
 	assert.Empty(t, snap.DurationBuckets)
+}
+
+const sampleServerLabelMetrics = `# HELP caddy_http_requests_total Counter of HTTP(S) requests made.
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{handler="subroute",server="main"} 50
+caddy_http_requests_total{handler="subroute",server="app"} 30
+caddy_http_requests_total{handler="subroute",server="api"} 20
+# HELP caddy_http_request_duration_seconds Histogram of request durations.
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{code="200",handler="subroute",method="GET",server="main",le="0.1"} 40
+caddy_http_request_duration_seconds_bucket{code="200",handler="subroute",method="GET",server="main",le="+Inf"} 50
+caddy_http_request_duration_seconds_sum{code="200",handler="subroute",method="GET",server="main"} 3.5
+caddy_http_request_duration_seconds_count{code="200",handler="subroute",method="GET",server="main"} 50
+caddy_http_request_duration_seconds_bucket{code="200",handler="subroute",method="GET",server="app",le="0.1"} 25
+caddy_http_request_duration_seconds_bucket{code="200",handler="subroute",method="GET",server="app",le="+Inf"} 30
+caddy_http_request_duration_seconds_sum{code="200",handler="subroute",method="GET",server="app"} 2.0
+caddy_http_request_duration_seconds_count{code="200",handler="subroute",method="GET",server="app"} 30
+caddy_http_request_duration_seconds_bucket{code="404",handler="subroute",method="GET",server="api",le="0.1"} 15
+caddy_http_request_duration_seconds_bucket{code="404",handler="subroute",method="GET",server="api",le="+Inf"} 20
+caddy_http_request_duration_seconds_sum{code="404",handler="subroute",method="GET",server="api"} 1.0
+caddy_http_request_duration_seconds_count{code="404",handler="subroute",method="GET",server="api"} 20
+# HELP caddy_http_requests_in_flight Number of requests currently handled.
+# TYPE caddy_http_requests_in_flight gauge
+caddy_http_requests_in_flight{handler="subroute",server="main"} 3
+caddy_http_requests_in_flight{handler="subroute",server="app"} 1
+caddy_http_requests_in_flight{handler="subroute",server="api"} 0
+`
+
+func TestPerHostMetrics_FallbackToServerLabel(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleServerLabelMetrics))
+	require.NoError(t, err)
+
+	require.Len(t, snap.Hosts, 3, "should group by server label")
+
+	main := snap.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, float64(50), main.RequestsTotal)
+	assert.Equal(t, float64(3), main.InFlight)
+	assert.Equal(t, 3.5, main.DurationSum)
+	assert.Equal(t, float64(50), main.StatusCodes[200])
+
+	app := snap.Hosts["app"]
+	require.NotNil(t, app)
+	assert.Equal(t, float64(30), app.RequestsTotal)
+	assert.Equal(t, float64(1), app.InFlight)
+	assert.Equal(t, float64(30), app.StatusCodes[200])
+
+	api := snap.Hosts["api"]
+	require.NotNil(t, api)
+	assert.Equal(t, float64(20), api.RequestsTotal)
+	assert.Equal(t, float64(0), api.InFlight)
+	assert.Equal(t, float64(20), api.StatusCodes[404])
+}
+
+func TestPerHostMetrics_HostLabelTakesPriority(t *testing.T) {
+	// When both host and server labels exist, host should win
+	metrics := `# HELP caddy_http_requests_total Counter.
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="example.com",handler="subroute",server="srv0"} 100
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	_, hasHost := snap.Hosts["example.com"]
+	_, hasServer := snap.Hosts["srv0"]
+	assert.True(t, hasHost, "should use host label")
+	assert.False(t, hasServer, "should not use server label when host exists")
 }
 
 func TestParsePrometheusMetrics_Mixed(t *testing.T) {

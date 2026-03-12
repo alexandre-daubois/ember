@@ -205,6 +205,13 @@ func statusCodesFromHistogram(families map[string]*dto.MetricFamily, name string
 	return codes
 }
 
+func hostOrServer(m *dto.Metric) string {
+	if h := labelValue(m, "host"); h != "" {
+		return h
+	}
+	return labelValue(m, "server")
+}
+
 func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetrics {
 	hosts := make(map[string]*HostMetrics)
 
@@ -220,7 +227,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 	hostsWithCounterCodes := make(map[string]bool)
 	if fam, ok := families["caddy_http_requests_total"]; ok {
 		for _, m := range fam.GetMetric() {
-			host := labelValue(m, "host")
+			host := hostOrServer(m)
 			if host == "" {
 				continue
 			}
@@ -239,7 +246,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 
 	if fam, ok := families["caddy_http_request_duration_seconds"]; ok {
 		for _, m := range fam.GetMetric() {
-			host := labelValue(m, "host")
+			host := hostOrServer(m)
 			if host == "" {
 				continue
 			}
@@ -281,7 +288,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 
 	if fam, ok := families["caddy_http_requests_in_flight"]; ok {
 		for _, m := range fam.GetMetric() {
-			host := labelValue(m, "host")
+			host := hostOrServer(m)
 			if host == "" {
 				continue
 			}

@@ -255,13 +255,9 @@ func (a *App) View() string {
 	switch a.activeTab {
 	case TabFrankenPHP:
 		threads := a.filteredThreads()
-		totalCount := 0
-		if a.state.Current != nil {
-			totalCount = len(a.state.Current.Threads.ThreadDebugStates)
-		}
 		contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
 			slowThreshold: a.config.SlowThreshold,
-		}, totalCount)
+		})
 	case TabCaddy:
 		contentList = renderHostTable(a.filteredHosts(), a.cursor, listWidth, a.hostSortBy)
 	}
