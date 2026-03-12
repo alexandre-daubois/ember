@@ -8,13 +8,13 @@ import (
 )
 
 func TestRenderGraphPanels_AllEmpty(t *testing.T) {
-	out := renderGraphPanels(80, 40, nil, nil, nil, nil, nil)
+	out := renderGraphPanels(80, 40, nil, nil, nil, nil, nil, true)
 	assert.Contains(t, out, "no data")
 }
 
 func TestRenderGraphPanels_ContainsAllPanelTitles(t *testing.T) {
 	data := []float64{1, 2, 3, 4, 5}
-	out := renderGraphPanels(120, 50, data, data, data, data, data)
+	out := renderGraphPanels(120, 50, data, data, data, data, data, true)
 	for _, title := range []string{"CPU", "RPS", "RSS", "Queue", "Busy Threads"} {
 		assert.Contains(t, out, title, "should contain panel %q", title)
 	}
@@ -22,14 +22,14 @@ func TestRenderGraphPanels_ContainsAllPanelTitles(t *testing.T) {
 
 func TestRenderGraphPanels_NarrowTerminal(t *testing.T) {
 	data := []float64{1, 2, 3}
-	out := renderGraphPanels(30, 20, data, data, data, data, data)
+	out := renderGraphPanels(30, 20, data, data, data, data, data, true)
 	assert.NotEmpty(t, out)
 	assert.Contains(t, out, "CPU")
 }
 
 func TestRenderGraphPanels_ShortTerminal(t *testing.T) {
 	data := []float64{1, 2, 3}
-	out := renderGraphPanels(80, 10, data, data, data, data, data)
+	out := renderGraphPanels(80, 10, data, data, data, data, data, true)
 	assert.NotEmpty(t, out)
 	assert.Contains(t, out, "CPU")
 }

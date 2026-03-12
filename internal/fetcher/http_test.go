@@ -99,6 +99,7 @@ func TestFetch_GracefulDegradation(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
+	f.hasFrankenPHP = true
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err, "Fetch should not return error on partial failure")
 	assert.Len(t, snap.Threads.ThreadDebugStates, 1)
@@ -110,10 +111,51 @@ func TestFetch_AllFail(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
+	f.hasFrankenPHP = true
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err, "Fetch should not return error even if all fail")
 	assert.GreaterOrEqual(t, len(snap.Errors), 2)
 	assert.Empty(t, snap.Threads.ThreadDebugStates)
+}
+
+func TestDetectFrankenPHP_True(t *testing.T) {
+	srv := newTestServer(200, ThreadsResponse{}, 200, "")
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	assert.True(t, f.DetectFrankenPHP(context.Background()))
+	assert.True(t, f.HasFrankenPHP())
+}
+
+func TestDetectFrankenPHP_False(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/frankenphp/threads" {
+			w.WriteHeader(404)
+			return
+		}
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	assert.False(t, f.DetectFrankenPHP(context.Background()))
+	assert.False(t, f.HasFrankenPHP())
+}
+
+func TestFetch_CaddyOnlyMode(t *testing.T) {
+	metricsText := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="example.com",code="200"} 100
+`
+	srv := newTestServer(404, nil, 200, metricsText)
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	// hasFrankenPHP is false by default
+	snap, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, snap.Threads.ThreadDebugStates, "should not fetch threads in Caddy-only mode")
+	assert.True(t, snap.Metrics.HasHTTPMetrics)
+	assert.Empty(t, snap.Errors, "should not record thread fetch errors in Caddy-only mode")
 }
 
 func TestRestartWorkers_OK(t *testing.T) {

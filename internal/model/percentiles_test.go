@@ -120,7 +120,7 @@ func TestHistogramPercentiles_Basic(t *testing.T) {
 		{UpperBound: math.Inf(1), CumulativeCount: 160},
 	}
 
-	p50, p95, p99, ok := HistogramPercentiles(prev, curr)
+	p50, _, p95, p99, ok := HistogramPercentiles(prev, curr)
 	assert.True(t, ok)
 	// P50 = 50th percentile of 160 reqs → rank 80, falls in [0.005, 0.01] bucket
 	assert.InDelta(t, 8.0, p50, 1.0, "P50 should be ~8ms")
@@ -136,13 +136,13 @@ func TestHistogramPercentiles_NoPrev(t *testing.T) {
 		{UpperBound: math.Inf(1), CumulativeCount: 100},
 	}
 
-	p50, _, _, ok := HistogramPercentiles(nil, curr)
+	p50, _, _, _, ok := HistogramPercentiles(nil, curr)
 	assert.True(t, ok)
 	assert.True(t, p50 > 0)
 }
 
 func TestHistogramPercentiles_EmptyCurr(t *testing.T) {
-	_, _, _, ok := HistogramPercentiles(nil, nil)
+	_, _, _, _, ok := HistogramPercentiles(nil, nil)
 	assert.False(t, ok)
 }
 
@@ -154,7 +154,7 @@ func TestHistogramPercentiles_ZeroDelta(t *testing.T) {
 	}
 
 	// Same prev and curr → zero delta → no data
-	_, _, _, ok := HistogramPercentiles(buckets, buckets)
+	_, _, _, _, ok := HistogramPercentiles(buckets, buckets)
 	assert.False(t, ok)
 }
 
@@ -173,10 +173,14 @@ func TestHistogramPercentiles_UniformDistribution(t *testing.T) {
 		{UpperBound: math.Inf(1), CumulativeCount: 300},
 	}
 
-	p50, p95, _, ok := HistogramPercentiles(prev, curr)
+	p50, p90, p95, _, ok := HistogramPercentiles(prev, curr)
 	assert.True(t, ok)
 	// P50 = rank 150, falls in [0.1, 0.5] bucket: 0.1 + (0.5-0.1)*(150-100)/100 = 0.3 → 300ms
 	assert.InDelta(t, 300, p50, 10)
+	// P90 = rank 270, falls in [0.5, 1.0] bucket: 0.5 + (1.0-0.5)*(270-200)/100 = 0.85 → 850ms
+	assert.InDelta(t, 850, p90, 10)
 	// P95 = rank 285, falls in [0.5, 1.0] bucket: 0.5 + (1.0-0.5)*(285-200)/100 = 0.925 → 925ms
 	assert.InDelta(t, 925, p95, 10)
+	assert.True(t, p90 >= p50, "P90 >= P50")
+	assert.True(t, p95 >= p90, "P95 >= P90")
 }

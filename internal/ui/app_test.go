@@ -17,7 +17,12 @@ func newAppWithThreads(threads []fetcher.ThreadDebugState) *App {
 		},
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
 	}
-	app := &App{}
+	app := &App{
+		activeTab:     TabFrankenPHP,
+		tabs:          []Tab{TabCaddy, TabFrankenPHP},
+		tabStates:     map[Tab]*tabState{TabCaddy: {}, TabFrankenPHP: {}},
+		hasFrankenPHP: true,
+	}
 	app.state.Update(snap)
 	return app
 }

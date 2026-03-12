@@ -146,7 +146,7 @@ func TestRenderDashboard_ShowsPercentiles(t *testing.T) {
 			TotalIdle:      1,
 		},
 	}
-	out := stripANSI(renderDashboard(s, 100, "test", nil, nil, false))
+	out := stripANSI(renderDashboard(s, 100, "test", nil, nil, false, true))
 	assert.Contains(t, out, "P50")
 	assert.Contains(t, out, "12.3ms")
 	assert.Contains(t, out, "P95")
@@ -170,7 +170,7 @@ func TestRenderDashboard_HidesPercentilesWhenNoData(t *testing.T) {
 			TotalIdle:      1,
 		},
 	}
-	out := stripANSI(renderDashboard(s, 100, "test", nil, nil, false))
+	out := stripANSI(renderDashboard(s, 100, "test", nil, nil, false, true))
 	assert.NotContains(t, out, "P50")
 	assert.NotContains(t, out, "P95")
 	assert.NotContains(t, out, "P99")

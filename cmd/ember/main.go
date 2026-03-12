@@ -25,7 +25,7 @@ type Config struct {
 	PID           int
 }
 
-var version = "0.1.0-dev"
+var version = "1.0.0-dev"
 
 func main() {
 	var cfg Config
@@ -51,15 +51,18 @@ func main() {
 	if pid == 0 {
 		detected, err := fetcher.FindFrankenPHPProcess(ctx)
 		if err != nil {
-			if cfg.JSONMode {
-				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			detected, err = fetcher.FindCaddyProcess(ctx)
+			if err != nil && cfg.JSONMode {
+				fmt.Fprintf(os.Stderr, "warning: no frankenphp or caddy process found\n")
 			}
-		} else {
+		}
+		if err == nil {
 			pid = detected
 		}
 	}
 
 	f := fetcher.NewHTTPFetcher(cfg.Addr, pid)
+	hasFrankenPHP := f.DetectFrankenPHP(ctx)
 
 	if cfg.JSONMode {
 		runJSON(ctx, f, cfg.Interval)
@@ -71,6 +74,7 @@ func main() {
 		SlowThreshold: time.Duration(cfg.SlowThreshold) * time.Millisecond,
 		NoColor:       cfg.NoColor,
 		Version:       version,
+		HasFrankenPHP: hasFrankenPHP,
 	})
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

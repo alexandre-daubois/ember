@@ -635,3 +635,286 @@ func TestState_Update_MidpointEstimation(t *testing.T) {
 	// Duration = (now-500ms) - (now-3s) = 2500ms
 	assert.InDelta(t, 2500, s.Derived.P50, 5)
 }
+
+func TestHostSortField_NextPrev_Cycle(t *testing.T) {
+	s := SortByHost
+	seen := make(map[HostSortField]bool)
+	for range len(hostSortFieldOrder) {
+		seen[s] = true
+		s = s.Next()
+	}
+	assert.Len(t, seen, len(hostSortFieldOrder))
+	assert.Equal(t, SortByHost, s, "Next() should cycle back")
+}
+
+func TestHostSortField_PrevNext_Inverse(t *testing.T) {
+	for _, start := range hostSortFieldOrder {
+		assert.Equal(t, start, start.Next().Prev(), "Next().Prev() should return to %v", start)
+		assert.Equal(t, start, start.Prev().Next(), "Prev().Next() should return to %v", start)
+	}
+}
+
+func TestHostSortField_String(t *testing.T) {
+	tests := []struct {
+		field HostSortField
+		want  string
+	}{
+		{SortByHost, "host"},
+		{SortByHostRPS, "rps"},
+		{SortByHostAvg, "avg"},
+		{SortByHostP90, "p90"},
+		{SortByHostP95, "p95"},
+		{SortByHostP99, "p99"},
+		{SortByHostInFlight, "in-flight"},
+		{SortByHost2xx, "2xx"},
+		{SortByHost4xx, "4xx"},
+		{SortByHost5xx, "5xx"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, tt.field.String())
+	}
+}
+
+func TestComputeStatusCodeRates(t *testing.T) {
+	curr := map[int]float64{200: 100, 404: 20, 500: 5}
+	prev := map[int]float64{200: 80, 404: 10}
+	dt := 2.0
+
+	rates := computeStatusCodeRates(curr, prev, dt)
+	assert.InDelta(t, 10, rates[200], 0.01)  // (100-80)/2
+	assert.InDelta(t, 5, rates[404], 0.01)   // (20-10)/2
+	assert.InDelta(t, 2.5, rates[500], 0.01) // (5-0)/2
+}
+
+func TestComputeStatusCodeRates_Empty(t *testing.T) {
+	assert.Nil(t, computeStatusCodeRates(nil, nil, 1.0))
+	assert.Nil(t, computeStatusCodeRates(map[int]float64{}, map[int]float64{}, 1.0))
+	assert.Nil(t, computeStatusCodeRates(map[int]float64{200: 10}, nil, 0))
+}
+
+func TestComputeStatusCodeRates_NoDelta(t *testing.T) {
+	same := map[int]float64{200: 50}
+	assert.Nil(t, computeStatusCodeRates(same, same, 1.0))
+}
+
+func TestComputeHostDerived_RPSAndAvg(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-2 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"example.com": {
+					Host:          "example.com",
+					DurationCount: 100,
+					DurationSum:   5.0,
+					InFlight:      3,
+					StatusCodes:   map[int]float64{200: 80, 404: 20},
+				},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"example.com": {
+					Host:          "example.com",
+					DurationCount: 200,
+					DurationSum:   15.0,
+					InFlight:      5,
+					StatusCodes:   map[int]float64{200: 160, 404: 40},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assert.Equal(t, "example.com", hd.Host)
+	assert.InDelta(t, 50, hd.RPS, 0.5)          // 100 reqs / 2s
+	assert.InDelta(t, 100, hd.AvgTime, 1)        // (10s / 100 reqs) * 1000
+	assert.Equal(t, float64(5), hd.InFlight)
+	assert.InDelta(t, 40, hd.StatusCodes[200], 1) // (160-80)/2
+	assert.InDelta(t, 10, hd.StatusCodes[404], 1) // (40-20)/2
+}
+
+func TestComputeHostDerived_WithPercentiles(t *testing.T) {
+	now := time.Now()
+
+	bucketsPrev := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 0},
+		{UpperBound: 0.05, CumulativeCount: 0},
+		{UpperBound: 0.1, CumulativeCount: 0},
+		{UpperBound: 1e308, CumulativeCount: 0},
+	}
+	bucketsCurr := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 50},
+		{UpperBound: 0.05, CumulativeCount: 90},
+		{UpperBound: 0.1, CumulativeCount: 100},
+		{UpperBound: 1e308, CumulativeCount: 100},
+	}
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-2 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:            "test.com",
+					DurationCount:   0,
+					DurationSum:     0,
+					DurationBuckets: bucketsPrev,
+					StatusCodes:     map[int]float64{},
+				},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:            "test.com",
+					DurationCount:   100,
+					DurationSum:     5.0,
+					DurationBuckets: bucketsCurr,
+					StatusCodes:     map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assert.True(t, hd.HasPercentiles)
+	assert.True(t, hd.P50 > 0, "P50 should be computed")
+	assert.True(t, hd.P90 > 0, "P90 should be computed")
+	assert.True(t, hd.P95 > 0, "P95 should be computed")
+	assert.True(t, hd.P99 > 0, "P99 should be computed")
+	assert.True(t, hd.P90 >= hd.P50, "P90 >= P50")
+	assert.True(t, hd.P95 >= hd.P90, "P95 >= P90")
+	assert.True(t, hd.P99 >= hd.P95, "P99 >= P95")
+}
+
+func TestComputeHostDerived_NoPrevious(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:        "test.com",
+					InFlight:    3,
+					StatusCodes: map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	assert.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assert.Equal(t, float64(0), hd.RPS)
+	assert.Equal(t, float64(3), hd.InFlight)
+	assert.False(t, hd.HasPercentiles)
+}
+
+func TestComputeHostDerived_NewHostNotInPrevious(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"old.com": {Host: "old.com", DurationCount: 100, DurationSum: 5, StatusCodes: map[int]float64{}},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"old.com": {Host: "old.com", DurationCount: 200, DurationSum: 15, StatusCodes: map[int]float64{}},
+				"new.com": {Host: "new.com", DurationCount: 50, DurationSum: 2, InFlight: 1, StatusCodes: map[int]float64{}},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.Len(t, s.HostDerived, 2)
+
+	var newHost *HostDerived
+	for i := range s.HostDerived {
+		if s.HostDerived[i].Host == "new.com" {
+			newHost = &s.HostDerived[i]
+		}
+	}
+	assert.NotNil(t, newHost)
+	assert.Equal(t, float64(0), newHost.RPS, "new host with no previous should have 0 RPS")
+	assert.Equal(t, float64(1), newHost.InFlight)
+}
+
+func TestState_Update_DerivedP90FromHistogram(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets: []fetcher.HistogramBucket{
+				{UpperBound: 0.01, CumulativeCount: 0},
+				{UpperBound: 0.05, CumulativeCount: 0},
+				{UpperBound: 0.1, CumulativeCount: 0},
+				{UpperBound: 1e308, CumulativeCount: 0},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets: []fetcher.HistogramBucket{
+				{UpperBound: 0.01, CumulativeCount: 50},
+				{UpperBound: 0.05, CumulativeCount: 90},
+				{UpperBound: 0.1, CumulativeCount: 100},
+				{UpperBound: 1e308, CumulativeCount: 100},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.True(t, s.Derived.HasPercentiles)
+	assert.True(t, s.Derived.P50 > 0, "P50")
+	assert.True(t, s.Derived.P90 > 0, "P90")
+	assert.True(t, s.Derived.P95 > 0, "P95")
+	assert.True(t, s.Derived.P99 > 0, "P99")
+	assert.True(t, s.Derived.P90 >= s.Derived.P50, "P90 >= P50")
+	assert.True(t, s.Derived.P95 >= s.Derived.P90, "P95 >= P90")
+}

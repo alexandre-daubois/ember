@@ -6,7 +6,7 @@ import (
 	"github.com/alexandredaubois/ember/internal/model"
 )
 
-func renderHelp(sortBy model.SortField, paused bool, width int) string {
+func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused bool, width int, activeTab Tab) string {
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
@@ -16,15 +16,28 @@ func renderHelp(sortBy model.SortField, paused bool, width int) string {
 		key  string
 		desc string
 	}
+
+	var sortLabel string
+	if activeTab == TabCaddy {
+		sortLabel = hostSortBy.String()
+	} else {
+		sortLabel = sortBy.String()
+	}
+
 	bindings := []binding{
 		{"↑/↓", "navigate"},
-		{"s/S", "sort(" + sortBy.String() + ")"},
+		{"s/S", "sort(" + sortLabel + ")"},
 		{"p", pauseLabel},
-		{"r", "restart"},
-		{"g", "graphs"},
-		{"/", "filter"},
-		{"q", "quit"},
 	}
+	if activeTab == TabFrankenPHP {
+		bindings = append(bindings, binding{"r", "restart"})
+	}
+	bindings = append(bindings,
+		binding{"g", "graphs"},
+		binding{"/", "filter"},
+		binding{"Tab", "switch"},
+		binding{"q", "quit"},
+	)
 
 	var parts []string
 	for _, b := range bindings {

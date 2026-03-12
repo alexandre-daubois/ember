@@ -92,26 +92,27 @@ func percentileValue(sorted []float64, p float64) float64 {
 	return sorted[lower]*(1-frac) + sorted[upper]*frac
 }
 
-// HistogramPercentiles computes P50/P95/P99 from the delta of two Prometheus
+// HistogramPercentiles computes P50/P90/P95/P99 from the delta of two Prometheus
 // histogram bucket snapshots using linear interpolation within buckets
 // (same algorithm as Prometheus histogram_quantile).
 // Returns values in milliseconds and ok=true if computable.
-func HistogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p95, p99 float64, ok bool) {
+func HistogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p90, p95, p99 float64, ok bool) {
 	delta := subtractBuckets(prev, curr)
 	if len(delta) == 0 {
-		return 0, 0, 0, false
+		return 0, 0, 0, 0, false
 	}
 
 	p50 = histogramQuantile(0.50, delta)
+	p90 = histogramQuantile(0.90, delta)
 	p95 = histogramQuantile(0.95, delta)
 	p99 = histogramQuantile(0.99, delta)
 
 	if math.IsNaN(p50) || math.IsInf(p50, 0) {
-		return 0, 0, 0, false
+		return 0, 0, 0, 0, false
 	}
 
 	// Prometheus buckets are in seconds → convert to milliseconds
-	return p50 * 1000, p95 * 1000, p99 * 1000, true
+	return p50 * 1000, p90 * 1000, p95 * 1000, p99 * 1000, true
 }
 
 // subtractBuckets computes the delta (curr - prev) for matching buckets.

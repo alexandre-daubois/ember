@@ -1,0 +1,40 @@
+package ui
+
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	activeTabStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ember)
+	inactiveTabStyle = lipgloss.NewStyle().
+				Foreground(subtle)
+)
+
+func tabLabel(t Tab) string {
+	switch t {
+	case TabCaddy:
+		return "Caddy"
+	case TabFrankenPHP:
+		return "FrankenPHP"
+	default:
+		return "?"
+	}
+}
+
+func renderTabBar(tabs []Tab, active Tab, width int) string {
+	var parts []string
+	for _, t := range tabs {
+		label := tabLabel(t)
+		if t == active {
+			parts = append(parts, activeTabStyle.Render(" ["+label+"]"))
+		} else {
+			parts = append(parts, inactiveTabStyle.Render("  "+label+" "))
+		}
+	}
+	bar := strings.Join(parts, "")
+	return lipgloss.NewStyle().Width(width).Render(bar)
+}

@@ -20,9 +20,10 @@ const (
 )
 
 type HTTPFetcher struct {
-	baseURL    string
-	httpClient *http.Client
-	procHandle *processHandle
+	baseURL        string
+	httpClient     *http.Client
+	procHandle     *processHandle
+	hasFrankenPHP  bool
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
@@ -40,6 +41,28 @@ func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 	}
 }
 
+func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/frankenphp/threads", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	f.hasFrankenPHP = resp.StatusCode == http.StatusOK
+	return f.hasFrankenPHP
+}
+
+func (f *HTTPFetcher) HasFrankenPHP() bool {
+	return f.hasFrankenPHP
+}
+
 func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	var (
 		threads ThreadsResponse
@@ -51,17 +74,19 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		t, err := f.fetchThreads(ctx)
-		if err != nil {
-			mu.Lock()
-			errs = append(errs, err.Error())
-			mu.Unlock()
+	if f.hasFrankenPHP {
+		g.Go(func() error {
+			t, err := f.fetchThreads(ctx)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err.Error())
+				mu.Unlock()
+				return nil
+			}
+			threads = t
 			return nil
-		}
-		threads = t
-		return nil
-	})
+		})
+	}
 
 	g.Go(func() error {
 		m, err := f.fetchMetrics(ctx)

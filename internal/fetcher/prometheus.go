@@ -19,6 +19,7 @@ func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
 
 	snap := MetricsSnapshot{
 		Workers: make(map[string]*WorkerMetrics),
+		Hosts:   make(map[string]*HostMetrics),
 	}
 
 	snap.TotalThreads = scalarValue(families, "frankenphp_total_threads")
@@ -59,6 +60,27 @@ func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
 	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount, snap.DurationBuckets = histogramData(families, "caddy_http_request_duration_seconds")
 	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
 	snap.HasHTTPMetrics = snap.HTTPRequestsTotal > 0 || snap.HTTPRequestDurationCount > 0
+
+	snap.Hosts = perHostMetrics(families)
+
+	// Fallback: if HTTP metrics exist but no host labels, aggregate as a single "*" entry
+	if snap.HasHTTPMetrics && len(snap.Hosts) == 0 {
+		statusCodes := aggregateStatusCodes(families, "caddy_http_requests_total")
+		if statusCodes == nil {
+			statusCodes = statusCodesFromHistogram(families, "caddy_http_request_duration_seconds")
+		}
+		snap.Hosts = map[string]*HostMetrics{
+			"*": {
+				Host:            "*",
+				RequestsTotal:   snap.HTTPRequestsTotal,
+				DurationSum:     snap.HTTPRequestDurationSum,
+				DurationCount:   snap.HTTPRequestDurationCount,
+				InFlight:        snap.HTTPRequestsInFlight,
+				DurationBuckets: snap.DurationBuckets,
+				StatusCodes:     statusCodes,
+			},
+		}
+	}
 
 	return snap, nil
 }
@@ -137,6 +159,149 @@ func labelValue(m *dto.Metric, name string) string {
 		}
 	}
 	return ""
+}
+
+func aggregateStatusCodes(families map[string]*dto.MetricFamily, name string) map[int]float64 {
+	fam, ok := families[name]
+	if !ok {
+		return nil
+	}
+	codes := make(map[int]float64)
+	for _, m := range fam.GetMetric() {
+		if code := labelValue(m, "code"); code != "" {
+			var c int
+			if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+				codes[c] += metricValue(m)
+			}
+		}
+	}
+	if len(codes) == 0 {
+		return nil
+	}
+	return codes
+}
+
+func statusCodesFromHistogram(families map[string]*dto.MetricFamily, name string) map[int]float64 {
+	fam, ok := families[name]
+	if !ok {
+		return nil
+	}
+	codes := make(map[int]float64)
+	for _, m := range fam.GetMetric() {
+		h := m.GetHistogram()
+		if h == nil {
+			continue
+		}
+		if code := labelValue(m, "code"); code != "" {
+			var c int
+			if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+				codes[c] += float64(h.GetSampleCount())
+			}
+		}
+	}
+	if len(codes) == 0 {
+		return nil
+	}
+	return codes
+}
+
+func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetrics {
+	hosts := make(map[string]*HostMetrics)
+
+	getOrCreate := func(host string) *HostMetrics {
+		hm, ok := hosts[host]
+		if !ok {
+			hm = &HostMetrics{Host: host, StatusCodes: make(map[int]float64)}
+			hosts[host] = hm
+		}
+		return hm
+	}
+
+	hostsWithCounterCodes := make(map[string]bool)
+	if fam, ok := families["caddy_http_requests_total"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := labelValue(m, "host")
+			if host == "" {
+				continue
+			}
+			hm := getOrCreate(host)
+			v := metricValue(m)
+			hm.RequestsTotal += v
+			if code := labelValue(m, "code"); code != "" {
+				var c int
+				if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+					hm.StatusCodes[c] += v
+					hostsWithCounterCodes[host] = true
+				}
+			}
+		}
+	}
+
+	if fam, ok := families["caddy_http_request_duration_seconds"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := labelValue(m, "host")
+			if host == "" {
+				continue
+			}
+			h := m.GetHistogram()
+			if h == nil {
+				continue
+			}
+			hm := getOrCreate(host)
+			hm.DurationSum += h.GetSampleSum()
+			hm.DurationCount += float64(h.GetSampleCount())
+
+			if !hostsWithCounterCodes[host] {
+				if code := labelValue(m, "code"); code != "" {
+					var c int
+					if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+						hm.StatusCodes[c] += float64(h.GetSampleCount())
+					}
+				}
+			}
+
+			for _, b := range h.GetBucket() {
+				found := false
+				for i := range hm.DurationBuckets {
+					if hm.DurationBuckets[i].UpperBound == b.GetUpperBound() {
+						hm.DurationBuckets[i].CumulativeCount += float64(b.GetCumulativeCount())
+						found = true
+						break
+					}
+				}
+				if !found {
+					hm.DurationBuckets = append(hm.DurationBuckets, HistogramBucket{
+						UpperBound:      b.GetUpperBound(),
+						CumulativeCount: float64(b.GetCumulativeCount()),
+					})
+				}
+			}
+		}
+	}
+
+	if fam, ok := families["caddy_http_requests_in_flight"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := labelValue(m, "host")
+			if host == "" {
+				continue
+			}
+			getOrCreate(host).InFlight += metricValue(m)
+		}
+	}
+
+	for _, hm := range hosts {
+		slices.SortFunc(hm.DurationBuckets, func(a, b HistogramBucket) int {
+			if a.UpperBound < b.UpperBound {
+				return -1
+			}
+			if a.UpperBound > b.UpperBound {
+				return 1
+			}
+			return 0
+		})
+	}
+
+	return hosts
 }
 
 func (s *MetricsSnapshot) getOrCreateWorker(name string) *WorkerMetrics {

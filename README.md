@@ -1,20 +1,33 @@
-# Ember - Real-time terminal dashboard for FrankenPHP
+# Ember - Real-time TUI dashboard for Caddy & FrankenPHP
 
-Understand why your app is on fire by monitoring threads, workers, memory, request rates and more.
+Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking.
 
 ![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/img.png?raw=true)
 
 ## Features
 
-- Per-thread introspection (URI, HTTP method, duration, memory)
-- Live RPS and average response time with sparkline history
-- Latency percentiles (P50, P95, P99) over a rolling 5-minute window
-- Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
-- Sorting, live filtering, and detail panel
-- Graceful worker restart from the TUI
-- Stale data and connection loss detection
+### Caddy dashboard (always available)
+
+- Per-host traffic table with RPS, average response time, and in-flight requests
+- Latency percentiles (P50, P90, P95, P99) from Prometheus histogram buckets
+- Status code breakdown (2xx/s, 4xx/s, 5xx/s) per host
+- Sorting and live filtering by hostname
+- Live sparkline graphs (CPU, RPS, RSS)
 - JSON output mode for scripting
-- Auto-detection of the FrankenPHP process
+
+### FrankenPHP dashboard (when detected)
+
+- Per-thread introspection (URI, HTTP method, duration, memory)
+- Worker queue depth and busy thread tracking
+- Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
+- Graceful worker restart from the TUI
+- Detail panel with per-thread info
+
+### General
+
+- Tab-based navigation between Caddy and FrankenPHP views
+- Auto-detection of FrankenPHP and Caddy processes
+- Stale data and connection loss detection
 - Cross-platform binaries, Homebrew tap, and Docker image
 
 ## Install
@@ -37,7 +50,7 @@ docker run --rm --network host ghcr.io/alexandre-daubois/ember
 
 ## Usage
 
-Make sure FrankenPHP is running with the admin API enabled:
+Make sure Caddy is running with the admin API and metrics enabled:
 
 ```
 {
@@ -52,7 +65,7 @@ Then:
 ember
 ```
 
-Ember auto-detects the FrankenPHP process and connects to the Caddy admin API.
+Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In Caddy-only mode, the dashboard shows per-host HTTP metrics. When FrankenPHP is detected, a second tab provides thread-level introspection.
 
 ### Options
 
@@ -68,12 +81,14 @@ Ember auto-detects the FrankenPHP process and connects to the Caddy admin API.
 
 | Key | Action |
 |-----|--------|
-| `↑` `↓` | Navigate threads |
-| `Enter` | Thread detail panel |
+| `Tab` | Switch between Caddy / FrankenPHP tabs |
+| `1` / `2` | Jump to tab |
+| `↑` `↓` | Navigate list |
+| `Enter` | Thread detail panel (FrankenPHP) |
 | `s` / `S` | Cycle sort field |
 | `p` | Pause / resume |
-| `r` | Restart workers |
-| `/` | Filter threads |
+| `r` | Restart workers (FrankenPHP) |
+| `/` | Filter |
 | `g` | Full-screen graphs |
 | `q` | Quit |
 

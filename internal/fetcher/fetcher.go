@@ -13,7 +13,6 @@ type ThreadDebugState struct {
 	IsBusy                   bool   `json:"IsBusy"`
 	WaitingSinceMilliseconds int64  `json:"WaitingSinceMilliseconds"`
 
-	// Future fields (upstream PR required, zero-valued for now)
 	CurrentURI       string `json:"CurrentURI,omitempty"`
 	CurrentMethod    string `json:"CurrentMethod,omitempty"`
 	RequestStartedAt int64  `json:"RequestStartedAt,omitempty"`
@@ -38,6 +37,16 @@ type WorkerMetrics struct {
 	QueueDepth   float64 `json:"queueDepth"`
 }
 
+type HostMetrics struct {
+	Host            string            `json:"host"`
+	RequestsTotal   float64           `json:"requestsTotal"`
+	DurationSum     float64           `json:"durationSum"`
+	DurationCount   float64           `json:"durationCount"`
+	InFlight        float64           `json:"inFlight"`
+	DurationBuckets []HistogramBucket `json:"durationBuckets,omitempty"`
+	StatusCodes     map[int]float64   `json:"statusCodes,omitempty"`
+}
+
 type MetricsSnapshot struct {
 	// FrankenPHP-specific (require frankenphp metrics)
 	TotalThreads float64                   `json:"totalThreads"`
@@ -52,6 +61,9 @@ type MetricsSnapshot struct {
 	HTTPRequestsInFlight     float64           `json:"httpRequestsInFlight"`
 	DurationBuckets          []HistogramBucket `json:"durationBuckets,omitempty"`
 	HasHTTPMetrics           bool              `json:"hasHttpMetrics"`
+
+	// Per-host Caddy HTTP metrics
+	Hosts map[string]*HostMetrics `json:"hosts,omitempty"`
 }
 
 type HistogramBucket struct {
