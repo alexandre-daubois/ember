@@ -114,6 +114,51 @@ func TestFormatThreadRow_ZebraContainsData(t *testing.T) {
 	assert.Contains(t, row, "2 MB")
 }
 
+func TestFormatThreadRow_MemoryDeltaUp(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:       0,
+		IsBusy:      true,
+		MemoryUsage: 20 * 1024 * 1024,
+	}
+	prev := map[int]int64{0: 18 * 1024 * 1024}
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false, false)
+	assert.Contains(t, row, "↑")
+}
+
+func TestFormatThreadRow_MemoryDeltaDown(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:       0,
+		IsBusy:      true,
+		MemoryUsage: 15 * 1024 * 1024,
+	}
+	prev := map[int]int64{0: 20 * 1024 * 1024}
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false, false)
+	assert.Contains(t, row, "↓")
+}
+
+func TestFormatThreadRow_MemoryDeltaBelowThreshold(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:       0,
+		IsBusy:      true,
+		MemoryUsage: 18*1024*1024 + 50*1024,
+	}
+	prev := map[int]int64{0: 18 * 1024 * 1024}
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false, false)
+	assert.NotContains(t, row, "↑")
+	assert.NotContains(t, row, "↓")
+}
+
+func TestFormatThreadRow_MemoryDeltaNoPrevious(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index:       0,
+		IsBusy:      true,
+		MemoryUsage: 18 * 1024 * 1024,
+	}
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, false)
+	assert.NotContains(t, row, "↑")
+	assert.NotContains(t, row, "↓")
+}
+
 func TestFormatThreadRow_SelectedOverridesZebra(t *testing.T) {
 	thread := fetcher.ThreadDebugState{
 		Index:     0,

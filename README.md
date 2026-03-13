@@ -21,7 +21,8 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 - Worker queue depth and busy thread tracking
 - Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
 - Graceful worker restart from the TUI
-- Detail panel with per-thread info
+- Detail panel with per-thread info and memory sparkline trend
+- Memory delta indicators (↑/↓) per thread between polls
 
 ### General
 

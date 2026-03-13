@@ -14,6 +14,7 @@ import (
 
 type renderOpts struct {
 	slowThreshold time.Duration
+	prevMemory    map[int]int64
 }
 
 // fixed column widths (excluding URI which is dynamic)
@@ -25,6 +26,8 @@ const (
 	colMem    = 10 // 9 content + 1 trailing space
 	colReqs   = 9
 	colFixed  = 1 + colIndex + colState + colMethod + colTime + colMem + colReqs // 1 for prefix
+
+	memDeltaThreshold = 100 * 1024 // 100 KB
 )
 
 func uriWidth(totalWidth int) int {
@@ -126,6 +129,16 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 	memStr := "—"
 	if t.MemoryUsage > 0 {
 		memStr = formatBytes(t.MemoryUsage)
+		if opts.prevMemory != nil {
+			if prev, ok := opts.prevMemory[t.Index]; ok && prev > 0 {
+				delta := t.MemoryUsage - prev
+				if delta > memDeltaThreshold {
+					memStr += " ↑"
+				} else if delta < -memDeltaThreshold {
+					memStr += " ↓"
+				}
+			}
+		}
 	}
 
 	reqsStr := "—"

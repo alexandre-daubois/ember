@@ -49,6 +49,7 @@ type restarter interface {
 
 const sparklineSize = 15
 const graphHistorySize = 300
+const memHistorySize = 60
 
 type App struct {
 	fetcher      fetcher.Fetcher
@@ -69,6 +70,7 @@ type App struct {
 	rssHistory   []float64
 	queueHistory []float64
 	busyHistory  []float64
+	memHistory   map[int][]int64
 	stale        bool
 	lastFresh    time.Time
 	fetching     bool
@@ -103,6 +105,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		activeTab:     activeTab,
 		tabStates:     ts,
 		hasFrankenPHP: cfg.HasFrankenPHP,
+		memHistory:    make(map[int][]int64),
 	}
 }
 
@@ -198,6 +201,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.rssHistory = appendHistory(a.rssHistory, float64(msg.snap.Process.RSS)/1024/1024, graphHistorySize)
 			a.queueHistory = appendHistory(a.queueHistory, msg.snap.Metrics.QueueDepth, graphHistorySize)
 			a.busyHistory = appendHistory(a.busyHistory, float64(a.state.Derived.TotalBusy), graphHistorySize)
+
+			if a.memHistory == nil {
+				a.memHistory = make(map[int][]int64)
+			}
+			for _, t := range msg.snap.Threads.ThreadDebugStates {
+				if t.MemoryUsage > 0 {
+					h := a.memHistory[t.Index]
+					h = append(h, t.MemoryUsage)
+					if len(h) > memHistorySize {
+						h = h[len(h)-memHistorySize:]
+					}
+					a.memHistory[t.Index] = h
+				}
+			}
 		}
 		return a, nil
 	case restartResultMsg:
@@ -258,6 +275,7 @@ func (a *App) View() string {
 		threads := a.filteredThreads()
 		contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
 			slowThreshold: a.config.SlowThreshold,
+			prevMemory:    a.prevThreadMemory(),
 		})
 	case TabCaddy:
 		contentList = renderHostTable(a.filteredHosts(), a.cursor, listWidth, a.hostSortBy)
@@ -308,11 +326,12 @@ func (a *App) View() string {
 				return lipgloss.JoinVertical(lipgloss.Left, base, panel)
 			}
 		} else if t, ok := a.selectedThread(); ok {
+			samples := a.memHistory[t.Index]
 			if sidePanel {
-				panel := renderDetailPanel(t, panelWidth, a.height)
+				panel := renderDetailPanel(t, panelWidth, a.height, samples)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
 			}
-			panel := renderDetailPanel(t, a.width, detailPanelHeight)
+			panel := renderDetailPanel(t, a.width, detailPanelHeight, samples)
 			return lipgloss.JoinVertical(lipgloss.Left, base, panel)
 		}
 	}
@@ -523,6 +542,17 @@ func (a *App) clampCursor() {
 	if a.cursor > maximum {
 		a.cursor = maximum
 	}
+}
+
+func (a *App) prevThreadMemory() map[int]int64 {
+	if a.state.Previous == nil {
+		return nil
+	}
+	m := make(map[int]int64, len(a.state.Previous.Threads.ThreadDebugStates))
+	for _, t := range a.state.Previous.Threads.ThreadDebugStates {
+		m[t.Index] = t.MemoryUsage
+	}
+	return m
 }
 
 func (a *App) doTick() tea.Cmd {

@@ -253,6 +253,104 @@ func TestFetchMsg_RecoveryFromStaleResetsPercentiles(t *testing.T) {
 	assert.Equal(t, 0, app.state.Percentiles.Count(now))
 }
 
+func TestMemHistory_PopulatedOnFetch(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsWaiting: true, MemoryUsage: 5 * 1024 * 1024},
+		{Index: 1, IsBusy: true, MemoryUsage: 10 * 1024 * 1024},
+	}
+	snap := &fetcher.Snapshot{
+		Threads:   fetcher.ThreadsResponse{ThreadDebugStates: threads},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now(),
+	}
+	app := &App{
+		memHistory: make(map[int][]int64),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	app.Update(fetchMsg{snap: snap})
+
+	assert.Len(t, app.memHistory[0], 1)
+	assert.Len(t, app.memHistory[1], 1)
+	assert.Equal(t, int64(5*1024*1024), app.memHistory[0][0])
+	assert.Equal(t, int64(10*1024*1024), app.memHistory[1][0])
+}
+
+func TestMemHistory_CappedAtMax(t *testing.T) {
+	app := &App{
+		memHistory: make(map[int][]int64),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	for i := 0; i < memHistorySize+20; i++ {
+		snap := &fetcher.Snapshot{
+			Threads: fetcher.ThreadsResponse{
+				ThreadDebugStates: []fetcher.ThreadDebugState{
+					{Index: 0, MemoryUsage: int64(i) * 1024 * 1024},
+				},
+			},
+			Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+			FetchedAt: time.Now(),
+		}
+		app.Update(fetchMsg{snap: snap})
+	}
+
+	assert.Len(t, app.memHistory[0], memHistorySize)
+}
+
+func TestMemHistory_SkipsZeroMemory(t *testing.T) {
+	app := &App{
+		memHistory: make(map[int][]int64),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, MemoryUsage: 0},
+			},
+		},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now(),
+	}
+	app.Update(fetchMsg{snap: snap})
+
+	assert.Empty(t, app.memHistory[0])
+}
+
+func TestPrevThreadMemory(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, MemoryUsage: 5 * 1024 * 1024},
+		{Index: 1, MemoryUsage: 10 * 1024 * 1024},
+	})
+
+	snap2 := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, MemoryUsage: 6 * 1024 * 1024},
+				{Index: 1, MemoryUsage: 12 * 1024 * 1024},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	app.state.Update(snap2)
+
+	prev := app.prevThreadMemory()
+	assert.Equal(t, int64(5*1024*1024), prev[0])
+	assert.Equal(t, int64(10*1024*1024), prev[1])
+}
+
+func TestPrevThreadMemory_NilWhenNoPrevious(t *testing.T) {
+	app := &App{}
+	assert.Nil(t, app.prevThreadMemory())
+}
+
 func TestFilteredThreads_Sorted(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{
 		{Index: 2, Name: "Thread 2"},

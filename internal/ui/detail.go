@@ -21,7 +21,7 @@ var (
 	sectionStyle     = lipgloss.NewStyle().Foreground(subtle)
 )
 
-func renderDetailPanel(t fetcher.ThreadDebugState, width, height int) string {
+func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples []int64) string {
 	inner := width - 4
 	if inner < 10 {
 		inner = 10
@@ -74,6 +74,9 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int) string {
 		lines = append(lines, sectionHeader("Resources", inner))
 		if t.MemoryUsage > 0 {
 			lines = append(lines, detailKV("Memory", formatBytes(t.MemoryUsage)))
+			if spark := renderMemSparkline(memSamples, inner-12); spark != "" {
+				lines = append(lines, detailKV("", spark))
+			}
 		}
 		if t.RequestCount > 0 {
 			lines = append(lines, detailKV("Requests", formatNumber(t.RequestCount)))
