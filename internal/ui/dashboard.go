@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64, stale bool) string {
+func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64, stale bool, hasFrankenPHP bool) string {
 	if width < 10 {
 		return "…"
 	}
@@ -26,7 +26,7 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	uptime := model.FormatUptime(p.Uptime)
 
 	// title line: left-aligned title + right-aligned config
-	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s (beta)", version))
+	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s", version))
 	if stale {
 		titleLeft += " " + warnStyle.Render("STALE")
 	}
@@ -44,13 +44,21 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		}
 	}
 
-	workerThreadCount := countWorkerThreads(snap.Threads.ThreadDebugStates)
-	configParts := []string{fmt.Sprintf("%d threads", len(snap.Threads.ThreadDebugStates))}
-	if workerThreadCount > 0 {
-		configParts = append([]string{fmt.Sprintf("%d workers", workerThreadCount)}, configParts...)
-	}
-	if snap.Threads.ReservedThreadCount > 0 {
-		configParts = append(configParts, fmt.Sprintf("%d reserved", snap.Threads.ReservedThreadCount))
+	var configParts []string
+	if hasFrankenPHP {
+		workerThreadCount := countWorkerThreads(snap.Threads.ThreadDebugStates)
+		configParts = []string{fmt.Sprintf("%d threads", len(snap.Threads.ThreadDebugStates))}
+		if workerThreadCount > 0 {
+			configParts = append([]string{fmt.Sprintf("%d workers", workerThreadCount)}, configParts...)
+		}
+		if snap.Threads.ReservedThreadCount > 0 {
+			configParts = append(configParts, fmt.Sprintf("%d reserved", snap.Threads.ReservedThreadCount))
+		}
+	} else {
+		hostCount := len(snap.Metrics.Hosts)
+		if hostCount > 0 {
+			configParts = []string{fmt.Sprintf("%d hosts", hostCount)}
+		}
 	}
 	configRight := greyStyle.Render(strings.Join(configParts, " · ") + " ")
 	gap := width - lipgloss.Width(titleLeft) - lipgloss.Width(configRight)
@@ -92,46 +100,37 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		avgRaw = warnStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
 	}
 	inflightStr := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.HTTPRequestsInFlight))
-	queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
-	if snap.Metrics.QueueDepth > 0 {
-		queueRaw = warnStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)))
-	}
 	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
-	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s  Queue %s",
-		rpsFmt, rpsSpark, avgRaw, inflightStr, queueRaw)
-
-	var percLine string
-	if d.HasPercentiles {
-		percLine = fmt.Sprintf(" P50 %s  P95 %s  P99 %s",
-			formatPercentile(d.P50), formatPercentile(d.P95), formatPercentile(d.P99))
+	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s",
+		rpsFmt, rpsSpark, avgRaw, inflightStr)
+	if hasFrankenPHP {
+		queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
+		if snap.Metrics.QueueDepth > 0 {
+			queueRaw = warnStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)))
+		}
+		line2 += fmt.Sprintf("  Queue %s", queueRaw)
 	}
-
-	// thread bar with colored legend
-	threadInactive := threadTotal - threadBusy - threadIdle
-	legend := fmt.Sprintf(" %s %s %s",
-		busyStyle.Render(fmt.Sprintf("%d busy", threadBusy)),
-		idleStyle.Render(fmt.Sprintf("%d idle", threadIdle)),
-		greyStyle.Render(fmt.Sprintf("%d inactive", threadInactive)),
-	)
-	legendW := lipgloss.Width(legend)
-	threadLabel := fmt.Sprintf(" Threads %d/%d ", threadBusy, threadTotal)
-	barMaxW := width - len(threadLabel) - legendW - 4
-	threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, barMaxW)
-	line3 := threadLabel + threadBar + legend
 
 	separator := separatorStyle.Render(strings.Repeat("─", width))
 
-	hasWorkerMetrics := workerThreadCount > 0
-	hasHTTPMetrics := snap.Metrics.HasHTTPMetrics
-
 	var lines []string
 	lines = append(lines, titleLine, line1, line2)
-	if percLine != "" {
-		lines = append(lines, percLine)
-	}
-	lines = append(lines, line3)
 
-	if !hasWorkerMetrics && !hasHTTPMetrics {
+	if hasFrankenPHP {
+		threadInactive := threadTotal - threadBusy - threadIdle
+		legend := fmt.Sprintf(" %s %s %s",
+			busyStyle.Render(fmt.Sprintf("%d busy", threadBusy)),
+			idleStyle.Render(fmt.Sprintf("%d idle", threadIdle)),
+			greyStyle.Render(fmt.Sprintf("%d inactive", threadInactive)),
+		)
+		legendW := lipgloss.Width(legend)
+		threadLabel := fmt.Sprintf(" Threads %d/%d ", threadBusy, threadTotal)
+		barMaxW := width - len(threadLabel) - legendW - 4
+		threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, barMaxW)
+		lines = append(lines, threadLabel+threadBar+legend)
+	}
+
+	if !snap.Metrics.HasHTTPMetrics && len(snap.Threads.ThreadDebugStates) == 0 {
 		lines = append(lines, warnStyle.Render(" ⚠ No metrics — add `metrics` to Caddyfile global block"))
 	}
 
@@ -186,18 +185,6 @@ func countWorkerScripts(threads []fetcher.ThreadDebugState) int {
 	return len(seen)
 }
 
-func formatPercentile(ms float64) string {
-	text := fmt.Sprintf("%-10s", formatMs(ms))
-	switch {
-	case ms >= 1000:
-		return dangerStyle.Render(text)
-	case ms >= 500:
-		return warnStyle.Render(text)
-	default:
-		return text
-	}
-}
-
 func formatMs(ms float64) string {
 	if ms >= 10000 {
 		return fmt.Sprintf("%.1fs", ms/1000)
@@ -244,7 +231,7 @@ func renderSparkline(values []float64, fixedWidth int) string {
 func renderConnectionError(err string, width, height int) string {
 	title := dangerStyle.Render("  Connection failed")
 	msg := greyStyle.Render("  Cannot reach the Caddy admin API.")
-	hint1 := "  Make sure FrankenPHP is running and the admin API is enabled:"
+	hint1 := "  Make sure Caddy is running with the admin API enabled:"
 	hint2 := helpStyle.Render("    { admin localhost:2019 }")
 	hint3 := "  Or specify a custom address:"
 	hint4 := helpStyle.Render("    ember --addr http://host:port")

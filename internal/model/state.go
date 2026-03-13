@@ -60,10 +60,87 @@ func (s SortField) Prev() SortField {
 	return SortByIndex
 }
 
+type HostSortField int
+
+const (
+	SortByHost HostSortField = iota
+	SortByHostRPS
+	SortByHostAvg
+	SortByHostP90
+	SortByHostP95
+	SortByHostP99
+	SortByHostInFlight
+	SortByHost2xx
+	SortByHost4xx
+	SortByHost5xx
+)
+
+var hostSortFieldOrder = []HostSortField{
+	SortByHost, SortByHostRPS, SortByHostAvg, SortByHostP90, SortByHostP95, SortByHostP99,
+	SortByHostInFlight, SortByHost2xx, SortByHost4xx, SortByHost5xx,
+}
+
+func (s HostSortField) String() string {
+	switch s {
+	case SortByHostRPS:
+		return "rps"
+	case SortByHostAvg:
+		return "avg"
+	case SortByHostP90:
+		return "p90"
+	case SortByHostP95:
+		return "p95"
+	case SortByHostP99:
+		return "p99"
+	case SortByHostInFlight:
+		return "in-flight"
+	case SortByHost2xx:
+		return "2xx"
+	case SortByHost4xx:
+		return "4xx"
+	case SortByHost5xx:
+		return "5xx"
+	default:
+		return "host"
+	}
+}
+
+func (s HostSortField) Next() HostSortField {
+	for i, f := range hostSortFieldOrder {
+		if f == s {
+			return hostSortFieldOrder[(i+1)%len(hostSortFieldOrder)]
+		}
+	}
+	return SortByHost
+}
+
+func (s HostSortField) Prev() HostSortField {
+	for i, f := range hostSortFieldOrder {
+		if f == s {
+			return hostSortFieldOrder[(i-1+len(hostSortFieldOrder))%len(hostSortFieldOrder)]
+		}
+	}
+	return SortByHost
+}
+
+type HostDerived struct {
+	Host               string
+	RPS                float64
+	AvgTime            float64
+	InFlight           float64
+	P50, P90, P95, P99 float64
+	HasPercentiles     bool
+	StatusCodes        map[int]float64
+	MethodRates        map[string]float64
+	AvgResponseSize    float64
+	TotalRequests      float64
+}
+
 type State struct {
 	Current     *fetcher.Snapshot
 	Previous    *fetcher.Snapshot
 	Derived     DerivedMetrics
+	HostDerived []HostDerived
 	Percentiles *PercentileTracker
 }
 
@@ -74,6 +151,7 @@ type DerivedMetrics struct {
 	TotalBusy      int
 	TotalCrashes   float64
 	P50            float64
+	P90            float64
 	P95            float64
 	P99            float64
 	HasPercentiles bool
@@ -87,6 +165,7 @@ func (s *State) Update(snap *fetcher.Snapshot) {
 	s.Previous = s.Current
 	s.Current = snap
 	s.Derived = s.computeDerived()
+	s.HostDerived = s.computeHostDerived()
 }
 
 func (s *State) detectCompletedRequests(newSnap *fetcher.Snapshot) {
@@ -142,9 +221,10 @@ func (s *State) computeDerived() DerivedMetrics {
 
 	// Percentiles: prefer Prometheus histogram buckets, fall back to thread-based tracker
 	if s.Previous != nil && len(s.Current.Metrics.DurationBuckets) > 0 && len(s.Previous.Metrics.DurationBuckets) > 0 {
-		p50, p95, p99, ok := HistogramPercentiles(s.Previous.Metrics.DurationBuckets, s.Current.Metrics.DurationBuckets)
+		p50, p90, p95, p99, ok := HistogramPercentiles(s.Previous.Metrics.DurationBuckets, s.Current.Metrics.DurationBuckets)
 		if ok {
 			d.P50 = p50
+			d.P90 = p90
 			d.P95 = p95
 			d.P99 = p99
 			d.HasPercentiles = true
@@ -202,6 +282,94 @@ func (s *State) computeDerived() DerivedMetrics {
 	}
 
 	return d
+}
+
+func (s *State) computeHostDerived() []HostDerived {
+	if s.Current == nil || len(s.Current.Metrics.Hosts) == 0 {
+		return nil
+	}
+
+	dt := 0.0
+	if s.Previous != nil {
+		dt = s.Current.FetchedAt.Sub(s.Previous.FetchedAt).Seconds()
+	}
+
+	var result []HostDerived
+	for host, curr := range s.Current.Metrics.Hosts {
+		hd := HostDerived{
+			Host:          host,
+			InFlight:      curr.InFlight,
+			TotalRequests: curr.RequestsTotal,
+		}
+
+		if curr.ResponseSizeCount > 0 {
+			hd.AvgResponseSize = curr.ResponseSizeSum / curr.ResponseSizeCount
+		}
+
+		if s.Previous != nil && dt >= 0.1 {
+			if prev, ok := s.Previous.Metrics.Hosts[host]; ok {
+				deltaCount := curr.DurationCount - prev.DurationCount
+				deltaSum := curr.DurationSum - prev.DurationSum
+				if deltaCount > 0 {
+					hd.RPS = deltaCount / dt
+					hd.AvgTime = (deltaSum / deltaCount) * 1000
+				}
+
+				hd.StatusCodes = computeStatusCodeRates(curr.StatusCodes, prev.StatusCodes, dt)
+				hd.MethodRates = computeMethodRates(curr.Methods, prev.Methods, dt)
+
+				if len(curr.DurationBuckets) > 0 && len(prev.DurationBuckets) > 0 {
+					p50, p90, p95, p99, ok := HistogramPercentiles(prev.DurationBuckets, curr.DurationBuckets)
+					if ok {
+						hd.P50 = p50
+						hd.P90 = p90
+						hd.P95 = p95
+						hd.P99 = p99
+						hd.HasPercentiles = true
+					}
+				}
+			}
+		}
+
+		result = append(result, hd)
+	}
+	return result
+}
+
+func computeMethodRates(curr, prev map[string]float64, dt float64) map[string]float64 {
+	if len(curr) == 0 || dt <= 0 {
+		return nil
+	}
+	rates := make(map[string]float64)
+	for method, currCount := range curr {
+		prevCount := prev[method]
+		delta := currCount - prevCount
+		if delta > 0 {
+			rates[method] = delta / dt
+		}
+	}
+	if len(rates) == 0 {
+		return nil
+	}
+	return rates
+}
+
+func computeStatusCodeRates(curr, prev map[int]float64, dt float64) map[int]float64 {
+	if len(curr) == 0 || dt <= 0 {
+		return nil
+	}
+	rates := make(map[int]float64)
+	for code, currCount := range curr {
+		prevCount := prev[code]
+		delta := currCount - prevCount
+		if delta > 0 {
+			rates[code] = delta / dt
+		}
+	}
+	if len(rates) == 0 {
+		return nil
+	}
+	return rates
 }
 
 func FormatUptime(d time.Duration) string {

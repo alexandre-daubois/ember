@@ -29,7 +29,6 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int) string {
 
 	var lines []string
 
-	// --- Header: title + thread type ---
 	title := fmt.Sprintf("Thread #%d", t.Index)
 	lines = append(lines, titleStyle.Render(title))
 
@@ -81,7 +80,6 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int) string {
 		}
 	}
 
-	// --- Footer ---
 	lines = append(lines, "")
 	lines = append(lines, helpStyle.Render("  "+helpKeyStyle.Render("r")+" restart  "+helpKeyStyle.Render("Esc")+" close"))
 
@@ -144,7 +142,6 @@ func renderMemSparkline(samples []int64, maxWidth int) string {
 		maxWidth = 16
 	}
 
-	// use last N samples
 	data := samples
 	if len(data) > maxWidth {
 		data = data[len(data)-maxWidth:]

@@ -34,6 +34,24 @@ func FindFrankenPHPProcess(ctx context.Context) (int32, error) {
 	return 0, fmt.Errorf("frankenphp process not found")
 }
 
+func FindCaddyProcess(ctx context.Context) (int32, error) {
+	procs, err := process.ProcessesWithContext(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list processes: %w", err)
+	}
+	for _, p := range procs {
+		name, err := p.NameWithContext(ctx)
+		if err != nil {
+			continue
+		}
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "caddy") && !strings.Contains(lower, "frankenphp") {
+			return p.Pid, nil
+		}
+	}
+	return 0, fmt.Errorf("caddy process not found")
+}
+
 type processHandle struct {
 	proc       *process.Process
 	lastCPU    float64
@@ -70,7 +88,10 @@ func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
 	if h.proc == nil {
 		pid, err := FindFrankenPHPProcess(ctx)
 		if err != nil {
-			return ProcessMetrics{}, nil
+			pid, err = FindCaddyProcess(ctx)
+			if err != nil {
+				return ProcessMetrics{}, nil
+			}
 		}
 		p, err := process.NewProcess(pid)
 		if err != nil {

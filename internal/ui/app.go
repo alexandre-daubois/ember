@@ -28,6 +28,19 @@ type Config struct {
 	SlowThreshold time.Duration
 	NoColor       bool
 	Version       string
+	HasFrankenPHP bool
+}
+
+type Tab int
+
+const (
+	TabCaddy Tab = iota
+	TabFrankenPHP
+)
+
+type tabState struct {
+	cursor int
+	filter string
 }
 
 type restarter interface {
@@ -38,36 +51,80 @@ const sparklineSize = 15
 const graphHistorySize = 300
 
 type App struct {
-	fetcher     fetcher.Fetcher
-	config      Config
-	state       model.State
-	cursor      int
-	sortBy      model.SortField
-	paused      bool
-	width       int
-	height      int
-	err         error
-	mode        viewMode
-	prevMode    viewMode
-	filter      string
-	status      string
-	rpsHistory  []float64
-	cpuHistory  []float64
-	rssHistory  []float64
+	fetcher      fetcher.Fetcher
+	config       Config
+	state        model.State
+	cursor       int
+	sortBy       model.SortField
+	paused       bool
+	width        int
+	height       int
+	err          error
+	mode         viewMode
+	prevMode     viewMode
+	filter       string
+	status       string
+	rpsHistory   []float64
+	cpuHistory   []float64
+	rssHistory   []float64
 	queueHistory []float64
 	busyHistory  []float64
-	stale       bool
-	lastFresh   time.Time
-	fetching    bool
+	stale        bool
+	lastFresh    time.Time
+	fetching     bool
+
+	activeTab     Tab
+	tabs          []Tab
+	tabStates     map[Tab]*tabState
+	hasFrankenPHP bool
+	hostSortBy    model.HostSortField
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	if cfg.NoColor {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
+
+	tabs := []Tab{TabCaddy}
+	activeTab := TabCaddy
+	if cfg.HasFrankenPHP {
+		tabs = append(tabs, TabFrankenPHP)
+	}
+
+	ts := make(map[Tab]*tabState)
+	for _, t := range tabs {
+		ts[t] = &tabState{}
+	}
+
 	return &App{
-		fetcher:     f,
-		config:      cfg,
+		fetcher:       f,
+		config:        cfg,
+		tabs:          tabs,
+		activeTab:     activeTab,
+		tabStates:     ts,
+		hasFrankenPHP: cfg.HasFrankenPHP,
+	}
+}
+
+func (a *App) switchTab(target Tab) {
+	ts := a.tabStates[a.activeTab]
+	ts.cursor = a.cursor
+	ts.filter = a.filter
+
+	a.activeTab = target
+	ts = a.tabStates[target]
+	a.cursor = ts.cursor
+	a.filter = ts.filter
+	a.clampCursor()
+	a.mode = viewList
+}
+
+func (a *App) nextTab() {
+	for i, t := range a.tabs {
+		if t == a.activeTab {
+			a.switchTab(a.tabs[(i+1)%len(a.tabs)])
+			return
+		}
 	}
 }
 
@@ -101,10 +158,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.err = msg.err
 		if msg.snap != nil {
 			wasStale := a.stale
-			hasThreads := len(msg.snap.Threads.ThreadDebugStates) > 0
-			hadThreads := a.state.Current != nil && len(a.state.Current.Threads.ThreadDebugStates) > 0
+			hasData := len(msg.snap.Threads.ThreadDebugStates) > 0 || msg.snap.Metrics.HasHTTPMetrics
+			hadData := a.state.Current != nil && (len(a.state.Current.Threads.ThreadDebugStates) > 0 || a.state.Current.Metrics.HasHTTPMetrics)
 
-			if !hasThreads && hadThreads {
+			if !hasData && hadData {
 				a.stale = true
 				a.state.Current.Process = msg.snap.Process
 				a.state.Current.Metrics = msg.snap.Metrics
@@ -174,7 +231,10 @@ func (a *App) View() string {
 		return "Loading..."
 	}
 
-	if a.state.Current != nil && len(a.state.Current.Threads.ThreadDebugStates) == 0 && len(a.state.Current.Errors) > 0 {
+	if a.state.Current != nil &&
+		len(a.state.Current.Threads.ThreadDebugStates) == 0 &&
+		!a.state.Current.Metrics.HasHTTPMetrics &&
+		len(a.state.Current.Errors) > 0 {
 		return renderConnectionError(a.state.Current.Errors[0], a.width, a.height)
 	}
 
@@ -188,17 +248,20 @@ func (a *App) View() string {
 	}
 	listWidth := a.width - panelWidth
 
-	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.rpsHistory, sparklineSize), lastN(a.cpuHistory, sparklineSize), a.stale)
-	help := renderHelp(a.sortBy, a.paused, listWidth)
+	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.rpsHistory, sparklineSize), lastN(a.cpuHistory, sparklineSize), a.stale, a.hasFrankenPHP)
+	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth)
+	help := renderHelp(a.sortBy, a.hostSortBy, a.paused, listWidth, a.activeTab)
 
-	threads := a.filteredThreads()
-	totalCount := 0
-	if a.state.Current != nil {
-		totalCount = len(a.state.Current.Threads.ThreadDebugStates)
+	var contentList string
+	switch a.activeTab {
+	case TabFrankenPHP:
+		threads := a.filteredThreads()
+		contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
+			slowThreshold: a.config.SlowThreshold,
+		})
+	case TabCaddy:
+		contentList = renderHostTable(a.filteredHosts(), a.cursor, listWidth, a.hostSortBy)
 	}
-	workerList := renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
-		slowThreshold: a.config.SlowThreshold,
-	}, totalCount)
 
 	var statusLine string
 	if a.status != "" {
@@ -212,20 +275,20 @@ func (a *App) View() string {
 		filterLine = " Filter: " + a.filter + "█"
 	}
 
-	parts := []string{dashboard}
+	parts := []string{dashboard, tabBar}
 	if a.mode == viewGraph {
-		dashLines := strings.Count(dashboard, "\n") + 1
+		dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
 		graphAreaHeight := a.height - dashLines - 2
 		if graphAreaHeight < 5 {
 			graphAreaHeight = 5
 		}
-		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.cpuHistory, a.rpsHistory, a.rssHistory, a.queueHistory, a.busyHistory))
+		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.cpuHistory, a.rpsHistory, a.rssHistory, a.queueHistory, a.busyHistory, a.hasFrankenPHP))
 		parts = append(parts, helpStyle.Width(listWidth).Render(" "+helpKeyStyle.Render("g/Esc")+" back  "+helpKeyStyle.Render("q")+" quit"))
 	} else {
 		if filterLine != "" {
 			parts = append(parts, filterLine)
 		}
-		parts = append(parts, workerList)
+		parts = append(parts, contentList)
 		if statusLine != "" {
 			parts = append(parts, statusLine)
 		}
@@ -235,7 +298,16 @@ func (a *App) View() string {
 	base := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	if a.mode == viewDetail {
-		if t, ok := a.selectedThread(); ok {
+		if a.activeTab == TabCaddy {
+			if h, ok := a.selectedHost(); ok {
+				if sidePanel {
+					panel := renderHostDetailPanel(h, panelWidth, a.height)
+					return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
+				}
+				panel := renderHostDetailPanel(h, a.width, detailPanelHeight+6)
+				return lipgloss.JoinVertical(lipgloss.Left, base, panel)
+			}
+		} else if t, ok := a.selectedThread(); ok {
 			if sidePanel {
 				panel := renderDetailPanel(t, panelWidth, a.height)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
@@ -281,6 +353,19 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return a, tea.Quit
+	case "tab":
+		a.nextTab()
+		return a, nil
+	case "1":
+		if len(a.tabs) > 0 {
+			a.switchTab(a.tabs[0])
+		}
+		return a, nil
+	case "2":
+		if len(a.tabs) > 1 {
+			a.switchTab(a.tabs[1])
+		}
+		return a, nil
 	case "up", "k":
 		if a.cursor > 0 {
 			a.cursor--
@@ -289,15 +374,25 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.cursor++
 		a.clampCursor()
 	case "s":
-		a.sortBy = a.sortBy.Next()
+		if a.activeTab == TabCaddy {
+			a.hostSortBy = a.hostSortBy.Next()
+		} else {
+			a.sortBy = a.sortBy.Next()
+		}
 	case "S":
-		a.sortBy = a.sortBy.Prev()
+		if a.activeTab == TabCaddy {
+			a.hostSortBy = a.hostSortBy.Prev()
+		} else {
+			a.sortBy = a.sortBy.Prev()
+		}
 	case "p":
 		a.paused = !a.paused
 	case "enter":
 		a.mode = viewDetail
 	case "r":
-		a.mode = viewConfirmRestart
+		if a.activeTab == TabFrankenPHP {
+			a.mode = viewConfirmRestart
+		}
 	case "/":
 		a.mode = viewFilter
 		a.filter = ""
@@ -320,7 +415,9 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.cursor++
 		a.clampCursor()
 	case "r":
-		a.mode = viewConfirmRestart
+		if a.activeTab == TabFrankenPHP {
+			a.mode = viewConfirmRestart
+		}
 	}
 	return a, nil
 }
@@ -380,6 +477,21 @@ func (a *App) filteredThreads() []fetcher.ThreadDebugState {
 	return result
 }
 
+func (a *App) filteredHosts() []model.HostDerived {
+	hosts := sortHosts(a.state.HostDerived, a.hostSortBy)
+	if a.filter == "" {
+		return hosts
+	}
+	f := strings.ToLower(a.filter)
+	var result []model.HostDerived
+	for _, h := range hosts {
+		if strings.Contains(strings.ToLower(h.Host), f) {
+			result = append(result, h)
+		}
+	}
+	return result
+}
+
 func (a *App) selectedThread() (fetcher.ThreadDebugState, bool) {
 	threads := a.filteredThreads()
 	if a.cursor >= 0 && a.cursor < len(threads) {
@@ -388,9 +500,23 @@ func (a *App) selectedThread() (fetcher.ThreadDebugState, bool) {
 	return fetcher.ThreadDebugState{}, false
 }
 
+func (a *App) selectedHost() (model.HostDerived, bool) {
+	hosts := a.filteredHosts()
+	if a.cursor >= 0 && a.cursor < len(hosts) {
+		return hosts[a.cursor], true
+	}
+	return model.HostDerived{}, false
+}
+
 func (a *App) clampCursor() {
-	threads := a.filteredThreads()
-	maximum := len(threads) - 1
+	var count int
+	switch a.activeTab {
+	case TabCaddy:
+		count = len(a.filteredHosts())
+	default:
+		count = len(a.filteredThreads())
+	}
+	maximum := count - 1
 	if maximum < 0 {
 		maximum = 0
 	}

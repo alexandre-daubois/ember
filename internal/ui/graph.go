@@ -17,13 +17,17 @@ type graphPanel struct {
 
 const graphPanelHeight = 8
 
-func renderGraphPanels(width, height int, cpu, rps, rss, queue, busy []float64) string {
+func renderGraphPanels(width, height int, cpu, rps, rss, queue, busy []float64, hasFrankenPHP bool) string {
 	panels := []graphPanel{
 		{title: "CPU", unit: "%", values: cpu, color: asciigraph.Red},
 		{title: "RPS", unit: "req/s", values: rps, color: asciigraph.Yellow},
 		{title: "RSS", unit: "MB", values: rss, color: asciigraph.DarkGoldenrod},
-		{title: "Queue", unit: "", values: queue, color: asciigraph.Red},
-		{title: "Busy Threads", unit: "", values: busy, color: asciigraph.Coral},
+	}
+	if hasFrankenPHP {
+		panels = append(panels,
+			graphPanel{title: "Queue", unit: "", values: queue, color: asciigraph.Red},
+			graphPanel{title: "Busy Threads", unit: "", values: busy, color: asciigraph.Coral},
+		)
 	}
 
 	colWidth := width / 2

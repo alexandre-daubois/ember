@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,9 +21,11 @@ const (
 )
 
 type HTTPFetcher struct {
-	baseURL    string
-	httpClient *http.Client
-	procHandle *processHandle
+	baseURL       string
+	httpClient    *http.Client
+	procHandle    *processHandle
+	hasFrankenPHP bool
+	serverNames   []string
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
@@ -40,6 +43,66 @@ func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 	}
 }
 
+func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/frankenphp/threads", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	f.hasFrankenPHP = resp.StatusCode == http.StatusOK
+	return f.hasFrankenPHP
+}
+
+func (f *HTTPFetcher) HasFrankenPHP() bool {
+	return f.hasFrankenPHP
+}
+
+func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/config/apps/http/servers", nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var servers map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
+		return nil
+	}
+
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	f.serverNames = names
+	return names
+}
+
+func (f *HTTPFetcher) ServerNames() []string {
+	return f.serverNames
+}
+
 func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	var (
 		threads ThreadsResponse
@@ -51,17 +114,19 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		t, err := f.fetchThreads(ctx)
-		if err != nil {
-			mu.Lock()
-			errs = append(errs, err.Error())
-			mu.Unlock()
+	if f.hasFrankenPHP {
+		g.Go(func() error {
+			t, err := f.fetchThreads(ctx)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err.Error())
+				mu.Unlock()
+				return nil
+			}
+			threads = t
 			return nil
-		}
-		threads = t
-		return nil
-	})
+		})
+	}
 
 	g.Go(func() error {
 		m, err := f.fetchMetrics(ctx)
@@ -88,6 +153,19 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	})
 
 	_ = g.Wait()
+
+	// Seed known server names as empty host entries so they appear immediately
+	if len(f.serverNames) > 0 && metrics.Hosts != nil {
+		for _, name := range f.serverNames {
+			if _, ok := metrics.Hosts[name]; !ok {
+				metrics.Hosts[name] = &HostMetrics{
+					Host:        name,
+					StatusCodes: make(map[int]float64),
+					Methods:     make(map[string]float64),
+				}
+			}
+		}
+	}
 
 	return &Snapshot{
 		Threads:   threads,

@@ -123,26 +123,19 @@ func TestFormatThreadRow_SelectedOverridesZebra(t *testing.T) {
 	assert.Contains(t, selected, ">")
 }
 
-func TestRenderWorkerList_CountBadge(t *testing.T) {
+func TestRenderWorkerList_Header(t *testing.T) {
 	threads := []fetcher.ThreadDebugState{
 		{Index: 0, IsWaiting: true},
 		{Index: 1, IsWaiting: true},
 		{Index: 2, IsWaiting: true},
 	}
-	out := renderWorkerListFromThreads(threads, 0, 120, model.SortByIndex, renderOpts{}, 3)
-	assert.Contains(t, out, "[3]")
-}
-
-func TestRenderWorkerList_CountBadgeFiltered(t *testing.T) {
-	threads := []fetcher.ThreadDebugState{
-		{Index: 0, IsWaiting: true},
-	}
-	out := renderWorkerListFromThreads(threads, 0, 120, model.SortByIndex, renderOpts{}, 5)
-	assert.Contains(t, out, "[1/5]")
+	out := renderWorkerListFromThreads(threads, 0, 120, model.SortByIndex, renderOpts{})
+	assert.Contains(t, out, "#")
+	assert.Contains(t, out, "State")
 }
 
 func TestRenderWorkerList_Empty(t *testing.T) {
-	out := renderWorkerListFromThreads(nil, 0, 120, model.SortByIndex, renderOpts{}, 0)
+	out := renderWorkerListFromThreads(nil, 0, 120, model.SortByIndex, renderOpts{})
 	assert.Contains(t, out, "No threads")
 }
 

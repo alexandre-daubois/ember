@@ -6,7 +6,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
-	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -126,62 +125,6 @@ func TestRenderThreadBar_WidthMatchesMax(t *testing.T) {
 	plain := stripANSI(bar)
 	// [  +  30 bar chars  +  ] = 32
 	assert.Equal(t, 32, utf8.RuneCountInString(plain))
-}
-
-func TestRenderDashboard_ShowsPercentiles(t *testing.T) {
-	s := &model.State{
-		Current: &fetcher.Snapshot{
-			Threads: fetcher.ThreadsResponse{
-				ThreadDebugStates: []fetcher.ThreadDebugState{
-					{Index: 0, IsWaiting: true, Name: "Regular PHP Thread"},
-				},
-			},
-			Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
-		},
-		Derived: model.DerivedMetrics{
-			HasPercentiles: true,
-			P50:            12.3,
-			P95:            89.5,
-			P99:            234.1,
-			TotalIdle:      1,
-		},
-	}
-	out := stripANSI(renderDashboard(s, 100, "test", nil, nil, false))
-	assert.Contains(t, out, "P50")
-	assert.Contains(t, out, "12.3ms")
-	assert.Contains(t, out, "P95")
-	assert.Contains(t, out, "89.5ms")
-	assert.Contains(t, out, "P99")
-	assert.Contains(t, out, "234.1ms")
-}
-
-func TestRenderDashboard_HidesPercentilesWhenNoData(t *testing.T) {
-	s := &model.State{
-		Current: &fetcher.Snapshot{
-			Threads: fetcher.ThreadsResponse{
-				ThreadDebugStates: []fetcher.ThreadDebugState{
-					{Index: 0, IsWaiting: true, Name: "Regular PHP Thread"},
-				},
-			},
-			Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
-		},
-		Derived: model.DerivedMetrics{
-			HasPercentiles: false,
-			TotalIdle:      1,
-		},
-	}
-	out := stripANSI(renderDashboard(s, 100, "test", nil, nil, false))
-	assert.NotContains(t, out, "P50")
-	assert.NotContains(t, out, "P95")
-	assert.NotContains(t, out, "P99")
-}
-
-func TestFormatPercentile_ColorCoding(t *testing.T) {
-	low := stripANSI(formatPercentile(100.0))
-	assert.Contains(t, low, "100.0ms")
-
-	high := stripANSI(formatPercentile(1500.0))
-	assert.Contains(t, high, "1500.0ms")
 }
 
 func stripANSI(s string) string {
