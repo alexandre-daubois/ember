@@ -142,7 +142,6 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool) 
 		style = zebraStyle
 	}
 
-	// Color the status code columns
 	styled4xx := part4xx
 	styled5xx := part5xx
 	if sum4xx > 0 {

@@ -20,6 +20,16 @@ func TestRenderGraphPanels_ContainsAllPanelTitles(t *testing.T) {
 	}
 }
 
+func TestRenderGraphPanels_WithoutFrankenPHP(t *testing.T) {
+	data := []float64{1, 2, 3, 4, 5}
+	out := renderGraphPanels(120, 50, data, data, data, data, data, false)
+	assert.Contains(t, out, "CPU")
+	assert.Contains(t, out, "RPS")
+	assert.Contains(t, out, "RSS")
+	assert.NotContains(t, out, "Queue")
+	assert.NotContains(t, out, "Busy Threads")
+}
+
 func TestRenderGraphPanels_NarrowTerminal(t *testing.T) {
 	data := []float64{1, 2, 3}
 	out := renderGraphPanels(30, 20, data, data, data, data, data, true)

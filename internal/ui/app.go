@@ -115,6 +115,7 @@ func (a *App) switchTab(target Tab) {
 	ts = a.tabStates[target]
 	a.cursor = ts.cursor
 	a.filter = ts.filter
+	a.clampCursor()
 	a.mode = viewList
 }
 

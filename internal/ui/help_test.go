@@ -36,6 +36,15 @@ func TestRenderHelp_RespectsWidth(t *testing.T) {
 	assert.Equal(t, 200, lipgloss.Width(out))
 }
 
+func TestRenderHelp_CaddyTab(t *testing.T) {
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, TabCaddy))
+	assert.Contains(t, out, "sort(host)")
+	assert.NotContains(t, out, "restart")
+	assert.Contains(t, out, "navigate")
+	assert.Contains(t, out, "filter")
+	assert.Contains(t, out, "quit")
+}
+
 func TestRenderHelp_SeparatorsPresent(t *testing.T) {
 	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, TabFrankenPHP))
 	assert.Contains(t, out, "·")
