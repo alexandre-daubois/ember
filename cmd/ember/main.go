@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/alexandredaubois/ember/internal/exporter"
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/alexandredaubois/ember/internal/ui"
@@ -23,6 +25,8 @@ type Config struct {
 	NoColor       bool
 	JSONMode      bool
 	PID           int
+	Expose        string
+	Daemon        bool
 }
 
 var version = "1.0.0-dev"
@@ -36,12 +40,19 @@ func main() {
 	flag.BoolVar(&cfg.NoColor, "no-color", false, "disable colors")
 	flag.BoolVar(&cfg.JSONMode, "json", false, "JSON output mode")
 	flag.IntVar(&cfg.PID, "pid", 0, "FrankenPHP process PID (auto-detected if not set)")
+	flag.StringVar(&cfg.Expose, "expose", "", "expose Prometheus metrics on address (e.g. :9191)")
+	flag.BoolVar(&cfg.Daemon, "daemon", false, "run in daemon mode (no TUI, requires --expose)")
 	showVersion := flag.Bool("version", false, "show version")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("ember %s\n", version)
 		return
+	}
+
+	if cfg.Daemon && cfg.Expose == "" {
+		fmt.Fprintf(os.Stderr, "error: --daemon requires --expose\n")
+		os.Exit(1)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -52,7 +63,7 @@ func main() {
 		detected, err := fetcher.FindFrankenPHPProcess(ctx)
 		if err != nil {
 			detected, err = fetcher.FindCaddyProcess(ctx)
-			if err != nil && cfg.JSONMode {
+			if err != nil && (cfg.JSONMode || cfg.Daemon) {
 				fmt.Fprintf(os.Stderr, "warning: no frankenphp or caddy process found\n")
 			}
 		}
@@ -65,22 +76,99 @@ func main() {
 	hasFrankenPHP := f.DetectFrankenPHP(ctx)
 	f.FetchServerNames(ctx)
 
-	if cfg.JSONMode {
+	switch {
+	case cfg.JSONMode:
 		runJSON(ctx, f, cfg.Interval)
-		return
+	case cfg.Daemon:
+		runDaemon(ctx, f, cfg)
+	default:
+		runTUI(ctx, f, cfg, hasFrankenPHP)
 	}
+}
 
-	app := ui.NewApp(f, ui.Config{
+func runTUI(ctx context.Context, f *fetcher.HTTPFetcher, cfg Config, hasFrankenPHP bool) {
+	uiCfg := ui.Config{
 		Interval:      cfg.Interval,
 		SlowThreshold: time.Duration(cfg.SlowThreshold) * time.Millisecond,
 		NoColor:       cfg.NoColor,
 		Version:       version,
 		HasFrankenPHP: hasFrankenPHP,
-	})
+	}
+
+	var srv *http.Server
+	if cfg.Expose != "" {
+		holder := &exporter.StateHolder{}
+		uiCfg.OnStateUpdate = func(s model.State) {
+			holder.Store(s)
+		}
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/metrics", exporter.Handler(holder))
+		srv = &http.Server{Addr: cfg.Expose, Handler: mux}
+
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
+			}
+		}()
+	}
+
+	app := ui.NewApp(f, uiCfg)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if srv != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		srv.Shutdown(shutdownCtx)
+	}
+}
+
+func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg Config) {
+	holder := &exporter.StateHolder{}
+	var state model.State
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	srv := &http.Server{Addr: cfg.Expose, Handler: mux}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
+			os.Exit(1)
+		}
+	}()
+
+	fmt.Fprintf(os.Stderr, "ember daemon: exposing metrics on %s/metrics\n", cfg.Expose)
+
+	poll := func() {
+		snap, err := f.Fetch(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return
+		}
+		state.Update(snap)
+		holder.Store(state)
+	}
+
+	poll()
+
+	ticker := time.NewTicker(cfg.Interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			srv.Shutdown(shutdownCtx)
+			return
+		case <-ticker.C:
+			poll()
+		}
 	}
 }
 

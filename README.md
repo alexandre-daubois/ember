@@ -24,6 +24,13 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 - Detail panel with per-thread info and memory sparkline trend
 - Memory delta indicators (↑/↓) per thread between polls
 
+### Cloud Ready with Prometheus Export & Daemon Mode
+
+- `--expose=:9191` starts a `/metrics` endpoint exposing FrankenPHP metrics in Prometheus format
+- `--daemon` runs headless (no TUI)
+- Exposes thread state, per-thread memory, worker crashes/restarts/queue, request duration percentiles, and process CPU/RSS
+- Works alongside the TUI (`--expose` without `--daemon`) or standalone
+
 ### General
 
 - Tab-based navigation between Caddy and FrankenPHP views
@@ -74,7 +81,9 @@ Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In
 --addr string    Caddy admin API address (default "http://localhost:2019")
 --interval dur   Polling interval (default 1s)
 --pid int        FrankenPHP PID (auto-detected if not set)
---json           JSON output mode (for scripting)
+--json           JSON output mode (streaming JSONL)
+--expose addr    Expose Prometheus metrics (e.g. --expose=:9191)
+--daemon         Headless mode (requires --expose)
 --no-color       Disable colors
 ```
 
