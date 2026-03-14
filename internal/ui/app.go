@@ -29,6 +29,7 @@ type Config struct {
 	NoColor       bool
 	Version       string
 	HasFrankenPHP bool
+	OnStateUpdate func(model.State)
 }
 
 type Tab int
@@ -214,6 +215,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					a.memHistory[t.Index] = h
 				}
+			}
+
+			if a.config.OnStateUpdate != nil {
+				a.config.OnStateUpdate(a.state)
 			}
 		}
 		return a, nil

@@ -351,6 +351,48 @@ func TestPrevThreadMemory_NilWhenNoPrevious(t *testing.T) {
 	assert.Nil(t, app.prevThreadMemory())
 }
 
+func TestOnStateUpdate_CalledOnFetch(t *testing.T) {
+	var called bool
+	app := &App{
+		memHistory: make(map[int][]int64),
+		config: Config{
+			OnStateUpdate: func(s model.State) {
+				called = true
+			},
+		},
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	snap := &fetcher.Snapshot{
+		Threads:   fetcher.ThreadsResponse{ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0}}},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now(),
+	}
+	app.Update(fetchMsg{snap: snap})
+
+	assert.True(t, called, "OnStateUpdate should be called after fetchMsg")
+}
+
+func TestOnStateUpdate_NotCalledWhenNil(t *testing.T) {
+	app := &App{
+		memHistory: make(map[int][]int64),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	snap := &fetcher.Snapshot{
+		Threads:   fetcher.ThreadsResponse{ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0}}},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now(),
+	}
+	assert.NotPanics(t, func() {
+		app.Update(fetchMsg{snap: snap})
+	})
+}
+
 func TestFilteredThreads_Sorted(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{
 		{Index: 2, Name: "Thread 2"},
