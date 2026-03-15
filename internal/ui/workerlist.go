@@ -292,6 +292,9 @@ func stateOrder(t fetcher.ThreadDebugState) int {
 }
 
 func formatNumber(n int64) string {
+	if n < 0 {
+		return "-" + formatNumber(-n)
+	}
 	s := fmt.Sprintf("%d", n)
 	if len(s) <= 3 {
 		return s

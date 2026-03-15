@@ -1,0 +1,45 @@
+package app
+
+import (
+	"fmt"
+	"io"
+)
+
+func printUsage(w io.Writer, version string) {
+	fmt.Fprintf(w, "Ember %s — Real-time TUI dashboard for Caddy & FrankenPHP\n\n", version)
+	fmt.Fprintln(w, "Usage: ember [options]")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Options:")
+	fmt.Fprintln(w, "  --addr string        Caddy admin API address (default \"http://localhost:2019\")")
+	fmt.Fprintln(w, "  --interval dur       Polling interval (default 1s)")
+	fmt.Fprintln(w, "  --slow-threshold ms  Slow request threshold (default 500)")
+	fmt.Fprintln(w, "  --pid int            FrankenPHP PID (auto-detected if not set)")
+	fmt.Fprintln(w, "  --json               JSON output mode (streaming JSONL)")
+	fmt.Fprintln(w, "  --expose addr        Expose Prometheus metrics (e.g. --expose=:9191)")
+	fmt.Fprintln(w, "  --daemon             Headless mode (requires --expose)")
+	fmt.Fprintln(w, "  --no-color           Disable colors")
+	fmt.Fprintln(w, "  --version            Show version")
+	fmt.Fprintln(w, "  --completion shell   Generate shell completions (bash, zsh, fish)")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Keybindings:")
+	fmt.Fprintln(w, "  Tab / 1 / 2      Switch between Caddy and FrankenPHP tabs")
+	fmt.Fprintln(w, "  Up / Down        Navigate list")
+	fmt.Fprintln(w, "  Home / End       Jump to first / last item")
+	fmt.Fprintln(w, "  PgUp / PgDn      Page navigation")
+	fmt.Fprintln(w, "  Enter            Open detail panel")
+	fmt.Fprintln(w, "  s / S            Cycle sort field")
+	fmt.Fprintln(w, "  p                Pause / resume")
+	fmt.Fprintln(w, "  r                Restart workers (FrankenPHP)")
+	fmt.Fprintln(w, "  /                Filter")
+	fmt.Fprintln(w, "  g                Full-screen graphs")
+	fmt.Fprintln(w, "  ?                Help overlay")
+	fmt.Fprintln(w, "  q                Quit")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Examples:")
+	fmt.Fprintln(w, "  ember                                  # default: localhost:2019")
+	fmt.Fprintln(w, "  ember --addr http://prod:2019           # custom address")
+	fmt.Fprintln(w, "  ember --json                            # pipe-friendly JSON output")
+	fmt.Fprintln(w, "  ember --expose :9191                    # TUI + Prometheus endpoint")
+	fmt.Fprintln(w, "  ember --expose :9191 --daemon           # headless metrics exporter")
+	fmt.Fprintln(w, "  ember --completion bash > /etc/bash_completion.d/ember")
+}

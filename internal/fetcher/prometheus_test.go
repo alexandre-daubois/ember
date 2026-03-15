@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -394,6 +395,49 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 	require.NotNil(t, api)
 	assert.Equal(t, float64(30), api.Methods["GET"])
 	assert.Equal(t, float64(10), api.Methods["PUT"])
+}
+
+func TestSortBuckets(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		var buckets []HistogramBucket
+		sortBuckets(buckets)
+		assert.Empty(t, buckets)
+	})
+
+	t.Run("single element", func(t *testing.T) {
+		buckets := []HistogramBucket{{UpperBound: 0.5, CumulativeCount: 10}}
+		sortBuckets(buckets)
+		require.Len(t, buckets, 1)
+		assert.Equal(t, 0.5, buckets[0].UpperBound)
+	})
+
+	t.Run("already sorted", func(t *testing.T) {
+		buckets := []HistogramBucket{
+			{UpperBound: 0.005, CumulativeCount: 10},
+			{UpperBound: 0.01, CumulativeCount: 20},
+			{UpperBound: 0.1, CumulativeCount: 50},
+			{UpperBound: math.Inf(1), CumulativeCount: 100},
+		}
+		sortBuckets(buckets)
+		assert.Equal(t, 0.005, buckets[0].UpperBound)
+		assert.Equal(t, 0.01, buckets[1].UpperBound)
+		assert.Equal(t, 0.1, buckets[2].UpperBound)
+		assert.True(t, math.IsInf(buckets[3].UpperBound, 1))
+	})
+
+	t.Run("unsorted", func(t *testing.T) {
+		buckets := []HistogramBucket{
+			{UpperBound: math.Inf(1), CumulativeCount: 100},
+			{UpperBound: 0.01, CumulativeCount: 20},
+			{UpperBound: 0.1, CumulativeCount: 50},
+			{UpperBound: 0.005, CumulativeCount: 10},
+		}
+		sortBuckets(buckets)
+		assert.Equal(t, 0.005, buckets[0].UpperBound)
+		assert.Equal(t, 0.01, buckets[1].UpperBound)
+		assert.Equal(t, 0.1, buckets[2].UpperBound)
+		assert.True(t, math.IsInf(buckets[3].UpperBound, 1))
+	})
 }
 
 func TestPerHostMetrics_ResponseSizeExtraction(t *testing.T) {

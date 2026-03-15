@@ -8,6 +8,8 @@ import (
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
 	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/prometheus/common/expfmt"
+	prommodel "github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -174,6 +176,39 @@ func TestEscapeLabelValue(t *testing.T) {
 	assert.Equal(t, `path\\to\\file`, escapeLabelValue(`path\to\file`))
 	assert.Equal(t, `say \"hi\"`, escapeLabelValue(`say "hi"`))
 	assert.Equal(t, `line1\nline2`, escapeLabelValue("line1\nline2"))
+}
+
+func TestHandler_RoundTrip_ValidPrometheus(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsBusy: true, MemoryUsage: 10 * 1024 * 1024},
+		{Index: 1, IsWaiting: true},
+		{Index: 2, MemoryUsage: 5 * 1024 * 1024},
+	}
+	workers := map[string]*fetcher.WorkerMetrics{
+		"/app/worker.php": {Crashes: 2, Restarts: 5, QueueDepth: 1, RequestCount: 10000},
+	}
+	s := stateWithThreads(threads, workers)
+	s.Derived.HasPercentiles = true
+	s.Derived.P50 = 12.5
+	s.Derived.P95 = 45.0
+	s.Derived.P99 = 120.3
+
+	holder := &StateHolder{}
+	holder.Store(s)
+
+	rec := get(holder)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(rec.Body)
+	require.NoError(t, err, "output must be valid Prometheus text format")
+
+	assert.Contains(t, families, "frankenphp_threads_total")
+	assert.Contains(t, families, "frankenphp_thread_memory_bytes")
+	assert.Contains(t, families, "frankenphp_worker_crashes_total")
+	assert.Contains(t, families, "frankenphp_request_duration_milliseconds")
+	assert.Contains(t, families, "process_cpu_percent")
+	assert.Contains(t, families, "process_rss_bytes")
 }
 
 func TestHandler_WorkerMetrics_SortedDeterministic(t *testing.T) {

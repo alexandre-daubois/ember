@@ -7,5 +7,6 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /ember ./cmd/ember
 
 FROM scratch
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /ember /ember
 ENTRYPOINT ["/ember"]

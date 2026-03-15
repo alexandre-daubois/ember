@@ -118,6 +118,12 @@ func histogramData(families map[string]*dto.MetricFamily, name string) (float64,
 	for ub, count := range bucketMap {
 		buckets = append(buckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 	}
+	sortBuckets(buckets)
+
+	return sumTotal, countTotal, buckets
+}
+
+func sortBuckets(buckets []HistogramBucket) {
 	slices.SortFunc(buckets, func(a, b HistogramBucket) int {
 		if a.UpperBound < b.UpperBound {
 			return -1
@@ -127,8 +133,6 @@ func histogramData(families map[string]*dto.MetricFamily, name string) (float64,
 		}
 		return 0
 	})
-
-	return sumTotal, countTotal, buckets
 }
 
 func scalarValue(families map[string]*dto.MetricFamily, name string) float64 {
@@ -247,6 +251,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		}
 	}
 
+	bucketMaps := make(map[string]map[float64]float64)
 	if fam, ok := families["caddy_http_request_duration_seconds"]; ok {
 		for _, m := range fam.GetMetric() {
 			host := hostOrServer(m)
@@ -270,23 +275,22 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 				}
 			}
 
+			if bucketMaps[host] == nil {
+				bucketMaps[host] = make(map[float64]float64)
+			}
 			for _, b := range h.GetBucket() {
-				found := false
-				for i := range hm.DurationBuckets {
-					if hm.DurationBuckets[i].UpperBound == b.GetUpperBound() {
-						hm.DurationBuckets[i].CumulativeCount += float64(b.GetCumulativeCount())
-						found = true
-						break
-					}
-				}
-				if !found {
-					hm.DurationBuckets = append(hm.DurationBuckets, HistogramBucket{
-						UpperBound:      b.GetUpperBound(),
-						CumulativeCount: float64(b.GetCumulativeCount()),
-					})
-				}
+				bucketMaps[host][b.GetUpperBound()] += float64(b.GetCumulativeCount())
 			}
 		}
+	}
+
+	for host, bm := range bucketMaps {
+		hm := hosts[host]
+		hm.DurationBuckets = make([]HistogramBucket, 0, len(bm))
+		for ub, count := range bm {
+			hm.DurationBuckets = append(hm.DurationBuckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
+		}
+		sortBuckets(hm.DurationBuckets)
 	}
 
 	if fam, ok := families["caddy_http_response_size_bytes"]; ok {
@@ -313,18 +317,6 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 			}
 			getOrCreate(host).InFlight += metricValue(m)
 		}
-	}
-
-	for _, hm := range hosts {
-		slices.SortFunc(hm.DurationBuckets, func(a, b HistogramBucket) int {
-			if a.UpperBound < b.UpperBound {
-				return -1
-			}
-			if a.UpperBound > b.UpperBound {
-				return 1
-			}
-			return 0
-		})
 	}
 
 	return hosts

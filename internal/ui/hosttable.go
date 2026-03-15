@@ -10,16 +10,17 @@ import (
 )
 
 const (
-	colHostRPS      = 8
-	colHostAvg      = 10
-	colHostP90      = 10
-	colHostP95      = 10
-	colHostP99      = 10
-	colHostInFlight = 10
-	colHost2xx      = 8
-	colHost4xx      = 8
-	colHost5xx      = 8
-	colHostFixed    = 1 + colHostRPS + colHostAvg + colHostP90 + colHostP95 + colHostP99 + colHostInFlight + colHost2xx + colHost4xx + colHost5xx
+	colHostRPS       = 8
+	colHostSparkline = 8
+	colHostAvg       = 10
+	colHostP90       = 10
+	colHostP95       = 10
+	colHostP99       = 10
+	colHostInFlight  = 10
+	colHost2xx       = 8
+	colHost4xx       = 8
+	colHost5xx       = 8
+	colHostFixed     = 1 + colHostRPS + colHostSparkline + colHostAvg + colHostP90 + colHostP95 + colHostP99 + colHostInFlight + colHost2xx + colHost4xx + colHost5xx
 )
 
 func hostNameWidth(totalWidth int) int {
@@ -32,7 +33,7 @@ func hostNameWidth(totalWidth int) int {
 
 const minHostRows = 10
 
-func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy model.HostSortField) string {
+func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy model.HostSortField, hostRPS map[string][]float64) string {
 	hostW := hostNameWidth(width)
 
 	colHead := func(label string, field model.HostSortField, w int, right bool) string {
@@ -45,9 +46,10 @@ func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy mo
 		return fmt.Sprintf("%-*s", w, label)
 	}
 
-	header := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
+	header := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
 		hostW, colHead("Host", model.SortByHost, hostW, false),
 		colHostRPS, colHead("RPS", model.SortByHostRPS, colHostRPS, true),
+		colHostSparkline, "",
 		colHostAvg, colHead("Avg", model.SortByHostAvg, colHostAvg, true),
 		colHostP90, colHead("P90", model.SortByHostP90, colHostP90, true),
 		colHostP95, colHead("P95", model.SortByHostP95, colHostP95, true),
@@ -62,12 +64,12 @@ func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy mo
 
 	var rows []string
 	for i, h := range hosts {
-		rows = append(rows, formatHostRow(h, width, hostW, i == cursor, i%2 == 1))
+		rows = append(rows, formatHostRow(h, width, hostW, i == cursor, i%2 == 1, hostRPS))
 	}
 
 	for i := len(hosts); i < minHostRows; i++ {
-		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
-			hostW, "", colHostRPS, "", colHostAvg, "", colHostP90, "",
+		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
+			hostW, "", colHostRPS, "", colHostSparkline, "", colHostAvg, "", colHostP90, "",
 			colHostP95, "", colHostP99, "", colHostInFlight, "",
 			colHost2xx, "", colHost4xx, "", colHost5xx, "")
 		style := lipgloss.NewStyle()
@@ -81,7 +83,7 @@ func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy mo
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 
-func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool) string {
+func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, hostRPS map[string][]float64) string {
 	host := h.Host
 	if host == "*" {
 		host = "* (All traffic)"
@@ -123,6 +125,8 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool) 
 
 	hostPart := fmt.Sprintf("%s%-*s", prefix, hostW, host)
 	rpsPart := fmt.Sprintf("%*s", colHostRPS, rpsStr)
+	sparkStr := renderSparkline(hostRPS[h.Host], colHostSparkline)
+	sparkRaw := renderSparklineRaw(hostRPS[h.Host], colHostSparkline)
 	avgPart := fmt.Sprintf("%*s", colHostAvg, avgStr)
 	p90Part := fmt.Sprintf("%*s", colHostP90, p90Str)
 	p95Part := fmt.Sprintf("%*s", colHostP95, p95Str)
@@ -133,7 +137,7 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool) 
 	part5xx := fmt.Sprintf("%*s", colHost5xx, s5xx)
 
 	if selected {
-		row := hostPart + rpsPart + avgPart + p90Part + p95Part + p99Part + inflPart + part2xx + part4xx + part5xx
+		row := hostPart + rpsPart + sparkRaw + avgPart + p90Part + p95Part + p99Part + inflPart + part2xx + part4xx + part5xx
 		return selectedRowStyle.Width(width).Render(row)
 	}
 
@@ -153,6 +157,7 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool) 
 
 	row := style.Render(hostPart) +
 		style.Render(rpsPart) +
+		sparkStr +
 		style.Render(avgPart) +
 		style.Render(p90Part) +
 		style.Render(p95Part) +

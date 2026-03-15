@@ -1030,3 +1030,66 @@ func TestState_Update_DerivedP90FromHistogram(t *testing.T) {
 	assert.True(t, s.Derived.P90 >= s.Derived.P50, "P90 >= P50")
 	assert.True(t, s.Derived.P95 >= s.Derived.P90, "P95 >= P90")
 }
+
+func TestState_CopyForExport_NilsPercentiles(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Threads: dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	var s State
+	s.Update(snap)
+	require.NotNil(t, s.Percentiles)
+
+	cp := s.CopyForExport()
+	assert.Nil(t, cp.Percentiles, "CopyForExport should nil out Percentiles")
+	assert.NotNil(t, s.Percentiles, "original should keep its Percentiles")
+}
+
+func TestState_CopyForExport_CopiesHostDerived(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-2 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"a.com": {Host: "a.com", DurationCount: 10, DurationSum: 1, StatusCodes: map[int]float64{}},
+			},
+		},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"a.com": {Host: "a.com", DurationCount: 20, DurationSum: 2, StatusCodes: map[int]float64{}},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	cp := s.CopyForExport()
+	require.Len(t, cp.HostDerived, 1)
+	assert.Equal(t, "a.com", cp.HostDerived[0].Host)
+
+	// Mutating the copy should not affect the original
+	cp.HostDerived[0].Host = "mutated.com"
+	assert.Equal(t, "a.com", s.HostDerived[0].Host)
+}
+
+func TestState_CopyForExport_NilHostDerived(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	var s State
+	s.Update(snap)
+	assert.Nil(t, s.HostDerived)
+
+	cp := s.CopyForExport()
+	assert.Nil(t, cp.HostDerived)
+}

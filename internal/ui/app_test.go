@@ -22,6 +22,7 @@ func newAppWithThreads(threads []fetcher.ThreadDebugState) *App {
 		tabs:          []Tab{TabCaddy, TabFrankenPHP},
 		tabStates:     map[Tab]*tabState{TabCaddy: {}, TabFrankenPHP: {}},
 		hasFrankenPHP: true,
+		history:       newHistoryStore(),
 	}
 	app.state.Update(snap)
 	return app
@@ -264,7 +265,7 @@ func TestMemHistory_PopulatedOnFetch(t *testing.T) {
 		FetchedAt: time.Now(),
 	}
 	app := &App{
-		memHistory: make(map[int][]int64),
+		history: newHistoryStore(),
 	}
 	app.state.Update(&fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
@@ -272,15 +273,15 @@ func TestMemHistory_PopulatedOnFetch(t *testing.T) {
 
 	app.Update(fetchMsg{snap: snap})
 
-	assert.Len(t, app.memHistory[0], 1)
-	assert.Len(t, app.memHistory[1], 1)
-	assert.Equal(t, int64(5*1024*1024), app.memHistory[0][0])
-	assert.Equal(t, int64(10*1024*1024), app.memHistory[1][0])
+	assert.Len(t, app.history.mem[0], 1)
+	assert.Len(t, app.history.mem[1], 1)
+	assert.Equal(t, int64(5*1024*1024), app.history.mem[0][0])
+	assert.Equal(t, int64(10*1024*1024), app.history.mem[1][0])
 }
 
 func TestMemHistory_CappedAtMax(t *testing.T) {
 	app := &App{
-		memHistory: make(map[int][]int64),
+		history: newHistoryStore(),
 	}
 	app.state.Update(&fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
@@ -299,12 +300,12 @@ func TestMemHistory_CappedAtMax(t *testing.T) {
 		app.Update(fetchMsg{snap: snap})
 	}
 
-	assert.Len(t, app.memHistory[0], memHistorySize)
+	assert.Len(t, app.history.mem[0], memHistorySize)
 }
 
 func TestMemHistory_SkipsZeroMemory(t *testing.T) {
 	app := &App{
-		memHistory: make(map[int][]int64),
+		history: newHistoryStore(),
 	}
 	app.state.Update(&fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
@@ -321,7 +322,7 @@ func TestMemHistory_SkipsZeroMemory(t *testing.T) {
 	}
 	app.Update(fetchMsg{snap: snap})
 
-	assert.Empty(t, app.memHistory[0])
+	assert.Empty(t, app.history.mem[0])
 }
 
 func TestPrevThreadMemory(t *testing.T) {
@@ -354,7 +355,7 @@ func TestPrevThreadMemory_NilWhenNoPrevious(t *testing.T) {
 func TestOnStateUpdate_CalledOnFetch(t *testing.T) {
 	var called bool
 	app := &App{
-		memHistory: make(map[int][]int64),
+		history: newHistoryStore(),
 		config: Config{
 			OnStateUpdate: func(s model.State) {
 				called = true
@@ -377,7 +378,7 @@ func TestOnStateUpdate_CalledOnFetch(t *testing.T) {
 
 func TestOnStateUpdate_NotCalledWhenNil(t *testing.T) {
 	app := &App{
-		memHistory: make(map[int][]int64),
+		history: newHistoryStore(),
 	}
 	app.state.Update(&fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
@@ -405,4 +406,191 @@ func TestFilteredThreads_Sorted(t *testing.T) {
 	assert.Equal(t, 0, result[0].Index)
 	assert.Equal(t, 1, result[1].Index)
 	assert.Equal(t, 2, result[2].Index)
+}
+
+func TestEmptyFilterResults_FrankenPHP(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Worker PHP Thread"},
+		{Index: 1, Name: "Regular PHP Thread"},
+	})
+	app.filter = "xyz"
+	app.width = 120
+	app.height = 40
+
+	output := app.View()
+	assert.Contains(t, output, "No matches")
+}
+
+func TestEmptyFilterResults_Caddy(t *testing.T) {
+	app := &App{
+		activeTab:     TabCaddy,
+		tabs:          []Tab{TabCaddy},
+		tabStates:     map[Tab]*tabState{TabCaddy: {}},
+		hasFrankenPHP: false,
+		history:       newHistoryStore(),
+		width:         120,
+		height:        40,
+		filter:        "xyz",
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			HasHTTPMetrics: true,
+			Workers:        map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"example.com": {RequestsTotal: 100},
+			},
+		},
+	})
+
+	output := app.View()
+	assert.Contains(t, output, "No matches")
+}
+
+func TestHome_GoesToStart(t *testing.T) {
+	app := newAppWithThreads(make([]fetcher.ThreadDebugState, 10))
+	app.cursor = 5
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyHome})
+	assert.Equal(t, 0, app.cursor)
+}
+
+func TestEnd_GoesToEnd(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 10)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i}
+	}
+	app := newAppWithThreads(threads)
+	app.cursor = 0
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnd})
+	assert.Equal(t, 9, app.cursor)
+}
+
+func TestPgDown_MovesByPage(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 30)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i}
+	}
+	app := newAppWithThreads(threads)
+	app.cursor = 0
+	app.height = 20
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyPgDown})
+	assert.Equal(t, app.pageSize(), app.cursor)
+}
+
+func TestPgUp_ClampsToZero(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 10)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i}
+	}
+	app := newAppWithThreads(threads)
+	app.cursor = 3
+	app.height = 40
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyPgUp})
+	assert.Equal(t, 0, app.cursor)
+}
+
+func TestHome_DetailMode(t *testing.T) {
+	app := newAppWithThreads(make([]fetcher.ThreadDebugState, 10))
+	app.cursor = 5
+	app.mode = viewDetail
+
+	app.handleDetailKey(tea.KeyMsg{Type: tea.KeyHome})
+	assert.Equal(t, 0, app.cursor)
+}
+
+func TestEnd_DetailMode(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 10)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i}
+	}
+	app := newAppWithThreads(threads)
+	app.cursor = 0
+	app.mode = viewDetail
+
+	app.handleDetailKey(tea.KeyMsg{Type: tea.KeyEnd})
+	assert.Equal(t, 9, app.cursor)
+}
+
+func TestHelpToggle(t *testing.T) {
+	app := &App{mode: viewList}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	assert.Equal(t, viewHelp, app.mode, "pressing ? should switch to help view")
+	assert.Equal(t, viewList, app.prevMode, "prevMode should remember list")
+}
+
+func TestHelpEscReturns(t *testing.T) {
+	app := &App{mode: viewHelp, prevMode: viewList}
+
+	app.handleHelpKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "Esc should return to previous view")
+}
+
+func TestHelpFromDetailView(t *testing.T) {
+	app := &App{mode: viewDetail}
+
+	app.handleDetailKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	assert.Equal(t, viewHelp, app.mode, "pressing ? from detail should switch to help view")
+	assert.Equal(t, viewDetail, app.prevMode, "prevMode should remember detail")
+}
+
+func TestTabSwitch_TabKey(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+	assert.Equal(t, TabFrankenPHP, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, TabCaddy, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, TabFrankenPHP, app.activeTab)
+}
+
+func TestTabSwitch_NumberKeys(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	assert.Equal(t, TabCaddy, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	assert.Equal(t, TabFrankenPHP, app.activeTab)
+}
+
+func TestTabSwitch_PreservesCursorPerTab(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0}, {Index: 1}, {Index: 2},
+	})
+	app.cursor = 2
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, 0, app.cursor, "Caddy tab should start at cursor 0")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, 2, app.cursor, "FrankenPHP tab should restore cursor")
+}
+
+func TestTabSwitch_PreservesFilterPerTab(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0, Name: "Worker PHP Thread - /app/w.php"},
+	})
+	app.filter = "worker"
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, "", app.filter, "Caddy tab should start with empty filter")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, "worker", app.filter, "FrankenPHP tab should restore filter")
+}
+
+func TestTabSwitch_Key2NoOpWithSingleTab(t *testing.T) {
+	app := &App{
+		activeTab: TabCaddy,
+		tabs:      []Tab{TabCaddy},
+		tabStates: map[Tab]*tabState{TabCaddy: {}},
+	}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	assert.Equal(t, TabCaddy, app.activeTab)
 }

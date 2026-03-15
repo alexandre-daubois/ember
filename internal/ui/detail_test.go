@@ -425,6 +425,7 @@ func newAppWithHosts(hosts []model.HostDerived) *App {
 		tabStates: map[Tab]*tabState{TabCaddy: {}},
 		width:     120,
 		height:    30,
+		history:   newHistoryStore(),
 	}
 	app.state.Update(snap)
 	app.state.HostDerived = hosts

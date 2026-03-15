@@ -327,6 +327,10 @@ func TestFormatNumber(t *testing.T) {
 		{999, "999"},
 		{1000, "1,000"},
 		{1234567, "1,234,567"},
+		{-1, "-1"},
+		{-999, "-999"},
+		{-1000, "-1,000"},
+		{-1234567, "-1,234,567"},
 	}
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, formatNumber(tt.input), "formatNumber(%d)", tt.input)

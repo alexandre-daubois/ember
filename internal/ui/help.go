@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused bool, width int, activeTab Tab) string {
@@ -47,4 +48,44 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 	content := " " + strings.Join(parts, helpStyle.Render("  ·  "))
 
 	return helpStyle.Width(width).Render(content)
+}
+
+func renderHelpOverlay(base string, width, height int) string {
+	type binding struct {
+		key  string
+		desc string
+	}
+
+	nav := []binding{
+		{"↑/↓ j/k", "Move cursor"},
+		{"Enter", "Open detail panel"},
+		{"Esc", "Close / go back"},
+		{"Tab", "Switch tab"},
+		{"1/2", "Jump to tab"},
+		{"Home/End", "Jump to first/last"},
+		{"PgUp/PgDn", "Page up/down"},
+	}
+
+	actions := []binding{
+		{"s/S", "Cycle sort field"},
+		{"p", "Pause / resume"},
+		{"/", "Filter list"},
+		{"g", "Toggle graphs"},
+		{"r", "Restart workers"},
+		{"?", "Toggle this help"},
+		{"q", "Quit"},
+	}
+
+	render := func(title string, bindings []binding) string {
+		var lines []string
+		lines = append(lines, titleStyle.Render(title))
+		for _, b := range bindings {
+			lines = append(lines, "  "+helpKeyStyle.Render(b.key)+"  "+b.desc)
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	body := render("Navigation", nav) + "\n\n" + render("Actions", actions)
+	popup := boxStyle.Render(body)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup)
 }

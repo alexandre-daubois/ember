@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandredaubois/ember/internal/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -125,6 +126,39 @@ func TestRenderThreadBar_WidthMatchesMax(t *testing.T) {
 	plain := stripANSI(bar)
 	// [  +  30 bar chars  +  ] = 32
 	assert.Equal(t, 32, utf8.RuneCountInString(plain))
+}
+
+func TestRenderDashboard_ShowsPausedBadge(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, true, false))
+	assert.Contains(t, out, "PAUSED")
+}
+
+func TestRenderDashboard_NoPausedWhenRunning(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	assert.NotContains(t, out, "PAUSED")
+}
+
+func TestRenderConnectionError_ContainsErrorMessage(t *testing.T) {
+	out := renderConnectionError("connection refused", 80, 24)
+	plain := stripANSI(out)
+
+	assert.Contains(t, plain, "Connection failed")
+	assert.Contains(t, plain, "Cannot reach the Caddy admin API")
+	assert.Contains(t, plain, "admin localhost:2019")
+	assert.Contains(t, plain, "ember --addr")
+	assert.Contains(t, plain, "Retrying automatically")
+}
+
+func TestRenderConnectionError_NarrowTerminal(t *testing.T) {
+	out := renderConnectionError("timeout", 60, 20)
+	assert.NotEmpty(t, out)
+	assert.Contains(t, stripANSI(out), "Connection failed")
 }
 
 func stripANSI(s string) string {
