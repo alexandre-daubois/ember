@@ -157,6 +157,16 @@ type DerivedMetrics struct {
 	HasPercentiles bool
 }
 
+func (s *State) CopyForExport() State {
+	cp := *s
+	cp.Percentiles = nil
+	if s.HostDerived != nil {
+		cp.HostDerived = make([]HostDerived, len(s.HostDerived))
+		copy(cp.HostDerived, s.HostDerived)
+	}
+	return cp
+}
+
 func (s *State) Update(snap *fetcher.Snapshot) {
 	if s.Percentiles == nil {
 		s.Percentiles = NewPercentileTracker(percentileExpiry)
@@ -294,7 +304,7 @@ func (s *State) computeHostDerived() []HostDerived {
 		dt = s.Current.FetchedAt.Sub(s.Previous.FetchedAt).Seconds()
 	}
 
-	var result []HostDerived
+	result := make([]HostDerived, 0, len(s.Current.Metrics.Hosts))
 	for host, curr := range s.Current.Metrics.Hosts {
 		hd := HostDerived{
 			Host:          host,

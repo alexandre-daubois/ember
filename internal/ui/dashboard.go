@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64, stale bool, hasFrankenPHP bool) string {
+func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64, stale bool, paused bool, hasFrankenPHP bool) string {
 	if width < 10 {
 		return "…"
 	}
@@ -29,6 +29,9 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	titleLeft := titleStyle.Render(fmt.Sprintf(" Ember %s", version))
 	if stale {
 		titleLeft += " " + warnStyle.Render("STALE")
+	}
+	if paused {
+		titleLeft += " " + warnStyle.Render("PAUSED")
 	}
 
 	var threadBusy, threadIdle, threadTotal int
@@ -194,7 +197,7 @@ func formatMs(ms float64) string {
 
 var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
-func renderSparkline(values []float64, fixedWidth int) string {
+func renderSparklineRaw(values []float64, fixedWidth int) string {
 	if len(values) < 2 {
 		return strings.Repeat(" ", fixedWidth)
 	}
@@ -225,7 +228,11 @@ func renderSparkline(values []float64, fixedWidth int) string {
 		}
 		b.WriteRune(sparkBlocks[idx])
 	}
-	return greyStyle.Render(b.String())
+	return b.String()
+}
+
+func renderSparkline(values []float64, fixedWidth int) string {
+	return greyStyle.Render(renderSparklineRaw(values, fixedWidth))
 }
 
 func renderConnectionError(err string, width, height int) string {

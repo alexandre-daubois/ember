@@ -8,7 +8,7 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 
 ### Caddy dashboard (always available)
 
-- Per-host traffic table with RPS, average response time, and in-flight requests
+- Per-host traffic table with RPS, per-host RPS sparklines, average response time, and in-flight requests
 - Latency percentiles (P50, P90, P95, P99) from Prometheus histogram buckets
 - Status code breakdown (2xx/s, 4xx/s, 5xx/s) per host
 - Sorting and live filtering by hostname
@@ -78,13 +78,15 @@ Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In
 ### Options
 
 ```
---addr string    Caddy admin API address (default "http://localhost:2019")
---interval dur   Polling interval (default 1s)
---pid int        FrankenPHP PID (auto-detected if not set)
---json           JSON output mode (streaming JSONL)
---expose addr    Expose Prometheus metrics (e.g. --expose=:9191)
---daemon         Headless mode (requires --expose)
---no-color       Disable colors
+--addr string        Caddy admin API address (default "http://localhost:2019")
+--interval dur       Polling interval (default 1s)
+--slow-threshold ms  Slow request threshold (default 500)
+--pid int            FrankenPHP PID (auto-detected if not set)
+--json               JSON output mode (streaming JSONL)
+--expose addr        Expose Prometheus metrics (e.g. --expose=:9191)
+--daemon             Headless mode (requires --expose)
+--no-color           Disable colors
+--completion shell   Generate shell completions (bash, zsh, fish)
 ```
 
 ### Keybindings
@@ -93,14 +95,30 @@ Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In
 |-----|--------|
 | `Tab` | Switch between Caddy / FrankenPHP tabs |
 | `1` / `2` | Jump to tab |
-| `↑` `↓` | Navigate list |
-| `Enter` | Thread detail panel (FrankenPHP) |
+| `↑` `↓` `j` `k` | Navigate list |
+| `Home` / `End` | Jump to first / last item |
+| `PgUp` / `PgDn` | Page navigation |
+| `Enter` | Detail panel |
 | `s` / `S` | Cycle sort field |
 | `p` | Pause / resume |
 | `r` | Restart workers (FrankenPHP) |
 | `/` | Filter |
 | `g` | Full-screen graphs |
+| `?` | Help overlay |
 | `q` | Quit |
+
+### Shell Completions
+
+```bash
+# Bash
+ember --completion bash > /etc/bash_completion.d/ember
+
+# Zsh
+ember --completion zsh > "${fpath[1]}/_ember"
+
+# Fish
+ember --completion fish > ~/.config/fish/completions/ember.fish
+```
 
 ## License
 

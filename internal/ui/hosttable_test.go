@@ -86,7 +86,7 @@ func TestSortHosts_Empty(t *testing.T) {
 }
 
 func TestRenderHostTable_EmptyHosts(t *testing.T) {
-	out := renderHostTable(nil, 0, 120, model.SortByHost)
+	out := renderHostTable(nil, 0, 120, model.SortByHost, nil)
 	assert.Contains(t, out, "Host")
 	assert.Contains(t, out, "RPS")
 	lines := strings.Split(out, "\n")
@@ -98,7 +98,7 @@ func TestRenderHostTable_PaddingRows(t *testing.T) {
 	hosts := []model.HostDerived{
 		{Host: "example.com", StatusCodes: map[int]float64{}},
 	}
-	out := renderHostTable(hosts, 0, 120, model.SortByHost)
+	out := renderHostTable(hosts, 0, 120, model.SortByHost, nil)
 	lines := strings.Split(out, "\n")
 	// 1 header + at least minHostRows
 	assert.GreaterOrEqual(t, len(lines), 1+minHostRows)
@@ -108,19 +108,19 @@ func TestRenderHostTable_SortIndicator(t *testing.T) {
 	hosts := []model.HostDerived{
 		{Host: "a.com", StatusCodes: map[int]float64{}},
 	}
-	out := renderHostTable(hosts, 0, 120, model.SortByHostRPS)
+	out := renderHostTable(hosts, 0, 120, model.SortByHostRPS, nil)
 	assert.Contains(t, out, "RPS ▼")
 }
 
 func TestFormatHostRow_StarRenamed(t *testing.T) {
 	h := model.HostDerived{Host: "*", StatusCodes: map[int]float64{}}
-	row := formatHostRow(h, 120, 30, false, false)
+	row := formatHostRow(h, 120, 30, false, false, nil)
 	assert.Contains(t, row, "* (All traffic)")
 }
 
 func TestFormatHostRow_HostTruncation(t *testing.T) {
 	h := model.HostDerived{Host: "very-long-hostname-that-exceeds-width.example.com", StatusCodes: map[int]float64{}}
-	row := formatHostRow(h, 120, 15, false, false)
+	row := formatHostRow(h, 120, 15, false, false, nil)
 	assert.Contains(t, row, "…")
 }
 
@@ -133,7 +133,7 @@ func TestFormatHostRow_PercentilesShown(t *testing.T) {
 		P99:            350.0,
 		StatusCodes:    map[int]float64{},
 	}
-	row := formatHostRow(h, 150, 30, false, false)
+	row := formatHostRow(h, 150, 30, false, false, nil)
 	assert.Contains(t, row, "45.0ms")
 	assert.Contains(t, row, "120.0ms")
 	assert.Contains(t, row, "350.0ms")
@@ -145,12 +145,32 @@ func TestFormatHostRow_NoPercentilesDash(t *testing.T) {
 		HasPercentiles: false,
 		StatusCodes:    map[int]float64{},
 	}
-	row := formatHostRow(h, 120, 30, false, false)
+	row := formatHostRow(h, 120, 30, false, false, nil)
 	assert.Contains(t, row, "—")
 }
 
 func TestFormatHostRow_SelectedPrefix(t *testing.T) {
 	h := model.HostDerived{Host: "test.com", StatusCodes: map[int]float64{}}
-	row := formatHostRow(h, 120, 30, true, false)
+	row := formatHostRow(h, 120, 30, true, false, nil)
 	assert.Contains(t, row, ">")
+}
+
+func TestRenderHostTable_WithSparklines(t *testing.T) {
+	hosts := []model.HostDerived{
+		{Host: "spark.test", RPS: 100, StatusCodes: map[int]float64{200: 100}},
+	}
+	history := map[string][]float64{
+		"spark.test": {10, 20, 50, 80, 100, 60, 30, 90},
+	}
+	out := renderHostTable(hosts, 0, 140, model.SortByHost, history)
+	hasSparkChar := false
+	for _, r := range out {
+		for _, b := range sparkBlocks {
+			if r == b {
+				hasSparkChar = true
+				break
+			}
+		}
+	}
+	assert.True(t, hasSparkChar, "expected sparkline characters in output")
 }

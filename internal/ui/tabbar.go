@@ -25,10 +25,13 @@ func tabLabel(t Tab) string {
 	}
 }
 
-func renderTabBar(tabs []Tab, active Tab, width int) string {
+func renderTabBar(tabs []Tab, active Tab, width int, counts map[Tab]string) string {
 	var parts []string
 	for _, t := range tabs {
 		label := tabLabel(t)
+		if c, ok := counts[t]; ok && c != "" {
+			label += " (" + c + ")"
+		}
 		if t == active {
 			parts = append(parts, activeTabStyle.Render(" ["+label+"]"))
 		} else {

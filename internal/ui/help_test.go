@@ -49,3 +49,18 @@ func TestRenderHelp_SeparatorsPresent(t *testing.T) {
 	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, TabFrankenPHP))
 	assert.Contains(t, out, "·")
 }
+
+func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
+	out := stripANSI(renderHelpOverlay("base", 120, 40))
+
+	assert.Contains(t, out, "Navigation")
+	assert.Contains(t, out, "Actions")
+	assert.Contains(t, out, "Move cursor")
+	assert.Contains(t, out, "Open detail panel")
+	assert.Contains(t, out, "Cycle sort field")
+	assert.Contains(t, out, "Filter list")
+	assert.Contains(t, out, "Toggle graphs")
+	assert.Contains(t, out, "Restart workers")
+	assert.Contains(t, out, "Quit")
+	assert.Contains(t, out, "Toggle this help")
+}

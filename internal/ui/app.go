@@ -21,6 +21,7 @@ const (
 	viewFilter
 	viewConfirmRestart
 	viewGraph
+	viewHelp
 )
 
 type Config struct {
@@ -65,14 +66,9 @@ type App struct {
 	mode         viewMode
 	prevMode     viewMode
 	filter       string
-	status       string
-	rpsHistory   []float64
-	cpuHistory   []float64
-	rssHistory   []float64
-	queueHistory []float64
-	busyHistory  []float64
-	memHistory   map[int][]int64
-	stale        bool
+	status  string
+	history *historyStore
+	stale   bool
 	lastFresh    time.Time
 	fetching     bool
 
@@ -106,7 +102,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		activeTab:     activeTab,
 		tabStates:     ts,
 		hasFrankenPHP: cfg.HasFrankenPHP,
-		memHistory:    make(map[int][]int64),
+		history:       newHistoryStore(),
 	}
 }
 
@@ -160,6 +156,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetchMsg:
 		a.fetching = false
 		a.err = msg.err
+		if a.history == nil {
+			a.history = newHistoryStore()
+		}
 		if msg.snap != nil {
 			wasStale := a.stale
 			hasData := len(msg.snap.Threads.ThreadDebugStates) > 0 || msg.snap.Metrics.HasHTTPMetrics
@@ -170,7 +169,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.state.Current.Process = msg.snap.Process
 				a.state.Current.Metrics = msg.snap.Metrics
 				a.state.Current.FetchedAt = msg.snap.FetchedAt
-				a.cpuHistory = appendHistory(a.cpuHistory, msg.snap.Process.CPUPercent, graphHistorySize)
+				a.history.appendCPU(msg.snap.Process.CPUPercent)
 				staleDur := time.Since(a.lastFresh).Truncate(time.Second)
 				if msg.snap.Process.CPUPercent >= 80 {
 					a.status = fmt.Sprintf("⚠ High load — data stale %s", staleDur)
@@ -197,24 +196,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				a.status = ""
 			}
-			a.rpsHistory = appendHistory(a.rpsHistory, a.state.Derived.RPS, graphHistorySize)
-			a.cpuHistory = appendHistory(a.cpuHistory, msg.snap.Process.CPUPercent, graphHistorySize)
-			a.rssHistory = appendHistory(a.rssHistory, float64(msg.snap.Process.RSS)/1024/1024, graphHistorySize)
-			a.queueHistory = appendHistory(a.queueHistory, msg.snap.Metrics.QueueDepth, graphHistorySize)
-			a.busyHistory = appendHistory(a.busyHistory, float64(a.state.Derived.TotalBusy), graphHistorySize)
+			a.history.appendRPS(a.state.Derived.RPS)
+			a.history.appendCPU(msg.snap.Process.CPUPercent)
+			a.history.appendRSS(float64(msg.snap.Process.RSS) / 1024 / 1024)
+			a.history.appendQueue(msg.snap.Metrics.QueueDepth)
+			a.history.appendBusy(float64(a.state.Derived.TotalBusy))
 
-			if a.memHistory == nil {
-				a.memHistory = make(map[int][]int64)
+			for _, hd := range a.state.HostDerived {
+				a.history.appendHostRPS(hd.Host, hd.RPS)
 			}
+
 			for _, t := range msg.snap.Threads.ThreadDebugStates {
-				if t.MemoryUsage > 0 {
-					h := a.memHistory[t.Index]
-					h = append(h, t.MemoryUsage)
-					if len(h) > memHistorySize {
-						h = h[len(h)-memHistorySize:]
-					}
-					a.memHistory[t.Index] = h
-				}
+				a.history.recordMem(t.Index, t.MemoryUsage)
 			}
 
 			if a.config.OnStateUpdate != nil {
@@ -270,20 +263,43 @@ func (a *App) View() string {
 	}
 	listWidth := a.width - panelWidth
 
-	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.rpsHistory, sparklineSize), lastN(a.cpuHistory, sparklineSize), a.stale, a.hasFrankenPHP)
-	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth)
+	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.history.rps, sparklineSize), lastN(a.history.cpu, sparklineSize), a.stale, a.paused, a.hasFrankenPHP)
+	counts := make(map[Tab]string)
+	if a.state.Current != nil {
+		if hostCount := len(a.state.HostDerived); hostCount > 0 {
+			counts[TabCaddy] = fmt.Sprintf("%d hosts", hostCount)
+		}
+		if a.hasFrankenPHP {
+			threadCount := len(a.state.Current.Threads.ThreadDebugStates)
+			if threadCount > 0 {
+				counts[TabFrankenPHP] = fmt.Sprintf("%d threads", threadCount)
+			}
+		}
+	}
+	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
 	help := renderHelp(a.sortBy, a.hostSortBy, a.paused, listWidth, a.activeTab)
 
+	var threads []fetcher.ThreadDebugState
+	var hosts []model.HostDerived
 	var contentList string
 	switch a.activeTab {
 	case TabFrankenPHP:
-		threads := a.filteredThreads()
-		contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
-			slowThreshold: a.config.SlowThreshold,
-			prevMemory:    a.prevThreadMemory(),
-		})
+		threads = a.filteredThreads()
+		if len(threads) == 0 && a.filter != "" {
+			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
+		} else {
+			contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
+				slowThreshold: a.config.SlowThreshold,
+				prevMemory:    a.prevThreadMemory(),
+			})
+		}
 	case TabCaddy:
-		contentList = renderHostTable(a.filteredHosts(), a.cursor, listWidth, a.hostSortBy)
+		hosts = a.filteredHosts()
+		if len(hosts) == 0 && a.filter != "" {
+			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
+		} else {
+			contentList = renderHostTable(hosts, a.cursor, listWidth, a.hostSortBy, a.history.hostRPS)
+		}
 	}
 
 	var statusLine string
@@ -305,7 +321,7 @@ func (a *App) View() string {
 		if graphAreaHeight < 5 {
 			graphAreaHeight = 5
 		}
-		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.cpuHistory, a.rpsHistory, a.rssHistory, a.queueHistory, a.busyHistory, a.hasFrankenPHP))
+		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.history.cpu, a.history.rps, a.history.rss, a.history.queue, a.history.busy, a.hasFrankenPHP))
 		parts = append(parts, helpStyle.Width(listWidth).Render(" "+helpKeyStyle.Render("g/Esc")+" back  "+helpKeyStyle.Render("q")+" quit"))
 	} else {
 		if filterLine != "" {
@@ -322,7 +338,8 @@ func (a *App) View() string {
 
 	if a.mode == viewDetail {
 		if a.activeTab == TabCaddy {
-			if h, ok := a.selectedHost(); ok {
+			if a.cursor >= 0 && a.cursor < len(hosts) {
+				h := hosts[a.cursor]
 				if sidePanel {
 					panel := renderHostDetailPanel(h, panelWidth, a.height)
 					return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
@@ -330,8 +347,9 @@ func (a *App) View() string {
 				panel := renderHostDetailPanel(h, a.width, detailPanelHeight+6)
 				return lipgloss.JoinVertical(lipgloss.Left, base, panel)
 			}
-		} else if t, ok := a.selectedThread(); ok {
-			samples := a.memHistory[t.Index]
+		} else if a.cursor >= 0 && a.cursor < len(threads) {
+			t := threads[a.cursor]
+			samples := a.history.mem[t.Index]
 			if sidePanel {
 				panel := renderDetailPanel(t, panelWidth, a.height, samples)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
@@ -343,6 +361,10 @@ func (a *App) View() string {
 
 	if a.mode == viewConfirmRestart {
 		return renderConfirmOverlay(base, a.width, a.height)
+	}
+
+	if a.mode == viewHelp {
+		return renderHelpOverlay(base, a.width, a.height)
 	}
 
 	return base
@@ -358,6 +380,8 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleConfirmKey(msg)
 	case viewGraph:
 		return a.handleGraphKey(msg)
+	case viewHelp:
+		return a.handleHelpKey(msg)
 	default:
 		return a.handleListKey(msg)
 	}
@@ -366,6 +390,19 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (a *App) handleGraphKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "g", "q":
+		a.mode = a.prevMode
+	case "ctrl+c":
+		return a, tea.Quit
+	case "?":
+		a.prevMode = a.mode
+		a.mode = viewHelp
+	}
+	return a, nil
+}
+
+func (a *App) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "?", "esc", "q":
 		a.mode = a.prevMode
 	case "ctrl+c":
 		return a, tea.Quit
@@ -397,6 +434,22 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		a.cursor++
 		a.clampCursor()
+	case "home":
+		a.cursor = 0
+	case "end":
+		max := a.listLen() - 1
+		if max < 0 {
+			max = 0
+		}
+		a.cursor = max
+	case "pgup":
+		a.cursor -= a.pageSize()
+		if a.cursor < 0 {
+			a.cursor = 0
+		}
+	case "pgdown":
+		a.cursor += a.pageSize()
+		a.clampCursor()
 	case "s":
 		if a.activeTab == TabCaddy {
 			a.hostSortBy = a.hostSortBy.Next()
@@ -423,6 +476,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		a.prevMode = a.mode
 		a.mode = viewGraph
+	case "?":
+		a.prevMode = a.mode
+		a.mode = viewHelp
 	}
 	return a, nil
 }
@@ -438,10 +494,29 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		a.cursor++
 		a.clampCursor()
+	case "home":
+		a.cursor = 0
+	case "end":
+		max := a.listLen() - 1
+		if max < 0 {
+			max = 0
+		}
+		a.cursor = max
+	case "pgup":
+		a.cursor -= a.pageSize()
+		if a.cursor < 0 {
+			a.cursor = 0
+		}
+	case "pgdown":
+		a.cursor += a.pageSize()
+		a.clampCursor()
 	case "r":
 		if a.activeTab == TabFrankenPHP {
 			a.mode = viewConfirmRestart
 		}
+	case "?":
+		a.prevMode = a.mode
+		a.mode = viewHelp
 	}
 	return a, nil
 }
@@ -530,6 +605,23 @@ func (a *App) selectedHost() (model.HostDerived, bool) {
 		return hosts[a.cursor], true
 	}
 	return model.HostDerived{}, false
+}
+
+func (a *App) pageSize() int {
+	ps := a.height - 10
+	if ps < 1 {
+		ps = 1
+	}
+	return ps
+}
+
+func (a *App) listLen() int {
+	switch a.activeTab {
+	case TabCaddy:
+		return len(a.filteredHosts())
+	default:
+		return len(a.filteredThreads())
+	}
 }
 
 func (a *App) clampCursor() {
