@@ -86,7 +86,6 @@ Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In
 --expose addr        Expose Prometheus metrics (e.g. --expose=:9191)
 --daemon             Headless mode (requires --expose)
 --no-color           Disable colors
---completion shell   Generate shell completions (bash, zsh, fish)
 ```
 
 ### Keybindings
@@ -111,13 +110,13 @@ Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In
 
 ```bash
 # Bash
-ember --completion bash > /etc/bash_completion.d/ember
+ember completion bash > /etc/bash_completion.d/ember
 
 # Zsh
-ember --completion zsh > "${fpath[1]}/_ember"
+ember completion zsh > "${fpath[1]}/_ember"
 
 # Fish
-ember --completion fish > ~/.config/fish/completions/ember.fish
+ember completion fish > ~/.config/fish/completions/ember.fish
 ```
 
 ## License

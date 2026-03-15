@@ -224,8 +224,6 @@ func TestHandler_WorkerMetrics_SortedDeterministic(t *testing.T) {
 	body2 := get(holder).Body.String()
 	require.Equal(t, body1, body2, "output should be deterministic")
 
-	aIdx := len(body1) - len(body1) // find relative positions
-	_ = aIdx
 	assert.Contains(t, body1, `/a.php`)
 	assert.Contains(t, body1, `/m.php`)
 	assert.Contains(t, body1, `/z.php`)
