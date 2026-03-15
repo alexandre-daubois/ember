@@ -125,7 +125,6 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 
 	hostPart := fmt.Sprintf("%s%-*s", prefix, hostW, host)
 	rpsPart := fmt.Sprintf("%*s", colHostRPS, rpsStr)
-	sparkStr := renderSparkline(hostRPS[h.Host], colHostSparkline)
 	sparkRaw := renderSparklineRaw(hostRPS[h.Host], colHostSparkline)
 	avgPart := fmt.Sprintf("%*s", colHostAvg, avgStr)
 	p90Part := fmt.Sprintf("%*s", colHostP90, p90Str)
@@ -157,7 +156,7 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 
 	row := style.Render(hostPart) +
 		style.Render(rpsPart) +
-		sparkStr +
+		greyStyle.Render(sparkRaw) +
 		style.Render(avgPart) +
 		style.Render(p90Part) +
 		style.Render(p95Part) +

@@ -2,12 +2,9 @@ package app
 
 import (
 	"bytes"
-	"io"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestValidate_DaemonRequiresExpose(t *testing.T) {
@@ -29,21 +26,14 @@ func TestValidate_NoDaemonOK(t *testing.T) {
 }
 
 func TestRun_VersionFlag(t *testing.T) {
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
-	runErr := Run([]string{"--version"}, "1.2.3-test")
-
-	w.Close()
-	os.Stdout = old
-
+	cmd := newRootCmd("1.2.3-test")
+	cmd.SetArgs([]string{"--version"})
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	r.Close()
+	cmd.SetOut(&buf)
 
-	assert.NoError(t, runErr)
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "ember 1.2.3-test")
 }
 
@@ -59,47 +49,53 @@ func TestRun_DaemonWithoutExpose(t *testing.T) {
 }
 
 func TestRun_CompletionBash(t *testing.T) {
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
-	runErr := Run([]string{"--completion", "bash"}, "0.0.0")
-
-	w.Close()
-	os.Stdout = old
-
+	cmd := newRootCmd("0.0.0")
+	cmd.SetArgs([]string{"completion", "bash"})
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	r.Close()
+	cmd.SetOut(&buf)
 
-	assert.NoError(t, runErr)
-	assert.Contains(t, buf.String(), "complete -F _ember ember")
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "ember")
 }
 
-func TestRun_CompletionInvalid(t *testing.T) {
-	err := Run([]string{"--completion", "powershell"}, "0.0.0")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported shell")
-}
-
-func TestPrintCompletion_AllShells(t *testing.T) {
-	for _, shell := range []string{"bash", "zsh", "fish"} {
-		var buf bytes.Buffer
-		err := printCompletion(&buf, shell)
-		assert.NoError(t, err, shell)
-		assert.Contains(t, buf.String(), "ember", shell)
-	}
-}
-
-func TestPrintUsage_ContainsKey(t *testing.T) {
+func TestRun_CompletionZsh(t *testing.T) {
+	cmd := newRootCmd("0.0.0")
+	cmd.SetArgs([]string{"completion", "zsh"})
 	var buf bytes.Buffer
-	printUsage(&buf, "1.0.0")
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "ember")
+}
+
+func TestRun_CompletionFish(t *testing.T) {
+	cmd := newRootCmd("0.0.0")
+	cmd.SetArgs([]string{"completion", "fish"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "ember")
+}
+
+func TestRun_HelpContainsKeybindings(t *testing.T) {
+	cmd := newRootCmd("1.0.0")
+	cmd.SetArgs([]string{"--help"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
 	out := buf.String()
-
-	assert.Contains(t, out, "Ember 1.0.0")
+	assert.Contains(t, out, "Keybindings")
 	assert.Contains(t, out, "--addr")
 	assert.Contains(t, out, "--expose")
-	assert.Contains(t, out, "Keybindings")
 	assert.Contains(t, out, "Examples")
 }

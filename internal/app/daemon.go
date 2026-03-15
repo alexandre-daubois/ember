@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,7 +13,10 @@ import (
 	"github.com/alexandredaubois/ember/internal/model"
 )
 
-func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) {
+func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
 	holder := &exporter.StateHolder{}
 	var state model.State
 
@@ -21,13 +25,12 @@ func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) {
 	srv := &http.Server{Addr: cfg.expose, Handler: mux}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
-			os.Exit(1)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			cancel(fmt.Errorf("metrics server: %w", err))
 		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "ember daemon: exposing metrics on %s/metrics\n", cfg.expose)
+	fmt.Fprintf(os.Stderr, "ember daemon: exposing metrics on http://localhost%s/metrics\n", cfg.expose)
 
 	poll := func() {
 		snap, err := f.Fetch(ctx)
@@ -50,7 +53,10 @@ func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) {
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
 			srv.Shutdown(shutdownCtx)
-			return
+			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+				return cause
+			}
+			return nil
 		case <-ticker.C:
 			poll()
 		}

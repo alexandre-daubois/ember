@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,7 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func runTUI(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config, hasFrankenPHP bool, version string) error {
+func runTUI(f *fetcher.HTTPFetcher, cfg *config, hasFrankenPHP bool, version string) error {
 	uiCfg := ui.Config{
 		Interval:      cfg.interval,
 		SlowThreshold: time.Duration(cfg.slowThreshold) * time.Millisecond,
@@ -35,7 +36,7 @@ func runTUI(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config, hasFranken
 		srv = &http.Server{Addr: cfg.expose, Handler: mux}
 
 		go func() {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
 			}
 		}()

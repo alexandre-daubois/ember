@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/spf13/cobra"
 )
 
 type config struct {
@@ -23,70 +23,95 @@ type config struct {
 	daemon        bool
 }
 
-func Run(args []string, version string) error {
+func newRootCmd(version string) *cobra.Command {
 	var cfg config
 
-	fs := flag.NewFlagSet("ember", flag.ContinueOnError)
-	fs.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
-	fs.DurationVar(&cfg.interval, "interval", 1*time.Second, "polling interval")
-	fs.IntVar(&cfg.slowThreshold, "slow-threshold", 500, "slow request threshold (ms)")
-	fs.BoolVar(&cfg.noColor, "no-color", false, "disable colors")
-	fs.BoolVar(&cfg.jsonMode, "json", false, "JSON output mode")
-	fs.IntVar(&cfg.pid, "pid", 0, "FrankenPHP process PID (auto-detected if not set)")
-	fs.StringVar(&cfg.expose, "expose", "", "expose Prometheus metrics on address (e.g. :9191)")
-	fs.BoolVar(&cfg.daemon, "daemon", false, "run in daemon mode (no TUI, requires --expose)")
-	showVersion := fs.Bool("version", false, "show version")
-	completion := fs.String("completion", "", "generate shell completions (bash, zsh, fish)")
+	cmd := &cobra.Command{
+		Use:     "ember [flags]",
+		Short:   "Real-time TUI dashboard for Caddy & FrankenPHP",
+		Version: version,
+		Long: `Ember - Real-time TUI dashboard for Caddy & FrankenPHP
 
-	fs.Usage = func() { printUsage(fs.Output(), version) }
+Monitor your Caddy server in real time: per-host traffic, latency
+percentiles, status codes, and more. When FrankenPHP is detected,
+unlock per-thread introspection, worker management, and memory tracking.
 
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
+Keybindings:
+  Tab / 1 / 2      Switch between Caddy and FrankenPHP tabs
+  Up / Down / j / k Navigate list
+  Home / End        Jump to first / last item
+  PgUp / PgDn       Page navigation
+  Enter              Open detail panel
+  s / S              Cycle sort field
+  p                  Pause / resume
+  r                  Restart workers (FrankenPHP)
+  /                  Filter
+  g                  Full-screen graphs
+  ?                  Help overlay
+  q                  Quit`,
+		Example: `  ember                                  # default: localhost:2019
+  ember --addr http://prod:2019           # custom address
+  ember --json                            # pipe-friendly JSON output
+  ember --expose :9191                    # TUI + Prometheus endpoint
+  ember --expose :9191 --daemon           # headless metrics exporter`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validate(&cfg)
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
 
-	if *showVersion {
-		fmt.Printf("ember %s\n", version)
-		return nil
-	}
-
-	if *completion != "" {
-		return printCompletion(os.Stdout, *completion)
-	}
-
-	if err := validate(&cfg); err != nil {
-		return err
-	}
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	pid := int32(cfg.pid)
-	if pid == 0 {
-		detected, err := fetcher.FindFrankenPHPProcess(ctx)
-		if err != nil {
-			detected, err = fetcher.FindCaddyProcess(ctx)
-			if err != nil && (cfg.jsonMode || cfg.daemon) {
-				fmt.Fprintf(os.Stderr, "warning: no frankenphp or caddy process found\n")
+			pid := int32(cfg.pid)
+			if pid == 0 {
+				detected, err := fetcher.FindFrankenPHPProcess(ctx)
+				if err != nil {
+					detected, err = fetcher.FindCaddyProcess(ctx)
+					if err != nil && (cfg.jsonMode || cfg.daemon) {
+						fmt.Fprintf(os.Stderr, "warning: no frankenphp or caddy process found\n")
+					}
+				}
+				if err == nil {
+					pid = detected
+				}
 			}
-		}
-		if err == nil {
-			pid = detected
-		}
+
+			f := fetcher.NewHTTPFetcher(cfg.addr, pid)
+			hasFrankenPHP := f.DetectFrankenPHP(ctx)
+			f.FetchServerNames(ctx)
+
+			switch {
+			case cfg.jsonMode:
+				runJSON(ctx, f, cfg.interval)
+			case cfg.daemon:
+				return runDaemon(ctx, f, &cfg)
+			default:
+				return runTUI(f, &cfg, hasFrankenPHP, version)
+			}
+			return nil
+		},
 	}
 
-	f := fetcher.NewHTTPFetcher(cfg.addr, pid)
-	hasFrankenPHP := f.DetectFrankenPHP(ctx)
-	f.FetchServerNames(ctx)
+	f := cmd.Flags()
+	f.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
+	f.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
+	f.IntVar(&cfg.slowThreshold, "slow-threshold", 500, "Slow request threshold in ms")
+	f.BoolVar(&cfg.noColor, "no-color", false, "Disable colors")
+	f.BoolVar(&cfg.jsonMode, "json", false, "JSON output mode (streaming JSONL)")
+	f.IntVar(&cfg.pid, "pid", 0, "FrankenPHP PID (auto-detected if not set)")
+	f.StringVar(&cfg.expose, "expose", "", "Expose Prometheus metrics (e.g. :9191)")
+	f.BoolVar(&cfg.daemon, "daemon", false, "Headless mode (requires --expose)")
 
-	switch {
-	case cfg.jsonMode:
-		runJSON(ctx, f, cfg.interval)
-	case cfg.daemon:
-		runDaemon(ctx, f, &cfg)
-	default:
-		return runTUI(ctx, f, &cfg, hasFrankenPHP, version)
-	}
-	return nil
+	cmd.SetVersionTemplate("ember {{.Version}}\n")
+
+	return cmd
+}
+
+func Run(args []string, version string) error {
+	cmd := newRootCmd(version)
+	cmd.SetArgs(args)
+	return cmd.Execute()
 }
 
 func validate(cfg *config) error {
