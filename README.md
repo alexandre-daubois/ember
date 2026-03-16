@@ -52,7 +52,7 @@ Or with Go:
 go install github.com/alexandre-daubois/ember/cmd/ember@latest
 ```
 
-Or with Docker:
+Or with Docker (runs in daemon mode with Prometheus export on `:9191` by default):
 
 ```bash
 docker run --rm --network host ghcr.io/alexandre-daubois/ember
