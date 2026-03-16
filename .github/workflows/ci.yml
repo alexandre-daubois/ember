@@ -22,5 +22,13 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v7
+
       - name: Test
-        run: go test ./... -race -v
+        run: go test ./... -race -v -coverprofile=coverage.txt
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
