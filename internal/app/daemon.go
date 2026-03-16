@@ -13,6 +13,13 @@ import (
 	"github.com/alexandredaubois/ember/internal/model"
 )
 
+func metricsURL(addr string) string {
+	if len(addr) > 0 && addr[0] == ':' {
+		addr = "localhost" + addr
+	}
+	return "http://" + addr + "/metrics"
+}
+
 func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -30,7 +37,7 @@ func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) error {
 		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "ember daemon: exposing metrics on http://localhost%s/metrics\n", cfg.expose)
+	fmt.Fprintf(os.Stderr, "ember daemon: exposing metrics on %s\n", metricsURL(cfg.expose))
 
 	poll := func() {
 		snap, err := f.Fetch(ctx)
