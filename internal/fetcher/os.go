@@ -99,12 +99,12 @@ func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
 		if err != nil {
 			pid, err = FindCaddyProcess(ctx)
 			if err != nil {
-				return ProcessMetrics{}, fmt.Errorf("process discovery: %w", err)
+				return ProcessMetrics{}, nil
 			}
 		}
 		p, err := process.NewProcess(pid)
 		if err != nil {
-			return ProcessMetrics{}, fmt.Errorf("attach to process %d: %w", pid, err)
+			return ProcessMetrics{}, nil
 		}
 		h.proc = p
 		if times, err := p.Times(); err == nil {
