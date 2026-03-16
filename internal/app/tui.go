@@ -14,7 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func runTUI(f *fetcher.HTTPFetcher, cfg *config, hasFrankenPHP bool, version string) error {
+func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string) error {
 	uiCfg := ui.Config{
 		Interval:      cfg.interval,
 		SlowThreshold: time.Duration(cfg.slowThreshold) * time.Millisecond,

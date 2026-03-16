@@ -20,7 +20,7 @@ func metricsURL(addr string) string {
 	return "http://" + addr + "/metrics"
 }
 
-func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) error {
+func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
