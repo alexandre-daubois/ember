@@ -98,3 +98,27 @@ func TestHistoryStore_PruneHosts_EmptyActive(t *testing.T) {
 
 	assert.Empty(t, h.hostRPS)
 }
+
+func TestHistoryStore_PruneMem(t *testing.T) {
+	h := newHistoryStore()
+	h.recordMem(0, 1024)
+	h.recordMem(1, 2048)
+	h.recordMem(2, 4096)
+
+	active := map[int]struct{}{0: {}, 2: {}}
+	h.pruneMem(active)
+
+	assert.Contains(t, h.mem, 0)
+	assert.Contains(t, h.mem, 2)
+	assert.NotContains(t, h.mem, 1)
+}
+
+func TestHistoryStore_PruneMem_EmptyActive(t *testing.T) {
+	h := newHistoryStore()
+	h.recordMem(0, 1024)
+	h.recordMem(1, 2048)
+
+	h.pruneMem(map[int]struct{}{})
+
+	assert.Empty(t, h.mem)
+}

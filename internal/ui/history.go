@@ -19,11 +19,13 @@ func newHistoryStore() *historyStore {
 	}
 }
 
-func (h *historyStore) appendRPS(val float64)   { h.rps = appendHistory(h.rps, val, graphHistorySize) }
-func (h *historyStore) appendCPU(val float64)   { h.cpu = appendHistory(h.cpu, val, graphHistorySize) }
-func (h *historyStore) appendRSS(val float64)   { h.rss = appendHistory(h.rss, val, graphHistorySize) }
-func (h *historyStore) appendQueue(val float64)  { h.queue = appendHistory(h.queue, val, graphHistorySize) }
-func (h *historyStore) appendBusy(val float64)   { h.busy = appendHistory(h.busy, val, graphHistorySize) }
+func (h *historyStore) appendRPS(val float64) { h.rps = appendHistory(h.rps, val, graphHistorySize) }
+func (h *historyStore) appendCPU(val float64) { h.cpu = appendHistory(h.cpu, val, graphHistorySize) }
+func (h *historyStore) appendRSS(val float64) { h.rss = appendHistory(h.rss, val, graphHistorySize) }
+func (h *historyStore) appendQueue(val float64) {
+	h.queue = appendHistory(h.queue, val, graphHistorySize)
+}
+func (h *historyStore) appendBusy(val float64) { h.busy = appendHistory(h.busy, val, graphHistorySize) }
 
 func (h *historyStore) appendHostRPS(host string, rps float64) {
 	series := h.hostRPS[host]
@@ -38,6 +40,14 @@ func (h *historyStore) pruneHosts(activeHosts map[string]struct{}) {
 	for host := range h.hostRPS {
 		if _, ok := activeHosts[host]; !ok {
 			delete(h.hostRPS, host)
+		}
+	}
+}
+
+func (h *historyStore) pruneMem(activeIndices map[int]struct{}) {
+	for idx := range h.mem {
+		if _, ok := activeIndices[idx]; !ok {
+			delete(h.mem, idx)
 		}
 	}
 }

@@ -228,6 +228,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, t := range msg.snap.Threads.ThreadDebugStates {
 				a.history.recordMem(t.Index, t.MemoryUsage)
 			}
+			activeThreads := make(map[int]struct{}, len(msg.snap.Threads.ThreadDebugStates))
+			for _, t := range msg.snap.Threads.ThreadDebugStates {
+				activeThreads[t.Index] = struct{}{}
+			}
+			a.history.pruneMem(activeThreads)
 
 			if a.config.OnStateUpdate != nil {
 				a.config.OnStateUpdate(a.state)
