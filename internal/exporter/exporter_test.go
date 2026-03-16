@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
-	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/prometheus/common/expfmt"
 	prommodel "github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"

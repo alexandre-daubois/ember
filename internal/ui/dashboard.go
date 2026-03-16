@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
-	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 

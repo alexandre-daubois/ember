@@ -1,4 +1,4 @@
-module github.com/alexandredaubois/ember
+module github.com/alexandre-daubois/ember
 
 go 1.26
 

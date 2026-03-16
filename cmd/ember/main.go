@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/alexandredaubois/ember/internal/app"
+	"github.com/alexandre-daubois/ember/internal/app"
 )
 
 var version = "1.0.0-dev"

@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/exporter"
-	"github.com/alexandredaubois/ember/internal/fetcher"
-	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/exporter"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/model"
 )
 
 func metricsURL(addr string) string {

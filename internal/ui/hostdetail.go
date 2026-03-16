@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 

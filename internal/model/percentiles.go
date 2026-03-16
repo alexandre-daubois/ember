@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 )
 
 const DefaultPercentileExpiry = 5 * time.Minute

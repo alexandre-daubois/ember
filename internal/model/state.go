@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 )
 
 const percentileExpiry = DefaultPercentileExpiry

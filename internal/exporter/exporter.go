@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/model"
 )
 
 type StateHolder struct {

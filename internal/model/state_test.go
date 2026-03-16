@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/spf13/cobra"
 )
 

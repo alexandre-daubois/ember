@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/charmbracelet/lipgloss"
 )
 

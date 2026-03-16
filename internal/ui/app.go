@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexandredaubois/ember/internal/fetcher"
-	"github.com/alexandredaubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -55,23 +55,23 @@ const graphHistorySize = 300
 const memHistorySize = 60
 
 type App struct {
-	fetcher      fetcher.Fetcher
-	config       Config
-	state        model.State
-	cursor       int
-	sortBy       model.SortField
-	paused       bool
-	width        int
-	height       int
-	err          error
-	mode         viewMode
-	prevMode     viewMode
-	filter       string
-	status  string
-	history *historyStore
-	stale   bool
-	lastFresh    time.Time
-	fetching     bool
+	fetcher   fetcher.Fetcher
+	config    Config
+	state     model.State
+	cursor    int
+	sortBy    model.SortField
+	paused    bool
+	width     int
+	height    int
+	err       error
+	mode      viewMode
+	prevMode  viewMode
+	filter    string
+	status    string
+	history   *historyStore
+	stale     bool
+	lastFresh time.Time
+	fetching  bool
 
 	activeTab     Tab
 	tabs          []Tab
