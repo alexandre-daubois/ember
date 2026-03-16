@@ -56,7 +56,7 @@ func runJSON(ctx context.Context, f *fetcher.HTTPFetcher, interval time.Duration
 			out.Derived.P95 = &state.Derived.P95
 			out.Derived.P99 = &state.Derived.P99
 		}
-		enc.Encode(out)
+		_ = enc.Encode(out)
 	}
 
 	poll()

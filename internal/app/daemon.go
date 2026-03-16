@@ -59,7 +59,7 @@ func runDaemon(ctx context.Context, f *fetcher.HTTPFetcher, cfg *config) error {
 		case <-ctx.Done():
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
-			srv.Shutdown(shutdownCtx)
+			_ = srv.Shutdown(shutdownCtx)
 			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 				return cause
 			}

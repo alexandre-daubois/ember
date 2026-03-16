@@ -55,8 +55,8 @@ func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 	f.hasFrankenPHP = resp.StatusCode == http.StatusOK
 	return f.hasFrankenPHP
 }
@@ -78,8 +78,8 @@ func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 		return nil
 	}
 	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
 		return nil
@@ -189,8 +189,8 @@ func (f *HTTPFetcher) RestartWorkers(ctx context.Context) error {
 		return fmt.Errorf("restart workers: %w", err)
 	}
 	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("restart workers: HTTP %d", resp.StatusCode)

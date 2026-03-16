@@ -59,7 +59,7 @@ func runTUI(f *fetcher.HTTPFetcher, cfg *config, hasFrankenPHP bool, version str
 	if srv != nil {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		_ = srv.Shutdown(shutdownCtx)
 	}
 
 	return nil
