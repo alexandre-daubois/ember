@@ -46,6 +46,8 @@ func runTUI(f *fetcher.HTTPFetcher, cfg *config, hasFrankenPHP bool, version str
 			return err
 		case <-time.After(50 * time.Millisecond):
 		}
+
+		uiCfg.MetricsServerErr = listenErr
 	}
 
 	app := ui.NewApp(f, uiCfg)

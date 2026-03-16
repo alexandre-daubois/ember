@@ -25,12 +25,13 @@ const (
 )
 
 type Config struct {
-	Interval      time.Duration
-	SlowThreshold time.Duration
-	NoColor       bool
-	Version       string
-	HasFrankenPHP bool
-	OnStateUpdate func(model.State)
+	Interval         time.Duration
+	SlowThreshold    time.Duration
+	NoColor          bool
+	Version          string
+	HasFrankenPHP    bool
+	OnStateUpdate    func(model.State)
+	MetricsServerErr <-chan error
 }
 
 type Tab int
@@ -134,9 +135,21 @@ type fetchMsg struct {
 	err  error
 }
 type restartResultMsg struct{ err error }
+type metricsServerErrMsg struct{ err error }
 
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(a.doFetch(), a.doTick())
+	cmds := []tea.Cmd{a.doFetch(), a.doTick()}
+	if a.config.MetricsServerErr != nil {
+		ch := a.config.MetricsServerErr
+		cmds = append(cmds, func() tea.Msg {
+			err, ok := <-ch
+			if !ok {
+				return nil
+			}
+			return metricsServerErrMsg{err: err}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -146,6 +159,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		return a, nil
+	case metricsServerErrMsg:
+		a.status = "⚠ " + msg.err.Error()
 		return a, nil
 	case tickMsg:
 		if a.paused || a.fetching {
@@ -367,7 +383,7 @@ func (a *App) View() string {
 	}
 
 	if a.mode == viewHelp {
-		return renderHelpOverlay(base, a.width, a.height)
+		return renderHelpOverlay(base, a.width, a.height, a.hasFrankenPHP)
 	}
 
 	return base
