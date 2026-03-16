@@ -64,16 +64,15 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		}
 	}
 	configRight := greyStyle.Render(strings.Join(configParts, " · ") + " ")
+	if d.TotalCrashes > 0 {
+		crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
+		configRight = dangerStyle.Render(crashStr+" crashed") + "  " + configRight
+	}
 	gap := width - lipgloss.Width(titleLeft) - lipgloss.Width(configRight)
 	if gap < 1 {
 		gap = 1
 	}
 	titleLine := titleLeft + strings.Repeat(" ", gap) + configRight
-
-	if d.TotalCrashes > 0 {
-		crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
-		configRight = dangerStyle.Render(crashStr+" crashed") + "  " + configRight
-	}
 
 	// line 1: CPU (colored), sparkline, RSS, Uptime
 	cpuRaw := fmt.Sprintf("%-7s", fmt.Sprintf("%.1f%%", p.CPUPercent))
