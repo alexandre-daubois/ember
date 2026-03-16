@@ -50,7 +50,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 	return helpStyle.Width(width).Render(content)
 }
 
-func renderHelpOverlay(base string, width, height int) string {
+func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) string {
 	type binding struct {
 		key  string
 		desc string
@@ -71,10 +71,14 @@ func renderHelpOverlay(base string, width, height int) string {
 		{"p", "Pause / resume"},
 		{"/", "Filter list"},
 		{"g", "Toggle graphs"},
-		{"r", "Restart workers"},
-		{"?", "Toggle this help"},
-		{"q", "Quit"},
 	}
+	if hasFrankenPHP {
+		actions = append(actions, binding{"r", "Restart workers (FrankenPHP)"})
+	}
+	actions = append(actions,
+		binding{"?", "Toggle this help"},
+		binding{"q", "Quit"},
+	)
 
 	render := func(title string, bindings []binding) string {
 		var lines []string
