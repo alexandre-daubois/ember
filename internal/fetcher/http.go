@@ -211,7 +211,7 @@ func (f *HTTPFetcher) fetchThreads(ctx context.Context) (ThreadsResponse, error)
 	if err != nil {
 		return ThreadsResponse{}, fmt.Errorf("fetch threads: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return ThreadsResponse{}, fmt.Errorf("fetch threads: HTTP %d", resp.StatusCode)
@@ -237,7 +237,7 @@ func (f *HTTPFetcher) fetchMetrics(ctx context.Context) (MetricsSnapshot, error)
 	if err != nil {
 		return MetricsSnapshot{}, fmt.Errorf("fetch metrics: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return MetricsSnapshot{}, fmt.Errorf("fetch metrics: HTTP %d", resp.StatusCode)
