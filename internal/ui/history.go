@@ -34,6 +34,14 @@ func (h *historyStore) appendHostRPS(host string, rps float64) {
 	h.hostRPS[host] = series
 }
 
+func (h *historyStore) pruneHosts(activeHosts map[string]struct{}) {
+	for host := range h.hostRPS {
+		if _, ok := activeHosts[host]; !ok {
+			delete(h.hostRPS, host)
+		}
+	}
+}
+
 func (h *historyStore) recordMem(index int, usage int64) {
 	if usage <= 0 {
 		return

@@ -1046,6 +1046,39 @@ func TestState_CopyForExport_NilsPercentiles(t *testing.T) {
 	assert.NotNil(t, s.Percentiles, "original should keep its Percentiles")
 }
 
+func TestState_CopyForExport_DeepCopiesCurrent(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Threads:   dummyThreads,
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now(),
+	}
+
+	var s State
+	s.Update(snap)
+
+	cp := s.CopyForExport()
+	require.NotNil(t, cp.Current)
+	assert.NotSame(t, s.Current, cp.Current, "Current should be a different pointer")
+	assert.Equal(t, s.Current.FetchedAt, cp.Current.FetchedAt)
+}
+
+func TestState_CopyForExport_NilsPrevious(t *testing.T) {
+	snap1 := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	snap2 := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	var s State
+	s.Update(snap1)
+	s.Update(snap2)
+	require.NotNil(t, s.Previous)
+
+	cp := s.CopyForExport()
+	assert.Nil(t, cp.Previous, "CopyForExport should nil out Previous")
+}
+
 func TestState_CopyForExport_CopiesHostDerived(t *testing.T) {
 	now := time.Now()
 

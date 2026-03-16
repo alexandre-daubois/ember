@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/alexandredaubois/ember/internal/exporter"
@@ -35,11 +34,18 @@ func runTUI(f *fetcher.HTTPFetcher, cfg *config, hasFrankenPHP bool, version str
 		mux.HandleFunc("/metrics", exporter.Handler(holder))
 		srv = &http.Server{Addr: cfg.expose, Handler: mux}
 
+		listenErr := make(chan error, 1)
 		go func() {
 			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
+				listenErr <- fmt.Errorf("metrics server on %s: %w", cfg.expose, err)
 			}
 		}()
+
+		select {
+		case err := <-listenErr:
+			return err
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 
 	app := ui.NewApp(f, uiCfg)

@@ -202,9 +202,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.history.appendQueue(msg.snap.Metrics.QueueDepth)
 			a.history.appendBusy(float64(a.state.Derived.TotalBusy))
 
+			activeHosts := make(map[string]struct{}, len(a.state.HostDerived))
 			for _, hd := range a.state.HostDerived {
 				a.history.appendHostRPS(hd.Host, hd.RPS)
+				activeHosts[hd.Host] = struct{}{}
 			}
+			a.history.pruneHosts(activeHosts)
 
 			for _, t := range msg.snap.Threads.ThreadDebugStates {
 				a.history.recordMem(t.Index, t.MemoryUsage)

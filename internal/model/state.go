@@ -157,12 +157,15 @@ type DerivedMetrics struct {
 	HasPercentiles bool
 }
 
-// CopyForExport returns a shallow copy safe for concurrent read from the exporter.
-// Current is shared by pointer, but this is safe because OnStateUpdate is only
-// called from the non-stale path where Update() replaces Current with a new Snapshot.
+// CopyForExport returns a copy safe for concurrent read from the exporter.
 func (s *State) CopyForExport() State {
 	cp := *s
 	cp.Percentiles = nil
+	cp.Previous = nil
+	if s.Current != nil {
+		snap := *s.Current
+		cp.Current = &snap
+	}
 	if s.HostDerived != nil {
 		cp.HostDerived = make([]HostDerived, len(s.HostDerived))
 		copy(cp.HostDerived, s.HostDerived)
