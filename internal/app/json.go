@@ -53,41 +53,7 @@ func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration) {
 			return
 		}
 		state.Update(snap)
-
-		out := jsonOutput{
-			Threads:   snap.Threads,
-			Metrics:   snap.Metrics,
-			Process:   snap.Process,
-			FetchedAt: snap.FetchedAt,
-			Errors:    snap.Errors,
-			Derived: &jsonDerived{
-				RPS:     state.Derived.RPS,
-				AvgTime: state.Derived.AvgTime,
-			},
-		}
-		if state.Derived.HasPercentiles {
-			out.Derived.P50 = &state.Derived.P50
-			out.Derived.P95 = &state.Derived.P95
-			out.Derived.P99 = &state.Derived.P99
-		}
-		for _, hd := range state.HostDerived {
-			jh := jsonHost{
-				Host:        hd.Host,
-				RPS:         hd.RPS,
-				AvgTime:     hd.AvgTime,
-				InFlight:    hd.InFlight,
-				StatusCodes: hd.StatusCodes,
-				MethodRates: hd.MethodRates,
-			}
-			if hd.HasPercentiles {
-				jh.P50 = &hd.P50
-				jh.P90 = &hd.P90
-				jh.P95 = &hd.P95
-				jh.P99 = &hd.P99
-			}
-			out.Hosts = append(out.Hosts, jh)
-		}
-		_ = enc.Encode(out)
+		_ = enc.Encode(buildJSONOutput(snap, &state))
 	}
 
 	poll()
@@ -103,4 +69,41 @@ func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration) {
 			poll()
 		}
 	}
+}
+
+func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
+	out := jsonOutput{
+		Threads:   snap.Threads,
+		Metrics:   snap.Metrics,
+		Process:   snap.Process,
+		FetchedAt: snap.FetchedAt,
+		Errors:    snap.Errors,
+		Derived: &jsonDerived{
+			RPS:     state.Derived.RPS,
+			AvgTime: state.Derived.AvgTime,
+		},
+	}
+	if state.Derived.HasPercentiles {
+		out.Derived.P50 = &state.Derived.P50
+		out.Derived.P95 = &state.Derived.P95
+		out.Derived.P99 = &state.Derived.P99
+	}
+	for _, hd := range state.HostDerived {
+		jh := jsonHost{
+			Host:        hd.Host,
+			RPS:         hd.RPS,
+			AvgTime:     hd.AvgTime,
+			InFlight:    hd.InFlight,
+			StatusCodes: hd.StatusCodes,
+			MethodRates: hd.MethodRates,
+		}
+		if hd.HasPercentiles {
+			jh.P50 = &hd.P50
+			jh.P90 = &hd.P90
+			jh.P95 = &hd.P95
+			jh.P99 = &hd.P99
+		}
+		out.Hosts = append(out.Hosts, jh)
+	}
+	return out
 }

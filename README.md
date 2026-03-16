@@ -15,7 +15,7 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 - Status code breakdown (2xx/s, 4xx/s, 5xx/s) per host
 - Sorting and live filtering by hostname
 - Live sparkline graphs (CPU, RPS, RSS)
-- JSON output mode for scripting
+- JSON output mode for scripting (includes per-host metrics)
 
 ### FrankenPHP dashboard (when detected)
 
@@ -28,9 +28,9 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 
 ### Cloud Ready with Prometheus Export & Daemon Mode
 
-- `--expose=:9191` starts a `/metrics` endpoint exposing FrankenPHP metrics in Prometheus format
+- `--expose=:9191` starts a `/metrics` endpoint exposing Caddy and FrankenPHP metrics in Prometheus format
 - `--daemon` runs headless (no TUI)
-- Exposes thread state, per-thread memory, worker crashes/restarts/queue, request duration percentiles, and process CPU/RSS
+- Exposes per-host RPS/latency/in-flight/status rates, thread state, per-thread memory, worker crashes/restarts/queue, request duration percentiles, and process CPU/RSS
 - Works alongside the TUI (`--expose` without `--daemon`) or standalone
 
 ### General
