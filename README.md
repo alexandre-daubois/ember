@@ -6,7 +6,7 @@
 
 Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking.
 
-![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/img.png?raw=true)
+![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/ember.gif?raw=true)
 
 ## Features
 
