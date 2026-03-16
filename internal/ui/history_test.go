@@ -75,3 +75,26 @@ func TestHistoryStore_AppendHostRPS_MultipleHosts(t *testing.T) {
 	assert.Len(t, h.hostRPS["b.com"], 1)
 	assert.Equal(t, float64(30), h.hostRPS["a.com"][1])
 }
+
+func TestHistoryStore_PruneHosts(t *testing.T) {
+	h := newHistoryStore()
+	h.appendHostRPS("a.com", 10)
+	h.appendHostRPS("b.com", 20)
+	h.appendHostRPS("c.com", 30)
+
+	active := map[string]struct{}{"a.com": {}, "c.com": {}}
+	h.pruneHosts(active)
+
+	assert.Contains(t, h.hostRPS, "a.com")
+	assert.Contains(t, h.hostRPS, "c.com")
+	assert.NotContains(t, h.hostRPS, "b.com")
+}
+
+func TestHistoryStore_PruneHosts_EmptyActive(t *testing.T) {
+	h := newHistoryStore()
+	h.appendHostRPS("a.com", 10)
+
+	h.pruneHosts(map[string]struct{}{})
+
+	assert.Empty(t, h.hostRPS)
+}

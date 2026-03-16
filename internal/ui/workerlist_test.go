@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -331,6 +332,7 @@ func TestFormatNumber(t *testing.T) {
 		{-999, "-999"},
 		{-1000, "-1,000"},
 		{-1234567, "-1,234,567"},
+		{math.MinInt64, "-9,223,372,036,854,775,808"},
 	}
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, formatNumber(tt.input), "formatNumber(%d)", tt.input)
