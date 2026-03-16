@@ -1,5 +1,7 @@
 # Ember - Real-time TUI dashboard for Caddy & FrankenPHP
 
+[![codecov](https://codecov.io/github/alexandre-daubois/ember/graph/badge.svg?token=3BG1TUO91L)](https://codecov.io/github/alexandre-daubois/ember)
+
 Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking.
 
 ![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/img.png?raw=true)
