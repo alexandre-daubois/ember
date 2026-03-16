@@ -273,20 +273,26 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 		staleThreshold = 5 * time.Second
 	}
 
+	enc := func(w http.ResponseWriter, v any) {
+		if err := json.NewEncoder(w).Encode(v); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		s := holder.Load()
 		w.Header().Set("Content-Type", "application/json")
 
 		if s.Current == nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]string{"status": "no data yet"})
+			enc(w, map[string]string{"status": "no data yet"})
 			return
 		}
 
 		age := time.Since(s.Current.FetchedAt)
 		if age > staleThreshold {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(map[string]any{
+			enc(w, map[string]any{
 				"status":      "stale",
 				"last_fetch":  s.Current.FetchedAt.Format(time.RFC3339),
 				"age_seconds": age.Seconds(),
@@ -294,7 +300,7 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 			return
 		}
 
-		json.NewEncoder(w).Encode(map[string]any{
+		enc(w, map[string]any{
 			"status":      "ok",
 			"last_fetch":  s.Current.FetchedAt.Format(time.RFC3339),
 			"age_seconds": age.Seconds(),
