@@ -226,7 +226,7 @@ func TestState_Update_NoSpikeAfterStaleMetricsWithData(t *testing.T) {
 		},
 	}
 
-	// stale but metrics endpoint succeeded — counters are fresh
+	// stale but metrics endpoint succeeded, counters are fresh
 	staleFresh := &fetcher.Snapshot{
 		FetchedAt: now.Add(-1 * time.Second),
 		Threads:   fetcher.ThreadsResponse{},
@@ -620,7 +620,7 @@ func TestState_Update_HistogramTakesPriorityOverThreadBased(t *testing.T) {
 
 func TestState_Update_MidpointEstimation(t *testing.T) {
 	now := time.Now()
-	// Request started 3 seconds ago — well before both snapshots
+	// Request started 3 seconds ago, well before both snapshots
 	reqStart := now.Add(-3 * time.Second).UnixMilli()
 
 	prev := &fetcher.Snapshot{

@@ -10,37 +10,13 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 
 ## Features
 
-### Caddy dashboard (always available)
-
-- Per-host traffic table with RPS, per-host RPS sparklines, average response time, and in-flight requests
-- Latency percentiles (P50, P90, P95, P99) from Prometheus histogram buckets
-- Status code breakdown (2xx/s, 4xx/s, 5xx/s) per host
-- Sorting and live filtering by hostname
-- Live sparkline graphs (CPU, RPS, RSS)
-- JSON output mode for scripting (includes per-host metrics)
-
-### FrankenPHP dashboard (when detected)
-
-- Per-thread introspection (URI, HTTP method, duration, memory)
-- Worker queue depth and busy thread tracking
-- Full-screen graphs (CPU, RPS, RSS, queue depth, busy threads)
-- Graceful worker restart from the TUI
-- Detail panel with per-thread info and memory sparkline trend
-- Memory delta indicators (↑/↓) per thread between polls
-
-### Cloud Ready with Prometheus Export & Daemon Mode
-
-- `--expose=:9191` starts a `/metrics` endpoint exposing Caddy and FrankenPHP metrics in Prometheus format
-- `--daemon` runs headless (no TUI)
-- `/healthz` endpoint returns `200 OK` when data is fresh, `503` when stale or unavailable (useful for k8s liveness probes)
-- Exposes per-host RPS/latency/in-flight/status rates, thread state, per-thread memory, worker crashes/restarts/queue, request duration percentiles, and process CPU/RSS
-- Works alongside the TUI (`--expose` without `--daemon`) or standalone
-
-### General
-
-- Tab-based navigation between Caddy and FrankenPHP views
+- Per-host traffic table with RPS, latency percentiles (P50–P99), status codes, and sparklines
+- FrankenPHP thread introspection with memory tracking and worker management
+- Full-screen ASCII graphs (CPU, RPS, RSS, queue depth, busy threads)
+- Prometheus metrics export (`/metrics`) and health endpoint (`/healthz`)
+- Daemon mode for headless operation
+- JSON output mode for scripting
 - Auto-detection of FrankenPHP and Caddy processes
-- Stale data and connection loss detection
 - Cross-platform binaries, Homebrew tap, and Docker image
 
 ## Install
@@ -55,13 +31,13 @@ Or with Go:
 go install github.com/alexandre-daubois/ember/cmd/ember@latest
 ```
 
-Or with Docker (runs in daemon mode with Prometheus export on `:9191` by default):
+Or with Docker:
 
 ```bash
 docker run --rm --network host ghcr.io/alexandre-daubois/ember
 ```
 
-## Usage
+## Quick Start
 
 Make sure Caddy is running with the admin API and metrics enabled:
 
@@ -78,52 +54,20 @@ Then:
 ember
 ```
 
-Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In Caddy-only mode, the dashboard shows per-host HTTP metrics. When FrankenPHP is detected, a second tab provides thread-level introspection.
+Ember connects to the Caddy admin API and auto-detects FrankenPHP if present.
 
-### Options
+## Documentation
 
-```
---addr string        Caddy admin API address (default "http://localhost:2019")
---interval dur       Polling interval (default 1s)
---slow-threshold ms  Slow request threshold (default 500)
---pid int            FrankenPHP PID (auto-detected if not set)
---json               JSON output mode (streaming JSONL)
---expose addr        Expose Prometheus metrics (e.g. --expose=:9191)
---daemon             Headless mode (requires --expose)
---metrics-prefix str Prefix for exported Prometheus metric names
---no-color           Disable colors
-```
+Full documentation is available in the [docs/](docs/index.md) directory:
 
-### Keybindings
-
-| Key | Action |
-|-----|--------|
-| `Tab` | Switch between Caddy / FrankenPHP tabs |
-| `1` / `2` | Jump to tab |
-| `↑` `↓` `j` `k` | Navigate list |
-| `Home` / `End` | Jump to first / last item |
-| `PgUp` / `PgDn` | Page navigation |
-| `Enter` | Detail panel |
-| `s` / `S` | Cycle sort field |
-| `p` | Pause / resume |
-| `r` | Restart workers (FrankenPHP) |
-| `/` | Filter |
-| `g` | Full-screen graphs |
-| `?` | Help overlay |
-| `q` | Quit |
-
-### Shell Completions
-
-```bash
-# Bash
-ember completion bash > /etc/bash_completion.d/ember
-
-# Zsh
-ember completion zsh > "${fpath[1]}/_ember"
-
-# Fish
-ember completion fish > ~/.config/fish/completions/ember.fish
-```
+- [Getting Started](docs/getting-started.md): Install and first run
+- [Caddy Configuration](docs/caddy-configuration.md): Caddyfile requirements
+- [Caddy Dashboard](docs/caddy-dashboard.md): Per-host traffic and latency
+- [FrankenPHP Dashboard](docs/frankenphp-dashboard.md): Thread introspection and workers
+- [CLI Reference](docs/cli-reference.md): Flags, keybindings, shell completions
+- [JSON Output](docs/json-output.md): Streaming JSONL for scripting
+- [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode
+- [Docker](docs/docker.md): Container usage
 
 ## License
 
