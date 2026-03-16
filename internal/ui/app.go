@@ -389,9 +389,9 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a *App) handleGraphKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "g", "q":
+	case "esc", "g":
 		a.mode = a.prevMode
-	case "ctrl+c":
+	case "q", "ctrl+c":
 		return a, tea.Quit
 	case "?":
 		a.prevMode = a.mode
@@ -402,9 +402,9 @@ func (a *App) handleGraphKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a *App) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "?", "esc", "q":
+	case "?", "esc":
 		a.mode = a.prevMode
-	case "ctrl+c":
+	case "q", "ctrl+c":
 		return a, tea.Quit
 	}
 	return a, nil

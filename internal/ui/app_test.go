@@ -529,6 +529,20 @@ func TestHelpEscReturns(t *testing.T) {
 	assert.Equal(t, viewList, app.mode, "Esc should return to previous view")
 }
 
+func TestGraphQQuits(t *testing.T) {
+	app := &App{mode: viewGraph, prevMode: viewList}
+
+	_, cmd := app.handleGraphKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	assert.NotNil(t, cmd, "q in graph view should return a quit command")
+}
+
+func TestHelpQQuits(t *testing.T) {
+	app := &App{mode: viewHelp, prevMode: viewList}
+
+	_, cmd := app.handleHelpKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	assert.NotNil(t, cmd, "q in help view should return a quit command")
+}
+
 func TestHelpFromDetailView(t *testing.T) {
 	app := &App{mode: viewDetail}
 

@@ -37,6 +37,20 @@ func TestRun_VersionFlag(t *testing.T) {
 	assert.Contains(t, buf.String(), "ember 1.2.3-test")
 }
 
+func TestMetricsURL(t *testing.T) {
+	tests := []struct {
+		addr string
+		want string
+	}{
+		{":9191", "http://localhost:9191/metrics"},
+		{"0.0.0.0:9191", "http://0.0.0.0:9191/metrics"},
+		{"127.0.0.1:9191", "http://127.0.0.1:9191/metrics"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, metricsURL(tt.addr), "metricsURL(%q)", tt.addr)
+	}
+}
+
 func TestRun_InvalidFlag(t *testing.T) {
 	err := Run([]string{"--nonexistent"}, "0.0.0")
 	assert.Error(t, err)

@@ -30,7 +30,6 @@ type jsonDerived struct {
 
 func runJSON(ctx context.Context, f *fetcher.HTTPFetcher, interval time.Duration) {
 	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
 	var state model.State
 
 	poll := func() {
