@@ -29,7 +29,11 @@ func (h *StateHolder) Load() model.State {
 
 const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 
-func Handler(holder *StateHolder) http.HandlerFunc {
+func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
+	p := ""
+	if len(prefix) > 0 {
+		p = prefix[0]
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		s := holder.Load()
 		if s.Current == nil {
@@ -39,30 +43,38 @@ func Handler(holder *StateHolder) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", prometheusContentType)
 
-		writeThreadMetrics(w, &s)
-		writeThreadMemory(w, &s)
-		writeWorkerMetrics(w, &s)
-		writeHostMetrics(w, &s)
-		writePercentiles(w, &s)
-		writeProcessMetrics(w, &s)
+		writeThreadMetrics(w, &s, p)
+		writeThreadMemory(w, &s, p)
+		writeWorkerMetrics(w, &s, p)
+		writeHostMetrics(w, &s, p)
+		writePercentiles(w, &s, p)
+		writeProcessMetrics(w, &s, p)
 	}
 }
 
-func writeThreadMetrics(w http.ResponseWriter, s *model.State) {
+func prefixed(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return prefix + "_" + name
+}
+
+func writeThreadMetrics(w http.ResponseWriter, s *model.State, prefix string) {
 	total := len(s.Current.Threads.ThreadDebugStates)
 	other := total - s.Derived.TotalBusy - s.Derived.TotalIdle
 	if other < 0 {
 		other = 0
 	}
 
-	fmt.Fprintln(w, "# HELP frankenphp_threads_total Number of FrankenPHP threads by state")
-	fmt.Fprintln(w, "# TYPE frankenphp_threads_total gauge")
-	fmt.Fprintf(w, "frankenphp_threads_total{state=\"busy\"} %d\n", s.Derived.TotalBusy)
-	fmt.Fprintf(w, "frankenphp_threads_total{state=\"idle\"} %d\n", s.Derived.TotalIdle)
-	fmt.Fprintf(w, "frankenphp_threads_total{state=\"other\"} %d\n", other)
+	name := prefixed(prefix, "frankenphp_threads_total")
+	fmt.Fprintf(w, "# HELP %s Number of FrankenPHP threads by state\n", name)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
+	fmt.Fprintf(w, "%s{state=\"busy\"} %d\n", name, s.Derived.TotalBusy)
+	fmt.Fprintf(w, "%s{state=\"idle\"} %d\n", name, s.Derived.TotalIdle)
+	fmt.Fprintf(w, "%s{state=\"other\"} %d\n", name, other)
 }
 
-func writeThreadMemory(w http.ResponseWriter, s *model.State) {
+func writeThreadMemory(w http.ResponseWriter, s *model.State, prefix string) {
 	hasMemory := false
 	for _, t := range s.Current.Threads.ThreadDebugStates {
 		if t.MemoryUsage > 0 {
@@ -74,68 +86,75 @@ func writeThreadMemory(w http.ResponseWriter, s *model.State) {
 		return
 	}
 
-	fmt.Fprintln(w, "# HELP frankenphp_thread_memory_bytes Memory usage per FrankenPHP thread")
-	fmt.Fprintln(w, "# TYPE frankenphp_thread_memory_bytes gauge")
+	name := prefixed(prefix, "frankenphp_thread_memory_bytes")
+	fmt.Fprintf(w, "# HELP %s Memory usage per FrankenPHP thread\n", name)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
 	for _, t := range s.Current.Threads.ThreadDebugStates {
 		if t.MemoryUsage > 0 {
-			fmt.Fprintf(w, "frankenphp_thread_memory_bytes{index=\"%d\"} %d\n", t.Index, t.MemoryUsage)
+			fmt.Fprintf(w, "%s{index=\"%d\"} %d\n", name, t.Index, t.MemoryUsage)
 		}
 	}
 }
 
-func writeWorkerMetrics(out http.ResponseWriter, s *model.State) {
+func writeWorkerMetrics(out http.ResponseWriter, s *model.State, prefix string) {
 	if len(s.Current.Metrics.Workers) == 0 {
 		return
 	}
 
 	names := sortedWorkerNames(s.Current.Metrics.Workers)
 
-	fmt.Fprintln(out, "# HELP frankenphp_worker_crashes_total Total worker crashes")
-	fmt.Fprintln(out, "# TYPE frankenphp_worker_crashes_total counter")
+	crashes := prefixed(prefix, "frankenphp_worker_crashes_total")
+	fmt.Fprintf(out, "# HELP %s Total worker crashes\n", crashes)
+	fmt.Fprintf(out, "# TYPE %s counter\n", crashes)
 	for _, name := range names {
 		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "frankenphp_worker_crashes_total{worker=\"%s\"} %g\n", escapeLabelValue(name), wm.Crashes)
+		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", crashes, escapeLabelValue(name), wm.Crashes)
 	}
 
-	fmt.Fprintln(out, "# HELP frankenphp_worker_restarts_total Total worker restarts")
-	fmt.Fprintln(out, "# TYPE frankenphp_worker_restarts_total counter")
+	restarts := prefixed(prefix, "frankenphp_worker_restarts_total")
+	fmt.Fprintf(out, "# HELP %s Total worker restarts\n", restarts)
+	fmt.Fprintf(out, "# TYPE %s counter\n", restarts)
 	for _, name := range names {
 		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "frankenphp_worker_restarts_total{worker=\"%s\"} %g\n", escapeLabelValue(name), wm.Restarts)
+		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", restarts, escapeLabelValue(name), wm.Restarts)
 	}
 
-	fmt.Fprintln(out, "# HELP frankenphp_worker_queue_depth Requests in queue per worker")
-	fmt.Fprintln(out, "# TYPE frankenphp_worker_queue_depth gauge")
+	queue := prefixed(prefix, "frankenphp_worker_queue_depth")
+	fmt.Fprintf(out, "# HELP %s Requests in queue per worker\n", queue)
+	fmt.Fprintf(out, "# TYPE %s gauge\n", queue)
 	for _, name := range names {
 		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "frankenphp_worker_queue_depth{worker=\"%s\"} %g\n", escapeLabelValue(name), wm.QueueDepth)
+		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", queue, escapeLabelValue(name), wm.QueueDepth)
 	}
 
-	fmt.Fprintln(out, "# HELP frankenphp_worker_requests_total Total requests processed per worker")
-	fmt.Fprintln(out, "# TYPE frankenphp_worker_requests_total counter")
+	reqs := prefixed(prefix, "frankenphp_worker_requests_total")
+	fmt.Fprintf(out, "# HELP %s Total requests processed per worker\n", reqs)
+	fmt.Fprintf(out, "# TYPE %s counter\n", reqs)
 	for _, name := range names {
 		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "frankenphp_worker_requests_total{worker=\"%s\"} %g\n", escapeLabelValue(name), wm.RequestCount)
+		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", reqs, escapeLabelValue(name), wm.RequestCount)
 	}
 }
 
-func writeHostMetrics(w http.ResponseWriter, s *model.State) {
+func writeHostMetrics(w http.ResponseWriter, s *model.State, prefix string) {
 	if len(s.HostDerived) == 0 {
 		return
 	}
 
 	hosts := sortedHostNames(s.HostDerived)
 
-	fmt.Fprintln(w, "# HELP ember_host_rps Requests per second by host")
-	fmt.Fprintln(w, "# TYPE ember_host_rps gauge")
+	rps := prefixed(prefix, "ember_host_rps")
+	fmt.Fprintf(w, "# HELP %s Requests per second by host\n", rps)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", rps)
 	for _, hd := range hosts {
-		fmt.Fprintf(w, "ember_host_rps{host=\"%s\"} %.2f\n", escapeLabelValue(hd.Host), hd.RPS)
+		fmt.Fprintf(w, "%s{host=\"%s\"} %.2f\n", rps, escapeLabelValue(hd.Host), hd.RPS)
 	}
 
-	fmt.Fprintln(w, "# HELP ember_host_latency_avg_milliseconds Average response time by host")
-	fmt.Fprintln(w, "# TYPE ember_host_latency_avg_milliseconds gauge")
+	avg := prefixed(prefix, "ember_host_latency_avg_milliseconds")
+	fmt.Fprintf(w, "# HELP %s Average response time by host\n", avg)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", avg)
 	for _, hd := range hosts {
-		fmt.Fprintf(w, "ember_host_latency_avg_milliseconds{host=\"%s\"} %.2f\n", escapeLabelValue(hd.Host), hd.AvgTime)
+		fmt.Fprintf(w, "%s{host=\"%s\"} %.2f\n", avg, escapeLabelValue(hd.Host), hd.AvgTime)
 	}
 
 	hasPercentiles := false
@@ -146,24 +165,26 @@ func writeHostMetrics(w http.ResponseWriter, s *model.State) {
 		}
 	}
 	if hasPercentiles {
-		fmt.Fprintln(w, "# HELP ember_host_latency_milliseconds Response time percentiles by host")
-		fmt.Fprintln(w, "# TYPE ember_host_latency_milliseconds gauge")
+		lat := prefixed(prefix, "ember_host_latency_milliseconds")
+		fmt.Fprintf(w, "# HELP %s Response time percentiles by host\n", lat)
+		fmt.Fprintf(w, "# TYPE %s gauge\n", lat)
 		for _, hd := range hosts {
 			if !hd.HasPercentiles {
 				continue
 			}
 			h := escapeLabelValue(hd.Host)
-			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.5\"} %.2f\n", h, hd.P50)
-			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.9\"} %.2f\n", h, hd.P90)
-			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.95\"} %.2f\n", h, hd.P95)
-			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.99\"} %.2f\n", h, hd.P99)
+			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.5\"} %.2f\n", lat, h, hd.P50)
+			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.9\"} %.2f\n", lat, h, hd.P90)
+			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.95\"} %.2f\n", lat, h, hd.P95)
+			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.99\"} %.2f\n", lat, h, hd.P99)
 		}
 	}
 
-	fmt.Fprintln(w, "# HELP ember_host_inflight In-flight requests by host")
-	fmt.Fprintln(w, "# TYPE ember_host_inflight gauge")
+	infl := prefixed(prefix, "ember_host_inflight")
+	fmt.Fprintf(w, "# HELP %s In-flight requests by host\n", infl)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", infl)
 	for _, hd := range hosts {
-		fmt.Fprintf(w, "ember_host_inflight{host=\"%s\"} %.0f\n", escapeLabelValue(hd.Host), hd.InFlight)
+		fmt.Fprintf(w, "%s{host=\"%s\"} %.0f\n", infl, escapeLabelValue(hd.Host), hd.InFlight)
 	}
 
 	hasStatus := false
@@ -174,14 +195,15 @@ func writeHostMetrics(w http.ResponseWriter, s *model.State) {
 		}
 	}
 	if hasStatus {
-		fmt.Fprintln(w, "# HELP ember_host_status_rate Request rate by host and status class")
-		fmt.Fprintln(w, "# TYPE ember_host_status_rate gauge")
+		sr := prefixed(prefix, "ember_host_status_rate")
+		fmt.Fprintf(w, "# HELP %s Request rate by host and status class\n", sr)
+		fmt.Fprintf(w, "# TYPE %s gauge\n", sr)
 		for _, hd := range hosts {
 			classes := statusClassRates(hd.StatusCodes)
 			h := escapeLabelValue(hd.Host)
 			for _, c := range []string{"2xx", "3xx", "4xx", "5xx"} {
 				if rate, ok := classes[c]; ok {
-					fmt.Fprintf(w, "ember_host_status_rate{host=\"%s\",class=\"%s\"} %.2f\n", h, c, rate)
+					fmt.Fprintf(w, "%s{host=\"%s\",class=\"%s\"} %.2f\n", sr, h, c, rate)
 				}
 			}
 		}
@@ -217,26 +239,29 @@ func sortedHostNames(hosts []model.HostDerived) []model.HostDerived {
 	return sorted
 }
 
-func writePercentiles(w http.ResponseWriter, s *model.State) {
+func writePercentiles(w http.ResponseWriter, s *model.State, prefix string) {
 	if !s.Derived.HasPercentiles {
 		return
 	}
 
-	fmt.Fprintln(w, "# HELP frankenphp_request_duration_milliseconds Request duration percentiles")
-	fmt.Fprintln(w, "# TYPE frankenphp_request_duration_milliseconds gauge")
-	fmt.Fprintf(w, "frankenphp_request_duration_milliseconds{quantile=\"0.5\"} %.2f\n", s.Derived.P50)
-	fmt.Fprintf(w, "frankenphp_request_duration_milliseconds{quantile=\"0.95\"} %.2f\n", s.Derived.P95)
-	fmt.Fprintf(w, "frankenphp_request_duration_milliseconds{quantile=\"0.99\"} %.2f\n", s.Derived.P99)
+	name := prefixed(prefix, "frankenphp_request_duration_milliseconds")
+	fmt.Fprintf(w, "# HELP %s Request duration percentiles\n", name)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
+	fmt.Fprintf(w, "%s{quantile=\"0.5\"} %.2f\n", name, s.Derived.P50)
+	fmt.Fprintf(w, "%s{quantile=\"0.95\"} %.2f\n", name, s.Derived.P95)
+	fmt.Fprintf(w, "%s{quantile=\"0.99\"} %.2f\n", name, s.Derived.P99)
 }
 
-func writeProcessMetrics(w http.ResponseWriter, s *model.State) {
-	fmt.Fprintln(w, "# HELP process_cpu_percent CPU usage of the monitored process")
-	fmt.Fprintln(w, "# TYPE process_cpu_percent gauge")
-	fmt.Fprintf(w, "process_cpu_percent %.2f\n", s.Current.Process.CPUPercent)
+func writeProcessMetrics(w http.ResponseWriter, s *model.State, prefix string) {
+	cpu := prefixed(prefix, "process_cpu_percent")
+	fmt.Fprintf(w, "# HELP %s CPU usage of the monitored process\n", cpu)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", cpu)
+	fmt.Fprintf(w, "%s %.2f\n", cpu, s.Current.Process.CPUPercent)
 
-	fmt.Fprintln(w, "# HELP process_rss_bytes Resident set size of the monitored process")
-	fmt.Fprintln(w, "# TYPE process_rss_bytes gauge")
-	fmt.Fprintf(w, "process_rss_bytes %d\n", s.Current.Process.RSS)
+	rss := prefixed(prefix, "process_rss_bytes")
+	fmt.Fprintf(w, "# HELP %s Resident set size of the monitored process\n", rss)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", rss)
+	fmt.Fprintf(w, "%s %d\n", rss, s.Current.Process.RSS)
 }
 
 func escapeLabelValue(s string) string {

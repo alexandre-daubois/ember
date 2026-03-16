@@ -34,6 +34,12 @@ func get(holder *StateHolder) *httptest.ResponseRecorder {
 	return rec
 }
 
+func getWithPrefix(holder *StateHolder, prefix string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	Handler(holder, prefix)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	return rec
+}
+
 func TestHandler_NoData_Returns503(t *testing.T) {
 	holder := &StateHolder{}
 	rec := get(holder)
@@ -361,4 +367,69 @@ func TestHandler_HostMetrics_ValidPrometheus(t *testing.T) {
 	assert.Contains(t, families, "ember_host_latency_milliseconds")
 	assert.Contains(t, families, "ember_host_inflight")
 	assert.Contains(t, families, "ember_host_status_rate")
+}
+
+func TestPrefixed(t *testing.T) {
+	assert.Equal(t, "frankenphp_threads_total", prefixed("", "frankenphp_threads_total"))
+	assert.Equal(t, "prod_frankenphp_threads_total", prefixed("prod", "frankenphp_threads_total"))
+	assert.Equal(t, "myapp_ember_host_rps", prefixed("myapp", "ember_host_rps"))
+}
+
+func TestHandler_WithPrefix_AllMetricsPrefixed(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsBusy: true, MemoryUsage: 10 * 1024 * 1024},
+		{Index: 1, IsWaiting: true},
+	}
+	workers := map[string]*fetcher.WorkerMetrics{
+		"/app/worker.php": {Crashes: 2, Restarts: 5, QueueDepth: 1, RequestCount: 10000},
+	}
+	s := stateWithThreads(threads, workers)
+	s.Derived.HasPercentiles = true
+	s.Derived.P50 = 12.5
+	s.Derived.P95 = 45.0
+	s.Derived.P99 = 120.3
+	s.HostDerived = []model.HostDerived{
+		{Host: "test.com", RPS: 100, AvgTime: 25, InFlight: 3,
+			HasPercentiles: true, P50: 10, P90: 30, P95: 50, P99: 120,
+			StatusCodes: map[int]float64{200: 90, 500: 5}},
+	}
+
+	holder := &StateHolder{}
+	holder.Store(s)
+
+	rec := getWithPrefix(holder, "prod")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(rec.Body)
+	require.NoError(t, err, "output must be valid Prometheus text format")
+
+	assert.Contains(t, families, "prod_frankenphp_threads_total")
+	assert.Contains(t, families, "prod_frankenphp_thread_memory_bytes")
+	assert.Contains(t, families, "prod_frankenphp_worker_crashes_total")
+	assert.Contains(t, families, "prod_frankenphp_request_duration_milliseconds")
+	assert.Contains(t, families, "prod_process_cpu_percent")
+	assert.Contains(t, families, "prod_process_rss_bytes")
+	assert.Contains(t, families, "prod_ember_host_rps")
+	assert.Contains(t, families, "prod_ember_host_latency_avg_milliseconds")
+	assert.Contains(t, families, "prod_ember_host_latency_milliseconds")
+	assert.Contains(t, families, "prod_ember_host_inflight")
+	assert.Contains(t, families, "prod_ember_host_status_rate")
+
+	// Original names must NOT be present
+	assert.NotContains(t, families, "frankenphp_threads_total")
+	assert.NotContains(t, families, "ember_host_rps")
+	assert.NotContains(t, families, "process_cpu_percent")
+}
+
+func TestHandler_EmptyPrefix_DefaultNames(t *testing.T) {
+	holder := &StateHolder{}
+	holder.Store(stateWithThreads(nil, nil))
+
+	rec := getWithPrefix(holder, "")
+	body := rec.Body.String()
+
+	assert.Contains(t, body, "frankenphp_threads_total")
+	assert.Contains(t, body, "process_cpu_percent")
+	assert.NotContains(t, body, "_frankenphp_threads_total")
 }

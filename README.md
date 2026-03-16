@@ -87,6 +87,7 @@ Ember connects to the Caddy admin API and auto-detects FrankenPHP if present. In
 --json               JSON output mode (streaming JSONL)
 --expose addr        Expose Prometheus metrics (e.g. --expose=:9191)
 --daemon             Headless mode (requires --expose)
+--metrics-prefix str Prefix for exported Prometheus metric names
 --no-color           Disable colors
 ```
 

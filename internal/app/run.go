@@ -21,6 +21,7 @@ type config struct {
 	pid           int
 	expose        string
 	daemon        bool
+	metricsPrefix string
 }
 
 func newRootCmd(version string) *cobra.Command {
@@ -102,6 +103,7 @@ Keybindings:
 	f.IntVar(&cfg.pid, "pid", 0, "FrankenPHP PID (auto-detected if not set)")
 	f.StringVar(&cfg.expose, "expose", "", "Expose Prometheus metrics (e.g. :9191)")
 	f.BoolVar(&cfg.daemon, "daemon", false, "Headless mode (requires --expose)")
+	f.StringVar(&cfg.metricsPrefix, "metrics-prefix", "", "Prefix for exported Prometheus metric names")
 
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 

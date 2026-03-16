@@ -31,7 +31,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string) 
 		}
 
 		mux := http.NewServeMux()
-		mux.HandleFunc("/metrics", exporter.Handler(holder))
+		mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix))
 		srv = &http.Server{Addr: cfg.expose, Handler: mux}
 
 		listenErr := make(chan error, 1)
