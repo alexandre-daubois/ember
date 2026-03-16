@@ -17,7 +17,7 @@ func TestSortThreads_ByIndex(t *testing.T) {
 		{Index: 1},
 		{Index: 2},
 	}
-	sorted := sortThreads(threads, model.SortByIndex)
+	sorted := sortThreads(threads, model.SortByIndex, time.Now())
 	for i, s := range sorted {
 		assert.Equal(t, i+1, s.Index, "position %d", i)
 	}
@@ -29,7 +29,7 @@ func TestSortThreads_ByState(t *testing.T) {
 		{Index: 1, IsBusy: true},
 		{Index: 2, State: "inactive"},
 	}
-	sorted := sortThreads(threads, model.SortByState)
+	sorted := sortThreads(threads, model.SortByState, time.Now())
 
 	assert.True(t, sorted[0].IsBusy, "first should be busy")
 	assert.True(t, sorted[1].IsWaiting, "second should be idle")
@@ -42,7 +42,7 @@ func TestSortThreads_ByMemory(t *testing.T) {
 		{Index: 1, MemoryUsage: 300},
 		{Index: 2, MemoryUsage: 200},
 	}
-	sorted := sortThreads(threads, model.SortByMemory)
+	sorted := sortThreads(threads, model.SortByMemory, time.Now())
 
 	assert.Equal(t, int64(300), sorted[0].MemoryUsage, "first should have highest memory")
 	assert.Equal(t, int64(100), sorted[2].MemoryUsage, "last should have lowest memory")
@@ -53,7 +53,7 @@ func TestSortThreads_PreservesOriginal(t *testing.T) {
 		{Index: 3},
 		{Index: 1},
 	}
-	sortThreads(threads, model.SortByIndex)
+	sortThreads(threads, model.SortByIndex, time.Now())
 
 	assert.Equal(t, 3, threads[0].Index, "original slice should not be modified")
 }
@@ -191,7 +191,7 @@ func TestSortThreads_ByMethod(t *testing.T) {
 		{Index: 1, CurrentMethod: "GET"},
 		{Index: 2, CurrentMethod: ""},
 	}
-	sorted := sortThreads(threads, model.SortByMethod)
+	sorted := sortThreads(threads, model.SortByMethod, time.Now())
 
 	assert.Equal(t, "", sorted[0].CurrentMethod, "first should be empty method")
 	assert.Equal(t, "GET", sorted[1].CurrentMethod, "second should be GET")
@@ -204,7 +204,7 @@ func TestSortThreads_ByURI(t *testing.T) {
 		{Index: 1, CurrentURI: "/api/a"},
 		{Index: 2, CurrentURI: ""},
 	}
-	sorted := sortThreads(threads, model.SortByURI)
+	sorted := sortThreads(threads, model.SortByURI, time.Now())
 
 	assert.Equal(t, "", sorted[0].CurrentURI, "first should be empty URI")
 	assert.Equal(t, "/api/a", sorted[1].CurrentURI, "second should be /api/a")
@@ -217,7 +217,7 @@ func TestSortThreads_ByRequests(t *testing.T) {
 		{Index: 1, RequestCount: 500},
 		{Index: 2, RequestCount: 250},
 	}
-	sorted := sortThreads(threads, model.SortByRequests)
+	sorted := sortThreads(threads, model.SortByRequests, time.Now())
 
 	assert.Equal(t, int64(500), sorted[0].RequestCount, "first should have highest requests")
 	assert.Equal(t, int64(100), sorted[2].RequestCount, "last should have lowest requests")
@@ -228,7 +228,7 @@ func TestFormatTime_Idle(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 3200,
 	}
-	assert.Equal(t, "3200ms idle", formatTime(thread))
+	assert.Equal(t, "3200ms idle", formatTime(thread, time.Now()))
 }
 
 func TestFormatTime_IdleSubSecond(t *testing.T) {
@@ -236,7 +236,7 @@ func TestFormatTime_IdleSubSecond(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 500,
 	}
-	assert.Equal(t, "500ms idle", formatTime(thread))
+	assert.Equal(t, "500ms idle", formatTime(thread, time.Now()))
 }
 
 func TestFormatTime_IdleMinutes(t *testing.T) {
@@ -244,7 +244,7 @@ func TestFormatTime_IdleMinutes(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 125000,
 	}
-	assert.Equal(t, "2.1m idle", formatTime(thread))
+	assert.Equal(t, "2.1m idle", formatTime(thread, time.Now()))
 }
 
 func TestFormatTime_IdleHours(t *testing.T) {
@@ -252,7 +252,7 @@ func TestFormatTime_IdleHours(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 49874500,
 	}
-	assert.Equal(t, "13.9h idle", formatTime(thread))
+	assert.Equal(t, "13.9h idle", formatTime(thread, time.Now()))
 }
 
 func TestFormatTime_IdleDays(t *testing.T) {
@@ -260,12 +260,12 @@ func TestFormatTime_IdleDays(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 172800000,
 	}
-	assert.Equal(t, "2.0d idle", formatTime(thread))
+	assert.Equal(t, "2.0d idle", formatTime(thread, time.Now()))
 }
 
 func TestFormatTime_NoInfo(t *testing.T) {
 	thread := fetcher.ThreadDebugState{State: "inactive"}
-	assert.Equal(t, "—", formatTime(thread))
+	assert.Equal(t, "—", formatTime(thread, time.Now()))
 }
 
 func TestCompactDuration(t *testing.T) {
@@ -293,7 +293,7 @@ func TestSortThreads_ByTime(t *testing.T) {
 		{Index: 2, IsBusy: true, RequestStartedAt: now.Add(-3 * time.Second).UnixMilli()},
 		{Index: 3, State: "inactive"},
 	}
-	sorted := sortThreads(threads, model.SortByTime)
+	sorted := sortThreads(threads, model.SortByTime, now)
 
 	assert.Equal(t, 1, sorted[0].Index, "first should be idle thread with 5000ms")
 	assert.Equal(t, 2, sorted[1].Index, "second should be busy thread running 3s")
@@ -302,20 +302,21 @@ func TestSortThreads_ByTime(t *testing.T) {
 }
 
 func TestThreadElapsedMs_Busy(t *testing.T) {
-	started := time.Now().Add(-2 * time.Second).UnixMilli()
+	now := time.Now()
+	started := now.Add(-2 * time.Second).UnixMilli()
 	thread := fetcher.ThreadDebugState{IsBusy: true, RequestStartedAt: started}
-	elapsed := threadElapsedMs(thread)
+	elapsed := threadElapsedMs(thread, now)
 	assert.InDelta(t, 2000, elapsed, 500)
 }
 
 func TestThreadElapsedMs_Idle(t *testing.T) {
 	thread := fetcher.ThreadDebugState{IsWaiting: true, WaitingSinceMilliseconds: 4200}
-	assert.Equal(t, int64(4200), threadElapsedMs(thread))
+	assert.Equal(t, int64(4200), threadElapsedMs(thread, time.Now()))
 }
 
 func TestThreadElapsedMs_Inactive(t *testing.T) {
 	thread := fetcher.ThreadDebugState{State: "inactive"}
-	assert.Equal(t, int64(0), threadElapsedMs(thread))
+	assert.Equal(t, int64(0), threadElapsedMs(thread, time.Now()))
 }
 
 func TestFormatNumber(t *testing.T) {
@@ -346,7 +347,7 @@ func TestSortThreads_GroupsByScript(t *testing.T) {
 		{Index: 2, Name: "Worker PHP Thread - /app/worker.php"},
 		{Index: 3, Name: "Regular PHP Thread"},
 	}
-	sorted := sortThreads(threads, model.SortByIndex)
+	sorted := sortThreads(threads, model.SortByIndex, time.Now())
 
 	groups := make([]string, len(sorted))
 	for i, s := range sorted {

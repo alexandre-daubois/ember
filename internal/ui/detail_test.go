@@ -47,7 +47,7 @@ func TestRenderDetailPanel_ContainsThreadInfo(t *testing.T) {
 		MemoryUsage:   10 * 1024 * 1024,
 		RequestCount:  1234,
 	}
-	panel := renderDetailPanel(thread, 44, 25, nil)
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
 
 	assert.Contains(t, panel, "Thread #5")
 	assert.Contains(t, panel, "POST")
@@ -64,7 +64,7 @@ func TestRenderDetailPanel_IdleThread(t *testing.T) {
 		IsWaiting:                true,
 		WaitingSinceMilliseconds: 5000,
 	}
-	panel := renderDetailPanel(thread, 44, 25, nil)
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
 
 	assert.Contains(t, panel, "Thread #2")
 	assert.Contains(t, panel, "IDLE")
@@ -76,7 +76,7 @@ func TestRenderDetailPanel_NameTruncation(t *testing.T) {
 		Index: 0,
 		Name:  strings.Repeat("A", 100),
 	}
-	panel := renderDetailPanel(thread, 30, 15, nil)
+	panel := renderDetailPanel(thread, 30, 15, nil, time.Now())
 
 	assert.Contains(t, panel, "…")
 }
@@ -87,7 +87,7 @@ func TestRenderDetailPanel_WorkerScript(t *testing.T) {
 		Name:   "Worker PHP Thread - /app/worker.php",
 		IsBusy: true,
 	}
-	panel := renderDetailPanel(thread, 44, 25, nil)
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
 
 	assert.Contains(t, panel, "Thread #3")
 	assert.Contains(t, panel, "worker")
@@ -104,7 +104,7 @@ func TestRenderDetailPanel_SectionHeaders(t *testing.T) {
 		MemoryUsage:   5 * 1024 * 1024,
 		RequestCount:  42,
 	}
-	panel := renderDetailPanel(thread, 44, 25, nil)
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
 
 	assert.Contains(t, panel, "Request")
 	assert.Contains(t, panel, "Resources")
@@ -117,7 +117,7 @@ func TestRenderDetailPanel_Memory(t *testing.T) {
 		IsWaiting:   true,
 		MemoryUsage: 5 * 1024 * 1024,
 	}
-	panel := renderDetailPanel(thread, 44, 25, nil)
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
 
 	assert.Contains(t, panel, "5 MB")
 }
@@ -221,7 +221,7 @@ func TestRenderDetailPanel_MemorySparkline(t *testing.T) {
 		MemoryUsage: 10 * 1024 * 1024,
 	}
 	samples := []int64{5 * 1024 * 1024, 6 * 1024 * 1024, 8 * 1024 * 1024, 10 * 1024 * 1024}
-	panel := renderDetailPanel(thread, 44, 25, samples)
+	panel := renderDetailPanel(thread, 44, 25, samples, time.Now())
 
 	assert.Contains(t, panel, "10 MB")
 	plain := stripANSI(panel)
@@ -240,7 +240,7 @@ func TestRenderDetailPanel_NoSparklineWithoutSamples(t *testing.T) {
 		IsWaiting:   true,
 		MemoryUsage: 10 * 1024 * 1024,
 	}
-	panel := renderDetailPanel(thread, 44, 25, nil)
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
 	plain := stripANSI(panel)
 	for _, block := range []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇"} {
 		assert.NotContains(t, plain, block, "should not have sparkline blocks without samples")

@@ -21,7 +21,7 @@ var (
 	sectionStyle     = lipgloss.NewStyle().Foreground(subtle)
 )
 
-func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples []int64) string {
+func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples []int64, now time.Time) string {
 	inner := width - 4
 	if inner < 10 {
 		inner = 10
@@ -60,7 +60,7 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 			lines = append(lines, detailKV("URI", uri))
 		}
 		if t.RequestStartedAt > 0 {
-			elapsed := time.Since(time.UnixMilli(t.RequestStartedAt))
+			elapsed := now.Sub(time.UnixMilli(t.RequestStartedAt))
 			lines = append(lines, detailKV("Duration", formatDuration(elapsed)))
 		}
 	} else if t.IsWaiting && t.WaitingSinceMilliseconds > 0 {

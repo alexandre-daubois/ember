@@ -72,6 +72,7 @@ type App struct {
 	stale     bool
 	lastFresh time.Time
 	fetching  bool
+	viewTime  time.Time
 
 	activeTab     Tab
 	tabs          []Tab
@@ -104,6 +105,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		tabStates:     ts,
 		hasFrankenPHP: cfg.HasFrankenPHP,
 		history:       newHistoryStore(),
+		viewTime:      time.Now(),
 	}
 }
 
@@ -171,6 +173,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.doFetch(), a.doTick())
 	case fetchMsg:
 		a.fetching = false
+		a.viewTime = time.Now()
 		a.err = msg.err
 		if a.history == nil {
 			a.history = newHistoryStore()
@@ -300,6 +303,7 @@ func (a *App) View() string {
 			contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
 				slowThreshold: a.config.SlowThreshold,
 				prevMemory:    a.prevThreadMemory(),
+				viewTime:      a.viewTime,
 			})
 		}
 	case TabCaddy:
@@ -360,10 +364,10 @@ func (a *App) View() string {
 			t := threads[a.cursor]
 			samples := a.history.mem[t.Index]
 			if sidePanel {
-				panel := renderDetailPanel(t, panelWidth, a.height, samples)
+				panel := renderDetailPanel(t, panelWidth, a.height, samples, a.viewTime)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
 			}
-			panel := renderDetailPanel(t, a.width, detailPanelHeight, samples)
+			panel := renderDetailPanel(t, a.width, detailPanelHeight, samples, a.viewTime)
 			return lipgloss.JoinVertical(lipgloss.Left, base, panel)
 		}
 	}
@@ -568,7 +572,7 @@ func (a *App) filteredThreads() []fetcher.ThreadDebugState {
 	if a.state.Current == nil {
 		return nil
 	}
-	threads := sortThreads(a.state.Current.Threads.ThreadDebugStates, a.sortBy)
+	threads := sortThreads(a.state.Current.Threads.ThreadDebugStates, a.sortBy, a.viewTime)
 	if a.filter == "" {
 		return threads
 	}

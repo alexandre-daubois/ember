@@ -16,6 +16,7 @@ import (
 type renderOpts struct {
 	slowThreshold time.Duration
 	prevMemory    map[int]int64
+	viewTime      time.Time
 }
 
 // fixed column widths (excluding URI which is dynamic)
@@ -113,7 +114,7 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		style = greyStyle
 	}
 
-	timeStr, timeStyle := formatTimeWithStyle(t, opts.slowThreshold)
+	timeStr, timeStyle := formatTimeWithStyle(t, opts.slowThreshold, opts.viewTime)
 
 	method := "—"
 	uri := "—"
@@ -196,13 +197,13 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 	return row
 }
 
-func formatTimeWithStyle(t fetcher.ThreadDebugState, slowThreshold time.Duration) (string, lipgloss.Style) {
+func formatTimeWithStyle(t fetcher.ThreadDebugState, slowThreshold time.Duration, now time.Time) (string, lipgloss.Style) {
 	if slowThreshold == 0 {
 		slowThreshold = 500 * time.Millisecond
 	}
 
 	if t.IsBusy && t.RequestStartedAt > 0 {
-		elapsed := time.Since(time.UnixMilli(t.RequestStartedAt))
+		elapsed := now.Sub(time.UnixMilli(t.RequestStartedAt))
 		text := compactDuration(elapsed)
 		switch {
 		case elapsed >= slowThreshold*2:
@@ -237,12 +238,12 @@ func compactDuration(d time.Duration) string {
 	}
 }
 
-func formatTime(t fetcher.ThreadDebugState) string {
-	s, _ := formatTimeWithStyle(t, 500*time.Millisecond)
+func formatTime(t fetcher.ThreadDebugState, now time.Time) string {
+	s, _ := formatTimeWithStyle(t, 500*time.Millisecond, now)
 	return s
 }
 
-func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetcher.ThreadDebugState {
+func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField, now time.Time) []fetcher.ThreadDebugState {
 	sorted := make([]fetcher.ThreadDebugState, len(threads))
 	copy(sorted, threads)
 
@@ -262,7 +263,7 @@ func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetch
 		case model.SortByRequests:
 			return cmp.Compare(b.RequestCount, a.RequestCount)
 		case model.SortByTime:
-			return cmp.Compare(threadElapsedMs(b), threadElapsedMs(a))
+			return cmp.Compare(threadElapsedMs(b, now), threadElapsedMs(a, now))
 		default:
 			return cmp.Compare(a.Index, b.Index)
 		}
@@ -271,9 +272,9 @@ func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetch
 	return sorted
 }
 
-func threadElapsedMs(t fetcher.ThreadDebugState) int64 {
+func threadElapsedMs(t fetcher.ThreadDebugState, now time.Time) int64 {
 	if t.IsBusy && t.RequestStartedAt > 0 {
-		return time.Since(time.UnixMilli(t.RequestStartedAt)).Milliseconds()
+		return now.Sub(time.UnixMilli(t.RequestStartedAt)).Milliseconds()
 	}
 	if t.IsWaiting {
 		return t.WaitingSinceMilliseconds
