@@ -608,3 +608,53 @@ func TestTabSwitch_Key2NoOpWithSingleTab(t *testing.T) {
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 	assert.Equal(t, TabCaddy, app.activeTab)
 }
+
+func TestEnableFrankenPHP_OnFetch(t *testing.T) {
+	app := &App{
+		activeTab:     TabCaddy,
+		tabs:          []Tab{TabCaddy},
+		tabStates:     map[Tab]*tabState{TabCaddy: {}},
+		hasFrankenPHP: false,
+		history:       newHistoryStore(),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}},
+		},
+		Metrics:       fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		HasFrankenPHP: true,
+	}
+	app.Update(fetchMsg{snap: snap})
+
+	assert.True(t, app.hasFrankenPHP, "should enable FrankenPHP flag")
+	assert.Contains(t, app.tabs, TabFrankenPHP, "should add FrankenPHP tab")
+	assert.NotNil(t, app.tabStates[TabFrankenPHP], "should initialize FrankenPHP tab state")
+}
+
+func TestEnableFrankenPHP_NoDoubleAdd(t *testing.T) {
+	app := &App{
+		activeTab:     TabCaddy,
+		tabs:          []Tab{TabCaddy, TabFrankenPHP},
+		tabStates:     map[Tab]*tabState{TabCaddy: {}, TabFrankenPHP: {}},
+		hasFrankenPHP: true,
+		history:       newHistoryStore(),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}},
+		},
+		Metrics:       fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		HasFrankenPHP: true,
+	}
+	app.Update(fetchMsg{snap: snap})
+
+	assert.Len(t, app.tabs, 2, "should not duplicate FrankenPHP tab")
+}

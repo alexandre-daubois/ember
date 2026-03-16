@@ -26,6 +26,9 @@ type HTTPFetcher struct {
 	procHandle    *processHandle
 	hasFrankenPHP bool
 	serverNames   []string
+
+	lastPromCPU    float64
+	lastPromSample time.Time
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
@@ -105,18 +108,19 @@ func (f *HTTPFetcher) ServerNames() []string {
 
 func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	var (
-		threads ThreadsResponse
-		metrics MetricsSnapshot
-		proc    ProcessMetrics
-		mu      sync.Mutex
-		errs    []string
+		threads   ThreadsResponse
+		metrics   MetricsSnapshot
+		proc      ProcessMetrics
+		mu        sync.Mutex
+		errs      []string
+		metricsOK bool
 	)
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 
 	if f.hasFrankenPHP {
 		g.Go(func() error {
-			t, err := f.fetchThreads(ctx)
+			t, err := f.fetchThreads(gCtx)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, err.Error())
@@ -129,19 +133,22 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}
 
 	g.Go(func() error {
-		m, err := f.fetchMetrics(ctx)
+		m, err := f.fetchMetrics(gCtx)
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, err.Error())
 			mu.Unlock()
 			return nil
 		}
+		mu.Lock()
+		metricsOK = true
+		mu.Unlock()
 		metrics = m
 		return nil
 	})
 
 	g.Go(func() error {
-		p, err := f.procHandle.fetch(ctx)
+		p, err := f.procHandle.fetch(gCtx)
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, err.Error())
@@ -153,6 +160,34 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	})
 
 	_ = g.Wait()
+
+	if metricsOK {
+		f.onConnected(ctx)
+
+		// Derive process metrics from Prometheus when gopsutil has no data
+		if proc.RSS == 0 && metrics.ProcessRSSBytes > 0 {
+			proc.RSS = uint64(metrics.ProcessRSSBytes)
+		}
+		if proc.CPUPercent == 0 && metrics.ProcessCPUSecondsTotal > 0 {
+			now := time.Now()
+			if !f.lastPromSample.IsZero() {
+				elapsed := now.Sub(f.lastPromSample).Seconds()
+				if elapsed > 0 {
+					proc.CPUPercent = (metrics.ProcessCPUSecondsTotal - f.lastPromCPU) / elapsed * 100
+					if proc.CPUPercent < 0 {
+						proc.CPUPercent = 0
+					}
+				}
+			}
+			f.lastPromCPU = metrics.ProcessCPUSecondsTotal
+			f.lastPromSample = now
+		}
+		if proc.CreateTime == 0 && metrics.ProcessStartTimeSeconds > 0 {
+			startSec := int64(metrics.ProcessStartTimeSeconds)
+			proc.CreateTime = startSec * 1000
+			proc.Uptime = time.Since(time.Unix(startSec, 0))
+		}
+	}
 
 	// Seed known server names as empty host entries so they appear immediately
 	if len(f.serverNames) > 0 && metrics.Hosts != nil {
@@ -168,12 +203,22 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}
 
 	return &Snapshot{
-		Threads:   threads,
-		Metrics:   metrics,
-		Process:   proc,
-		FetchedAt: time.Now(),
-		Errors:    errs,
+		Threads:       threads,
+		Metrics:       metrics,
+		Process:       proc,
+		FetchedAt:     time.Now(),
+		Errors:        errs,
+		HasFrankenPHP: f.hasFrankenPHP,
 	}, nil
+}
+
+func (f *HTTPFetcher) onConnected(ctx context.Context) {
+	if !f.hasFrankenPHP {
+		f.DetectFrankenPHP(ctx)
+	}
+	if len(f.serverNames) == 0 {
+		f.FetchServerNames(ctx)
+	}
 }
 
 func (f *HTTPFetcher) RestartWorkers(ctx context.Context) error {

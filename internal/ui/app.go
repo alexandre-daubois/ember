@@ -179,6 +179,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.history = newHistoryStore()
 		}
 		if msg.snap != nil {
+			if msg.snap.HasFrankenPHP && !a.hasFrankenPHP {
+				a.enableFrankenPHP()
+			}
+
 			wasStale := a.stale
 			hasData := len(msg.snap.Threads.ThreadDebugStates) > 0 || msg.snap.Metrics.HasHTTPMetrics
 			hadData := a.state.Current != nil && (len(a.state.Current.Threads.ThreadDebugStates) > 0 || a.state.Current.Metrics.HasHTTPMetrics)
@@ -647,6 +651,12 @@ func (a *App) prevThreadMemory() map[int]int64 {
 		m[t.Index] = t.MemoryUsage
 	}
 	return m
+}
+
+func (a *App) enableFrankenPHP() {
+	a.hasFrankenPHP = true
+	a.tabs = append(a.tabs, TabFrankenPHP)
+	a.tabStates[TabFrankenPHP] = &tabState{}
 }
 
 func (a *App) doTick() tea.Cmd {

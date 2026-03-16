@@ -62,6 +62,10 @@ func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
 	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
 	snap.HasHTTPMetrics = snap.HTTPRequestsTotal > 0 || snap.HTTPRequestDurationCount > 0
 
+	snap.ProcessCPUSecondsTotal = scalarValue(families, "process_cpu_seconds_total")
+	snap.ProcessRSSBytes = scalarValue(families, "process_resident_memory_bytes")
+	snap.ProcessStartTimeSeconds = scalarValue(families, "process_start_time_seconds")
+
 	snap.Hosts = perHostMetrics(families)
 
 	// Fallback: if HTTP metrics exist but no host labels, aggregate as a single "*" entry

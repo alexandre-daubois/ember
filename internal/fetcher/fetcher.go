@@ -67,6 +67,11 @@ type MetricsSnapshot struct {
 
 	// Per-host Caddy HTTP metrics
 	Hosts map[string]*HostMetrics `json:"hosts,omitempty"`
+
+	// Go runtime process metrics (from standard Prometheus collector)
+	ProcessCPUSecondsTotal  float64 `json:"processCpuSecondsTotal,omitempty"`
+	ProcessRSSBytes         float64 `json:"processRssBytes,omitempty"`
+	ProcessStartTimeSeconds float64 `json:"processStartTimeSeconds,omitempty"`
 }
 
 type HistogramBucket struct {
@@ -83,11 +88,12 @@ type ProcessMetrics struct {
 }
 
 type Snapshot struct {
-	Threads   ThreadsResponse `json:"threads"`
-	Metrics   MetricsSnapshot `json:"metrics"`
-	Process   ProcessMetrics  `json:"process"`
-	FetchedAt time.Time       `json:"fetchedAt"`
-	Errors    []string        `json:"errors,omitempty"`
+	Threads       ThreadsResponse `json:"threads"`
+	Metrics       MetricsSnapshot `json:"metrics"`
+	Process       ProcessMetrics  `json:"process"`
+	FetchedAt     time.Time       `json:"fetchedAt"`
+	Errors        []string        `json:"errors,omitempty"`
+	HasFrankenPHP bool            `json:"hasFrankenPHP"`
 }
 
 type Fetcher interface {

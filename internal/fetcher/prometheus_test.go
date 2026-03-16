@@ -516,3 +516,31 @@ func TestParsePrometheusMetrics_Mixed(t *testing.T) {
 	assert.Len(t, snap.Workers, 2)
 	assert.True(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be true in mixed metrics")
 }
+
+func TestParsePrometheusMetrics_ProcessMetrics(t *testing.T) {
+	input := `# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 42.5
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 5.24288e+07
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.71e+09
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.Equal(t, 42.5, snap.ProcessCPUSecondsTotal)
+	assert.Equal(t, 5.24288e+07, snap.ProcessRSSBytes)
+	assert.Equal(t, 1.71e+09, snap.ProcessStartTimeSeconds)
+}
+
+func TestParsePrometheusMetrics_NoProcessMetrics(t *testing.T) {
+	input := `# TYPE frankenphp_busy_threads gauge
+frankenphp_busy_threads 5
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.Equal(t, float64(0), snap.ProcessCPUSecondsTotal)
+	assert.Equal(t, float64(0), snap.ProcessRSSBytes)
+	assert.Equal(t, float64(0), snap.ProcessStartTimeSeconds)
+}

@@ -53,65 +53,37 @@ func FindCaddyProcess(ctx context.Context) (int32, error) {
 }
 
 type processHandle struct {
-	proc              *process.Process
-	lastCPU           float64
-	lastSample        time.Time
-	numCPU            float64
-	lastDiscovery     time.Time
-	discoveryCooldown time.Duration
+	proc       *process.Process
+	lastCPU    float64
+	lastSample time.Time
+	numCPU     float64
 }
 
 func (h *processHandle) reset() {
 	h.proc = nil
 	h.lastCPU = 0
 	h.lastSample = time.Time{}
-	h.lastDiscovery = time.Now()
 }
 
 func newProcessHandle(pid int32) *processHandle {
 	h := &processHandle{
-		numCPU:            float64(runtime.NumCPU()),
-		discoveryCooldown: 10 * time.Second,
+		numCPU: float64(runtime.NumCPU()),
 	}
-	if pid <= 0 {
-		return h
-	}
-	p, err := process.NewProcess(pid)
-	if err != nil {
-		return h
-	}
-	h.proc = p
-	if times, err := p.Times(); err == nil {
-		h.lastCPU = times.User + times.System
-		h.lastSample = time.Now()
+	if pid > 0 {
+		if p, err := process.NewProcess(pid); err == nil {
+			h.proc = p
+			if times, err := p.Times(); err == nil {
+				h.lastCPU = times.User + times.System
+				h.lastSample = time.Now()
+			}
+		}
 	}
 	return h
 }
 
 func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
 	if h.proc == nil {
-		if time.Since(h.lastDiscovery) < h.discoveryCooldown {
-			return ProcessMetrics{}, nil
-		}
-		h.lastDiscovery = time.Now()
-
-		pid, err := FindFrankenPHPProcess(ctx)
-		if err != nil {
-			pid, err = FindCaddyProcess(ctx)
-			if err != nil {
-				return ProcessMetrics{}, nil
-			}
-		}
-		p, err := process.NewProcess(pid)
-		if err != nil {
-			return ProcessMetrics{}, nil
-		}
-		h.proc = p
-		if times, err := p.Times(); err == nil {
-			h.lastCPU = times.User + times.System
-			h.lastSample = time.Now()
-		}
-		return ProcessMetrics{PID: pid}, nil
+		return ProcessMetrics{}, nil
 	}
 
 	times, err := h.proc.TimesWithContext(ctx)
