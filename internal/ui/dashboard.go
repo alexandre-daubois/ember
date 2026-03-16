@@ -177,16 +177,6 @@ func countWorkerThreads(threads []fetcher.ThreadDebugState) int {
 	return count
 }
 
-func countWorkerScripts(threads []fetcher.ThreadDebugState) int {
-	seen := make(map[string]struct{})
-	for _, t := range threads {
-		if s := workerScript(t.Name); s != "" {
-			seen[s] = struct{}{}
-		}
-	}
-	return len(seen)
-}
-
 func formatMs(ms float64) string {
 	if ms >= 10000 {
 		return fmt.Sprintf("%.1fs", ms/1000)

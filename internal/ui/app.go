@@ -615,22 +615,6 @@ func (a *App) filteredHosts() []model.HostDerived {
 	return result
 }
 
-func (a *App) selectedThread() (fetcher.ThreadDebugState, bool) {
-	threads := a.filteredThreads()
-	if a.cursor >= 0 && a.cursor < len(threads) {
-		return threads[a.cursor], true
-	}
-	return fetcher.ThreadDebugState{}, false
-}
-
-func (a *App) selectedHost() (model.HostDerived, bool) {
-	hosts := a.filteredHosts()
-	if a.cursor >= 0 && a.cursor < len(hosts) {
-		return hosts[a.cursor], true
-	}
-	return model.HostDerived{}, false
-}
-
 func (a *App) pageSize() int {
 	ps := a.height - 10
 	if ps < 1 {

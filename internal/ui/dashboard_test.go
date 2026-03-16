@@ -71,24 +71,6 @@ func TestWorkerScript(t *testing.T) {
 	}
 }
 
-func TestCountWorkerScripts(t *testing.T) {
-	threads := []fetcher.ThreadDebugState{
-		{Name: "Worker PHP Thread - /app/worker.php"},
-		{Name: "Worker PHP Thread - /app/worker.php"},
-		{Name: "Worker PHP Thread - /app/api.php"},
-		{Name: "Regular PHP Thread"},
-	}
-	assert.Equal(t, 2, countWorkerScripts(threads))
-}
-
-func TestCountWorkerScripts_None(t *testing.T) {
-	threads := []fetcher.ThreadDebugState{
-		{Name: "Regular PHP Thread"},
-		{Name: "Regular PHP Thread"},
-	}
-	assert.Equal(t, 0, countWorkerScripts(threads))
-}
-
 func TestCountWorkerThreads(t *testing.T) {
 	threads := []fetcher.ThreadDebugState{
 		{Name: "Worker PHP Thread - /app/worker.php"},
