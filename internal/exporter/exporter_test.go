@@ -1,10 +1,12 @@
 package exporter
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -432,4 +434,86 @@ func TestHandler_EmptyPrefix_DefaultNames(t *testing.T) {
 	assert.Contains(t, body, "frankenphp_threads_total")
 	assert.Contains(t, body, "process_cpu_percent")
 	assert.NotContains(t, body, "_frankenphp_threads_total")
+}
+
+func healthz(holder *StateHolder, interval time.Duration) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	HealthHandler(holder, interval)(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	return rec
+}
+
+func TestHealthHandler_NoData(t *testing.T) {
+	holder := &StateHolder{}
+	rec := healthz(holder, time.Second)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "no data yet", body["status"])
+}
+
+func TestHealthHandler_FreshData(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now(),
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	var s model.State
+	s.Update(snap)
+
+	holder := &StateHolder{}
+	holder.Store(s)
+
+	rec := healthz(holder, time.Second)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "ok", body["status"])
+	assert.Contains(t, body, "last_fetch")
+	assert.Contains(t, body, "age_seconds")
+}
+
+func TestHealthHandler_StaleData(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now().Add(-30 * time.Second),
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	var s model.State
+	s.Update(snap)
+
+	holder := &StateHolder{}
+	holder.Store(s)
+
+	rec := healthz(holder, time.Second)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "stale", body["status"])
+	assert.Contains(t, body, "age_seconds")
+}
+
+func TestHealthHandler_StaleThresholdFloor(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now().Add(-4 * time.Second),
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	var s model.State
+	s.Update(snap)
+
+	holder := &StateHolder{}
+	holder.Store(s)
+
+	// interval=500ms → 3x = 1.5s, but floor is 5s, so 4s-old data should be OK
+	rec := healthz(holder, 500*time.Millisecond)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestHealthHandler_ContentType(t *testing.T) {
+	holder := &StateHolder{}
+	rec := healthz(holder, time.Second)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 }

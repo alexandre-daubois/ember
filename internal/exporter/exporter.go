@@ -1,11 +1,13 @@
 package exporter
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alexandre-daubois/ember/internal/model"
 )
@@ -262,6 +264,41 @@ func writeProcessMetrics(w http.ResponseWriter, s *model.State, prefix string) {
 	fmt.Fprintf(w, "# HELP %s Resident set size of the monitored process\n", rss)
 	fmt.Fprintf(w, "# TYPE %s gauge\n", rss)
 	fmt.Fprintf(w, "%s %d\n", rss, s.Current.Process.RSS)
+}
+
+func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {
+	staleThreshold := 3 * interval
+	if staleThreshold < 5*time.Second {
+		staleThreshold = 5 * time.Second
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		s := holder.Load()
+		w.Header().Set("Content-Type", "application/json")
+
+		if s.Current == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"status": "no data yet"})
+			return
+		}
+
+		age := time.Since(s.Current.FetchedAt)
+		if age > staleThreshold {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]any{
+				"status":      "stale",
+				"last_fetch":  s.Current.FetchedAt.Format(time.RFC3339),
+				"age_seconds": age.Seconds(),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"status":      "ok",
+			"last_fetch":  s.Current.FetchedAt.Format(time.RFC3339),
+			"age_seconds": age.Seconds(),
+		})
+	}
 }
 
 func escapeLabelValue(s string) string {

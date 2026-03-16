@@ -30,6 +30,7 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 
 - `--expose=:9191` starts a `/metrics` endpoint exposing Caddy and FrankenPHP metrics in Prometheus format
 - `--daemon` runs headless (no TUI)
+- `/healthz` endpoint returns `200 OK` when data is fresh, `503` when stale or unavailable (useful for k8s liveness probes)
 - Exposes per-host RPS/latency/in-flight/status rates, thread state, per-thread memory, worker crashes/restarts/queue, request duration percentiles, and process CPU/RSS
 - Works alongside the TUI (`--expose` without `--daemon`) or standalone
 

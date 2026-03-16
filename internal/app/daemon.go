@@ -29,6 +29,7 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval))
 	srv := &http.Server{Addr: cfg.expose, Handler: mux}
 
 	go func() {

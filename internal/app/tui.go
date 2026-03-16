@@ -32,6 +32,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string) 
 
 		mux := http.NewServeMux()
 		mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix))
+		mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval))
 		srv = &http.Server{Addr: cfg.expose, Handler: mux}
 
 		listenErr := make(chan error, 1)
