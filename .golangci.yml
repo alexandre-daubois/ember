@@ -1,0 +1,10 @@
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+
+issues:
+  exclude-files:
+    - ".*_test\\.go"
