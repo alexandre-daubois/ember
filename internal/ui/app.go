@@ -250,21 +250,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-func appendHistory(history []float64, val float64, maxSize int) []float64 {
-	history = append(history, val)
-	if len(history) > maxSize {
-		history = history[len(history)-maxSize:]
-	}
-	return history
-}
-
-func lastN(history []float64, n int) []float64 {
-	if len(history) <= n {
-		return history
-	}
-	return history[len(history)-n:]
-}
-
 func (a *App) View() string {
 	if a.width == 0 {
 		return "Loading..."

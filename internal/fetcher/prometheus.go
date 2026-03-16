@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -173,8 +174,7 @@ func aggregateStatusCodes(families map[string]*dto.MetricFamily, name string) ma
 	codes := make(map[int]float64)
 	for _, m := range fam.GetMetric() {
 		if code := labelValue(m, "code"); code != "" {
-			var c int
-			if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+			if c, err := strconv.Atoi(code); err == nil {
 				codes[c] += metricValue(m)
 			}
 		}
@@ -197,8 +197,7 @@ func statusCodesFromHistogram(families map[string]*dto.MetricFamily, name string
 			continue
 		}
 		if code := labelValue(m, "code"); code != "" {
-			var c int
-			if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+			if c, err := strconv.Atoi(code); err == nil {
 				codes[c] += float64(h.GetSampleCount())
 			}
 		}
@@ -239,8 +238,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 			v := metricValue(m)
 			hm.RequestsTotal += v
 			if code := labelValue(m, "code"); code != "" {
-				var c int
-				if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+				if c, err := strconv.Atoi(code); err == nil {
 					hm.StatusCodes[c] += v
 					hostsWithCounterCodes[host] = true
 				}
@@ -268,8 +266,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 
 			if !hostsWithCounterCodes[host] {
 				if code := labelValue(m, "code"); code != "" {
-					var c int
-					if _, err := fmt.Sscanf(code, "%d", &c); err == nil {
+					if c, err := strconv.Atoi(code); err == nil {
 						hm.StatusCodes[c] += float64(h.GetSampleCount())
 					}
 				}

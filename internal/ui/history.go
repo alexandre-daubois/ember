@@ -52,6 +52,21 @@ func (h *historyStore) pruneMem(activeIndices map[int]struct{}) {
 	}
 }
 
+func appendHistory(history []float64, val float64, maxSize int) []float64 {
+	history = append(history, val)
+	if len(history) > maxSize {
+		history = history[len(history)-maxSize:]
+	}
+	return history
+}
+
+func lastN(history []float64, n int) []float64 {
+	if len(history) <= n {
+		return history
+	}
+	return history[len(history)-n:]
+}
+
 func (h *historyStore) recordMem(index int, usage int64) {
 	if usage <= 0 {
 		return
