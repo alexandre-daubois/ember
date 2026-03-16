@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -168,7 +169,17 @@ func (s *State) CopyForExport() State {
 	}
 	if s.HostDerived != nil {
 		cp.HostDerived = make([]HostDerived, len(s.HostDerived))
-		copy(cp.HostDerived, s.HostDerived)
+		for i, hd := range s.HostDerived {
+			cp.HostDerived[i] = hd
+			if hd.StatusCodes != nil {
+				cp.HostDerived[i].StatusCodes = make(map[int]float64, len(hd.StatusCodes))
+				maps.Copy(cp.HostDerived[i].StatusCodes, hd.StatusCodes)
+			}
+			if hd.MethodRates != nil {
+				cp.HostDerived[i].MethodRates = make(map[string]float64, len(hd.MethodRates))
+				maps.Copy(cp.HostDerived[i].MethodRates, hd.MethodRates)
+			}
+		}
 	}
 	return cp
 }

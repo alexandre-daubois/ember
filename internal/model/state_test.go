@@ -1134,6 +1134,49 @@ func TestState_CopyForExport_CopiesHostDerived(t *testing.T) {
 	assert.Equal(t, "a.com", s.HostDerived[0].Host)
 }
 
+func TestState_CopyForExport_DeepCopiesHostDerivedMaps(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	var s State
+	s.Update(snap)
+	s.HostDerived = []HostDerived{
+		{
+			Host:        "a.com",
+			StatusCodes: map[int]float64{200: 10, 404: 2},
+			MethodRates: map[string]float64{"GET": 8, "POST": 4},
+		},
+	}
+
+	cp := s.CopyForExport()
+	require.Len(t, cp.HostDerived, 1)
+
+	// Mutating copied maps must not affect originals
+	cp.HostDerived[0].StatusCodes[500] = 99
+	cp.HostDerived[0].MethodRates["DELETE"] = 77
+
+	assert.Equal(t, map[int]float64{200: 10, 404: 2}, s.HostDerived[0].StatusCodes)
+	assert.Equal(t, map[string]float64{"GET": 8, "POST": 4}, s.HostDerived[0].MethodRates)
+}
+
+func TestState_CopyForExport_NilMapsStayNil(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	var s State
+	s.Update(snap)
+	s.HostDerived = []HostDerived{
+		{Host: "b.com", StatusCodes: nil, MethodRates: nil},
+	}
+
+	cp := s.CopyForExport()
+	require.Len(t, cp.HostDerived, 1)
+	assert.Nil(t, cp.HostDerived[0].StatusCodes)
+	assert.Nil(t, cp.HostDerived[0].MethodRates)
+}
+
 func TestState_CopyForExport_NilHostDerived(t *testing.T) {
 	snap := &fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
