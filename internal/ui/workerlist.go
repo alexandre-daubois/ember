@@ -1,8 +1,9 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -245,26 +246,25 @@ func sortThreads(threads []fetcher.ThreadDebugState, by model.SortField) []fetch
 	sorted := make([]fetcher.ThreadDebugState, len(threads))
 	copy(sorted, threads)
 
-	sort.SliceStable(sorted, func(i, j int) bool {
-		gi, gj := threadGroup(sorted[i]), threadGroup(sorted[j])
-		if gi != gj {
-			return gi < gj
+	slices.SortStableFunc(sorted, func(a, b fetcher.ThreadDebugState) int {
+		if c := cmp.Compare(threadGroup(a), threadGroup(b)); c != 0 {
+			return c
 		}
 		switch by {
 		case model.SortByState:
-			return stateOrder(sorted[i]) < stateOrder(sorted[j])
+			return cmp.Compare(stateOrder(a), stateOrder(b))
 		case model.SortByMethod:
-			return sorted[i].CurrentMethod < sorted[j].CurrentMethod
+			return cmp.Compare(a.CurrentMethod, b.CurrentMethod)
 		case model.SortByURI:
-			return sorted[i].CurrentURI < sorted[j].CurrentURI
+			return cmp.Compare(a.CurrentURI, b.CurrentURI)
 		case model.SortByMemory:
-			return sorted[i].MemoryUsage > sorted[j].MemoryUsage
+			return cmp.Compare(b.MemoryUsage, a.MemoryUsage)
 		case model.SortByRequests:
-			return sorted[i].RequestCount > sorted[j].RequestCount
+			return cmp.Compare(b.RequestCount, a.RequestCount)
 		case model.SortByTime:
-			return threadElapsedMs(sorted[i]) > threadElapsedMs(sorted[j])
+			return cmp.Compare(threadElapsedMs(b), threadElapsedMs(a))
 		default:
-			return sorted[i].Index < sorted[j].Index
+			return cmp.Compare(a.Index, b.Index)
 		}
 	})
 

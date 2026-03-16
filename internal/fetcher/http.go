@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -94,7 +94,7 @@ func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 	for name := range servers {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	f.serverNames = names
 	return names
 }
@@ -251,10 +251,12 @@ func (f *HTTPFetcher) doWithRetry(ctx context.Context, req *http.Request) (*http
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
 			backoff := initialBackoff * time.Duration(1<<uint(attempt-1))
+			timer := time.NewTimer(backoff)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return nil, ctx.Err()
-			case <-time.After(backoff):
+			case <-timer.C:
 			}
 			req = req.Clone(ctx)
 		}

@@ -1,8 +1,9 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -121,8 +122,8 @@ func sortedStatusCodes(codes map[int]float64) []statusCodeEntry {
 	for code, rate := range codes {
 		entries = append(entries, statusCodeEntry{code, rate})
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].code < entries[j].code
+	slices.SortFunc(entries, func(a, b statusCodeEntry) int {
+		return cmp.Compare(a.code, b.code)
 	})
 	return entries
 }
@@ -137,8 +138,8 @@ func sortedMethods(methods map[string]float64) []methodEntry {
 	for method, rate := range methods {
 		entries = append(entries, methodEntry{method, rate})
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].rate > entries[j].rate
+	slices.SortFunc(entries, func(a, b methodEntry) int {
+		return cmp.Compare(b.rate, a.rate)
 	})
 	return entries
 }

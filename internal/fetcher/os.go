@@ -99,12 +99,12 @@ func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
 		if err != nil {
 			pid, err = FindCaddyProcess(ctx)
 			if err != nil {
-				return ProcessMetrics{}, nil
+				return ProcessMetrics{}, fmt.Errorf("process discovery: %w", err)
 			}
 		}
 		p, err := process.NewProcess(pid)
 		if err != nil {
-			return ProcessMetrics{}, nil
+			return ProcessMetrics{}, fmt.Errorf("attach to process %d: %w", pid, err)
 		}
 		h.proc = p
 		if times, err := p.Times(); err == nil {
@@ -117,19 +117,19 @@ func (h *processHandle) fetch(ctx context.Context) (ProcessMetrics, error) {
 	times, err := h.proc.TimesWithContext(ctx)
 	if err != nil {
 		h.reset()
-		return ProcessMetrics{}, nil
+		return ProcessMetrics{}, fmt.Errorf("read cpu times: %w", err)
 	}
 
 	memInfo, err := h.proc.MemoryInfoWithContext(ctx)
 	if err != nil {
 		h.reset()
-		return ProcessMetrics{}, nil
+		return ProcessMetrics{}, fmt.Errorf("read memory info: %w", err)
 	}
 
 	createTime, err := h.proc.CreateTimeWithContext(ctx)
 	if err != nil {
 		h.reset()
-		return ProcessMetrics{}, nil
+		return ProcessMetrics{}, fmt.Errorf("read create time: %w", err)
 	}
 
 	now := time.Now()

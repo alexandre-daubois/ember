@@ -1,10 +1,11 @@
 package exporter
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -235,8 +236,8 @@ func statusClassRates(codes map[int]float64) map[string]float64 {
 func sortedHostNames(hosts []model.HostDerived) []model.HostDerived {
 	sorted := make([]model.HostDerived, len(hosts))
 	copy(sorted, hosts)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Host < sorted[j].Host
+	slices.SortFunc(sorted, func(a, b model.HostDerived) int {
+		return cmp.Compare(a.Host, b.Host)
 	})
 	return sorted
 }
@@ -313,6 +314,6 @@ func sortedWorkerNames[V any](m map[string]V) []string {
 	for name := range m {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }

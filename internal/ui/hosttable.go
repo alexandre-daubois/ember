@@ -1,8 +1,9 @@
 package ui
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -199,28 +200,28 @@ func sortHosts(hosts []model.HostDerived, by model.HostSortField) []model.HostDe
 	sorted := make([]model.HostDerived, len(hosts))
 	copy(sorted, hosts)
 
-	sort.SliceStable(sorted, func(i, j int) bool {
+	slices.SortStableFunc(sorted, func(a, b model.HostDerived) int {
 		switch by {
 		case model.SortByHostRPS:
-			return sorted[i].RPS > sorted[j].RPS
+			return cmp.Compare(b.RPS, a.RPS)
 		case model.SortByHostAvg:
-			return sorted[i].AvgTime > sorted[j].AvgTime
+			return cmp.Compare(b.AvgTime, a.AvgTime)
 		case model.SortByHostP90:
-			return sorted[i].P90 > sorted[j].P90
+			return cmp.Compare(b.P90, a.P90)
 		case model.SortByHostP95:
-			return sorted[i].P95 > sorted[j].P95
+			return cmp.Compare(b.P95, a.P95)
 		case model.SortByHostP99:
-			return sorted[i].P99 > sorted[j].P99
+			return cmp.Compare(b.P99, a.P99)
 		case model.SortByHostInFlight:
-			return sorted[i].InFlight > sorted[j].InFlight
+			return cmp.Compare(b.InFlight, a.InFlight)
 		case model.SortByHost2xx:
-			return statusCodeRange(sorted[i].StatusCodes, 200, 299) > statusCodeRange(sorted[j].StatusCodes, 200, 299)
+			return cmp.Compare(statusCodeRange(b.StatusCodes, 200, 299), statusCodeRange(a.StatusCodes, 200, 299))
 		case model.SortByHost4xx:
-			return statusCodeRange(sorted[i].StatusCodes, 400, 499) > statusCodeRange(sorted[j].StatusCodes, 400, 499)
+			return cmp.Compare(statusCodeRange(b.StatusCodes, 400, 499), statusCodeRange(a.StatusCodes, 400, 499))
 		case model.SortByHost5xx:
-			return statusCodeRange(sorted[i].StatusCodes, 500, 599) > statusCodeRange(sorted[j].StatusCodes, 500, 599)
+			return cmp.Compare(statusCodeRange(b.StatusCodes, 500, 599), statusCodeRange(a.StatusCodes, 500, 599))
 		default:
-			return sorted[i].Host < sorted[j].Host
+			return cmp.Compare(a.Host, b.Host)
 		}
 	})
 
