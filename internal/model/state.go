@@ -67,9 +67,6 @@ const (
 	SortByHost HostSortField = iota
 	SortByHostRPS
 	SortByHostAvg
-	SortByHostP90
-	SortByHostP95
-	SortByHostP99
 	SortByHostInFlight
 	SortByHost2xx
 	SortByHost4xx
@@ -77,7 +74,7 @@ const (
 )
 
 var hostSortFieldOrder = []HostSortField{
-	SortByHost, SortByHostRPS, SortByHostAvg, SortByHostP90, SortByHostP95, SortByHostP99,
+	SortByHost, SortByHostRPS, SortByHostAvg,
 	SortByHostInFlight, SortByHost2xx, SortByHost4xx, SortByHost5xx,
 }
 
@@ -87,12 +84,6 @@ func (s HostSortField) String() string {
 		return "rps"
 	case SortByHostAvg:
 		return "avg"
-	case SortByHostP90:
-		return "p90"
-	case SortByHostP95:
-		return "p95"
-	case SortByHostP99:
-		return "p99"
 	case SortByHostInFlight:
 		return "in-flight"
 	case SortByHost2xx:

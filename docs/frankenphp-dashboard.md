@@ -43,9 +43,9 @@ The memory column shows `↑` or `↓` indicators when memory changes by more th
 
 ## Sorting
 
-Press `s` to cycle the sort field forward, `S` to cycle backward:
+Press `s` to cycle the sort field forward, `S` to cycle backward.
 
-`index` → `state` → `method` → `uri` → `time` → `memory` → `requests`
+The current sort field is shown in the bottom status bar.
 
 ## Filtering
 

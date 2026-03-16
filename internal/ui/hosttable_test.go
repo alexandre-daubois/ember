@@ -47,11 +47,11 @@ func TestStatusCodeRange(t *testing.T) {
 
 func TestSortHosts(t *testing.T) {
 	hosts := []model.HostDerived{
-		{Host: "b.com", RPS: 10, AvgTime: 50, P90: 80, P95: 100, P99: 200, InFlight: 2,
+		{Host: "b.com", RPS: 10, AvgTime: 50, InFlight: 2,
 			StatusCodes: map[int]float64{200: 8, 404: 1, 500: 1}},
-		{Host: "a.com", RPS: 50, AvgTime: 20, P90: 30, P95: 40, P99: 60, InFlight: 5,
+		{Host: "a.com", RPS: 50, AvgTime: 20, InFlight: 5,
 			StatusCodes: map[int]float64{200: 45, 404: 3, 500: 2}},
-		{Host: "c.com", RPS: 30, AvgTime: 100, P90: 150, P95: 200, P99: 500, InFlight: 1,
+		{Host: "c.com", RPS: 30, AvgTime: 100, InFlight: 1,
 			StatusCodes: map[int]float64{200: 25, 500: 5}},
 	}
 
@@ -62,9 +62,6 @@ func TestSortHosts(t *testing.T) {
 		{model.SortByHost, "a.com"},
 		{model.SortByHostRPS, "a.com"},
 		{model.SortByHostAvg, "c.com"},
-		{model.SortByHostP90, "c.com"},
-		{model.SortByHostP95, "c.com"},
-		{model.SortByHostP99, "c.com"},
 		{model.SortByHostInFlight, "a.com"},
 		{model.SortByHost2xx, "a.com"},
 		{model.SortByHost4xx, "a.com"},
@@ -124,26 +121,20 @@ func TestFormatHostRow_HostTruncation(t *testing.T) {
 	assert.Contains(t, row, "…")
 }
 
-func TestFormatHostRow_PercentilesShown(t *testing.T) {
+func TestFormatHostRow_AvgShown(t *testing.T) {
 	h := model.HostDerived{
-		Host:           "test.com",
-		HasPercentiles: true,
-		P90:            45.0,
-		P95:            120.0,
-		P99:            350.0,
-		StatusCodes:    map[int]float64{},
+		Host:        "test.com",
+		AvgTime:     45.0,
+		StatusCodes: map[int]float64{},
 	}
 	row := formatHostRow(h, 150, 30, false, false, nil)
 	assert.Contains(t, row, "45.0ms")
-	assert.Contains(t, row, "120.0ms")
-	assert.Contains(t, row, "350.0ms")
 }
 
-func TestFormatHostRow_NoPercentilesDash(t *testing.T) {
+func TestFormatHostRow_NoDataDash(t *testing.T) {
 	h := model.HostDerived{
-		Host:           "test.com",
-		HasPercentiles: false,
-		StatusCodes:    map[int]float64{},
+		Host:        "test.com",
+		StatusCodes: map[int]float64{},
 	}
 	row := formatHostRow(h, 120, 30, false, false, nil)
 	assert.Contains(t, row, "—")

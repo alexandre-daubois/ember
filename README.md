@@ -10,7 +10,8 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 
 ## Features
 
-- Per-host traffic table with RPS, latency percentiles (P50–P99), status codes, and sparklines
+- Per-host traffic table with RPS, average latency, status codes, and sparklines
+- Latency percentiles (P50, P90, P99) per host in the detail panel
 - FrankenPHP thread introspection with memory tracking and worker management
 - Full-screen ASCII graphs (CPU, RPS, RSS, queue depth, busy threads)
 - Prometheus metrics export (`/metrics`) and health endpoint (`/healthz`)

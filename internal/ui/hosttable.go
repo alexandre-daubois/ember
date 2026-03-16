@@ -14,14 +14,11 @@ const (
 	colHostRPS       = 8
 	colHostSparkline = 8
 	colHostAvg       = 10
-	colHostP90       = 10
-	colHostP95       = 10
-	colHostP99       = 10
 	colHostInFlight  = 10
 	colHost2xx       = 8
 	colHost4xx       = 8
 	colHost5xx       = 8
-	colHostFixed     = 1 + colHostRPS + colHostSparkline + colHostAvg + colHostP90 + colHostP95 + colHostP99 + colHostInFlight + colHost2xx + colHost4xx + colHost5xx
+	colHostFixed     = 1 + colHostRPS + colHostSparkline + colHostAvg + colHostInFlight + colHost2xx + colHost4xx + colHost5xx
 )
 
 func hostNameWidth(totalWidth int) int {
@@ -47,14 +44,11 @@ func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy mo
 		return fmt.Sprintf("%-*s", w, label)
 	}
 
-	header := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
+	header := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s",
 		hostW, colHead("Host", model.SortByHost, hostW, false),
 		colHostRPS, colHead("RPS", model.SortByHostRPS, colHostRPS, true),
 		colHostSparkline, "",
 		colHostAvg, colHead("Avg", model.SortByHostAvg, colHostAvg, true),
-		colHostP90, colHead("P90", model.SortByHostP90, colHostP90, true),
-		colHostP95, colHead("P95", model.SortByHostP95, colHostP95, true),
-		colHostP99, colHead("P99", model.SortByHostP99, colHostP99, true),
 		colHostInFlight, colHead("In-fl", model.SortByHostInFlight, colHostInFlight, true),
 		colHost2xx, colHead("2xx/s", model.SortByHost2xx, colHost2xx, true),
 		colHost4xx, colHead("4xx/s", model.SortByHost4xx, colHost4xx, true),
@@ -69,9 +63,9 @@ func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy mo
 	}
 
 	for i := len(hosts); i < minHostRows; i++ {
-		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s",
-			hostW, "", colHostRPS, "", colHostSparkline, "", colHostAvg, "", colHostP90, "",
-			colHostP95, "", colHostP99, "", colHostInFlight, "",
+		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s",
+			hostW, "", colHostRPS, "", colHostSparkline, "", colHostAvg, "",
+			colHostInFlight, "",
 			colHost2xx, "", colHost4xx, "", colHost5xx, "")
 		style := lipgloss.NewStyle()
 		if i%2 == 1 {
@@ -101,14 +95,6 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 	if h.AvgTime > 0 {
 		avgStr = formatMs(h.AvgTime)
 	}
-	p90Str := "—"
-	p95Str := "—"
-	p99Str := "—"
-	if h.HasPercentiles {
-		p90Str = formatMs(h.P90)
-		p95Str = formatMs(h.P95)
-		p99Str = formatMs(h.P99)
-	}
 	inflightStr := fmt.Sprintf("%.0f", h.InFlight)
 
 	sum2xx := statusCodeRange(h.StatusCodes, 200, 299)
@@ -128,16 +114,13 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 	rpsPart := fmt.Sprintf("%*s", colHostRPS, rpsStr)
 	sparkRaw := renderSparklineRaw(hostRPS[h.Host], colHostSparkline)
 	avgPart := fmt.Sprintf("%*s", colHostAvg, avgStr)
-	p90Part := fmt.Sprintf("%*s", colHostP90, p90Str)
-	p95Part := fmt.Sprintf("%*s", colHostP95, p95Str)
-	p99Part := fmt.Sprintf("%*s", colHostP99, p99Str)
 	inflPart := fmt.Sprintf("%*s", colHostInFlight, inflightStr)
 	part2xx := fmt.Sprintf("%*s", colHost2xx, s2xx)
 	part4xx := fmt.Sprintf("%*s", colHost4xx, s4xx)
 	part5xx := fmt.Sprintf("%*s", colHost5xx, s5xx)
 
 	if selected {
-		row := hostPart + rpsPart + sparkRaw + avgPart + p90Part + p95Part + p99Part + inflPart + part2xx + part4xx + part5xx
+		row := hostPart + rpsPart + sparkRaw + avgPart + inflPart + part2xx + part4xx + part5xx
 		return selectedRowStyle.Width(width).Render(row)
 	}
 
@@ -159,9 +142,6 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 		style.Render(rpsPart) +
 		greyStyle.Render(sparkRaw) +
 		style.Render(avgPart) +
-		style.Render(p90Part) +
-		style.Render(p95Part) +
-		style.Render(p99Part) +
 		style.Render(inflPart) +
 		style.Render(part2xx) +
 		styled4xx +
@@ -206,12 +186,6 @@ func sortHosts(hosts []model.HostDerived, by model.HostSortField) []model.HostDe
 			return cmp.Compare(b.RPS, a.RPS)
 		case model.SortByHostAvg:
 			return cmp.Compare(b.AvgTime, a.AvgTime)
-		case model.SortByHostP90:
-			return cmp.Compare(b.P90, a.P90)
-		case model.SortByHostP95:
-			return cmp.Compare(b.P95, a.P95)
-		case model.SortByHostP99:
-			return cmp.Compare(b.P99, a.P99)
 		case model.SortByHostInFlight:
 			return cmp.Compare(b.InFlight, a.InFlight)
 		case model.SortByHost2xx:

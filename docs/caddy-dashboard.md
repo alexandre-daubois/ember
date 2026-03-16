@@ -12,9 +12,6 @@ The main view shows a table with one row per host:
 | **RPS** | Requests per second |
 | **Sparkline** | Miniature RPS trend (last 8 samples) |
 | **Avg** | Average response time in milliseconds |
-| **P90** | 90th percentile latency |
-| **P95** | 95th percentile latency |
-| **P99** | 99th percentile latency |
 | **In-flight** | Currently in-progress requests |
 | **2xx/s** | Successful response rate |
 | **4xx/s** | Client error rate (displayed in yellow) |
@@ -24,15 +21,13 @@ The main view shows a table with one row per host:
 
 ## Latency Percentiles
 
-P50, P90, P95, and P99 are computed from Prometheus histogram buckets (`caddy_http_request_duration_seconds`). These percentiles appear per host in the traffic table and in the host detail panel.
+P50, P90, P95, and P99 are computed from Prometheus histogram buckets (`caddy_http_request_duration_seconds`). These percentiles are available in the host detail panel (press `Enter` on a host).
 
-> **Tip:** If percentile columns are empty, verify that the `metrics` directive is present in your Caddyfile global block. See [Caddy Configuration](caddy-configuration.md).
+> **Tip:** If percentiles don't appear in the detail panel, verify that the `metrics` directive is present in your Caddyfile global block. See [Caddy Configuration](caddy-configuration.md).
 
 ## Sorting
 
-Press `s` to cycle the sort field forward, `S` to cycle backward. Available sort fields:
-
-`host` → `rps` → `avg` → `p90` → `p95` → `p99` → `in-flight` → `2xx` → `4xx` → `5xx`
+Press `s` to cycle the sort field forward, `S` to cycle backward.
 
 The current sort field is shown in the bottom status bar.
 
