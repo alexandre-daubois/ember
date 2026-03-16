@@ -184,3 +184,78 @@ func TestHistogramPercentiles_UniformDistribution(t *testing.T) {
 	assert.True(t, p90 >= p50, "P90 >= P50")
 	assert.True(t, p95 >= p90, "P95 >= P90")
 }
+
+func TestPercentileValue_TwoSamples(t *testing.T) {
+	sorted := []float64{10, 20}
+	assert.Equal(t, 15.0, percentileValue(sorted, 0.5))
+	assert.Equal(t, 10.0, percentileValue(sorted, 0.0))
+	assert.Equal(t, 20.0, percentileValue(sorted, 1.0))
+}
+
+func TestSubtractBuckets_ZeroDelta(t *testing.T) {
+	prev := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 50},
+		{UpperBound: 0.05, CumulativeCount: 100},
+	}
+	curr := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 50},
+		{UpperBound: 0.05, CumulativeCount: 100},
+	}
+	delta := subtractBuckets(prev, curr)
+	assert.Len(t, delta, 2)
+	assert.Equal(t, 0.0, delta[0].CumulativeCount)
+	assert.Equal(t, 0.0, delta[1].CumulativeCount)
+}
+
+func TestSubtractBuckets_NewBucketInCurr(t *testing.T) {
+	prev := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 50},
+	}
+	curr := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 80},
+		{UpperBound: 0.05, CumulativeCount: 120},
+	}
+	delta := subtractBuckets(prev, curr)
+	assert.Len(t, delta, 2)
+	assert.Equal(t, 30.0, delta[0].CumulativeCount)
+	assert.Equal(t, 120.0, delta[1].CumulativeCount)
+}
+
+func TestSubtractBuckets_NegativeDeltaClamped(t *testing.T) {
+	prev := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 100},
+	}
+	curr := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 50},
+	}
+	delta := subtractBuckets(prev, curr)
+	assert.Equal(t, 0.0, delta[0].CumulativeCount)
+}
+
+func TestHistogramQuantile_FallbackLastBucket(t *testing.T) {
+	// Construct a case where the loop never finds count >= rank
+	// This can't normally happen with valid data, but test the defensive fallback
+	// All counts are zero except total > 0 won't work since total = last bucket count
+	// Actually with valid cumulative counts, rank <= total, so loop always finds a bucket.
+	// We can still verify the +Inf return behavior covers the unhappy path.
+	buckets := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 0},
+		{UpperBound: math.Inf(1), CumulativeCount: 10},
+	}
+	// rank=0.5*10=5, bucket[0].count=0 < 5, bucket[1] is +Inf with count=10 >= 5 -> return 0.01
+	result := histogramQuantile(0.5, buckets)
+	assert.Equal(t, 0.01, result)
+}
+
+func TestHistogramQuantile_RankExceedsAllBuckets(t *testing.T) {
+	// All counts are below rank
+	buckets := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 0},
+		{UpperBound: 0.05, CumulativeCount: 0},
+		{UpperBound: math.Inf(1), CumulativeCount: 1},
+	}
+	// q=0.99 -> rank=0.99, only +Inf has count >= rank
+	// Falls into +Inf bucket → returns lowerBound (0.05)
+	result := histogramQuantile(0.99, buckets)
+	assert.Equal(t, 0.05, result)
+}

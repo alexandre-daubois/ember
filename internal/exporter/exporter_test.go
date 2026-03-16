@@ -235,6 +235,36 @@ func stateWithHosts(hosts []model.HostDerived) model.State {
 	return s
 }
 
+func TestHandler_ThreadMetrics_NegativeOtherClampedToZero(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, IsBusy: true},
+	}
+	s := stateWithThreads(threads, nil)
+	s.Derived.TotalBusy = 3
+	s.Derived.TotalIdle = 2
+
+	holder := &StateHolder{}
+	holder.Store(s)
+
+	body := get(holder).Body.String()
+	assert.Contains(t, body, `frankenphp_threads_total{state="other"} 0`)
+}
+
+func TestStatusClassRates_AllClasses(t *testing.T) {
+	codes := map[int]float64{200: 10, 301: 5, 404: 3, 502: 2}
+	classes := statusClassRates(codes)
+
+	assert.Equal(t, 10.0, classes["2xx"])
+	assert.Equal(t, 5.0, classes["3xx"])
+	assert.Equal(t, 3.0, classes["4xx"])
+	assert.Equal(t, 2.0, classes["5xx"])
+}
+
+func TestStatusClassRates_Empty(t *testing.T) {
+	assert.Nil(t, statusClassRates(nil))
+	assert.Nil(t, statusClassRates(map[int]float64{}))
+}
+
 func TestHandler_HostMetrics(t *testing.T) {
 	hosts := []model.HostDerived{
 		{

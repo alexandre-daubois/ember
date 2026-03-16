@@ -378,6 +378,26 @@ func TestSortField_Prev(t *testing.T) {
 	assert.Equal(t, SortByIndex, s, "Prev() should cycle back to SortByIndex")
 }
 
+func TestSortField_Next_InvalidValue(t *testing.T) {
+	invalid := SortField(999)
+	assert.Equal(t, SortByIndex, invalid.Next())
+}
+
+func TestSortField_Prev_InvalidValue(t *testing.T) {
+	invalid := SortField(999)
+	assert.Equal(t, SortByIndex, invalid.Prev())
+}
+
+func TestHostSortField_Next_InvalidValue(t *testing.T) {
+	invalid := HostSortField(999)
+	assert.Equal(t, SortByHost, invalid.Next())
+}
+
+func TestHostSortField_Prev_InvalidValue(t *testing.T) {
+	invalid := HostSortField(999)
+	assert.Equal(t, SortByHost, invalid.Prev())
+}
+
 func TestSortField_NextPrev_Inverse(t *testing.T) {
 	for _, start := range sortFieldOrder {
 		assert.Equal(t, start, start.Next().Prev(), "Next().Prev() should return to %v", start)

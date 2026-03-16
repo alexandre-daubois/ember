@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -195,6 +196,10 @@ func TestFormatDuration(t *testing.T) {
 	assert.Equal(t, "1500ms", formatDuration(1500*1e6))
 	assert.Equal(t, "10.0s", formatDuration(10000*1e6))
 	assert.Equal(t, "2.0m", formatDuration(120*1e9))
+	assert.Equal(t, "1.0h", formatDuration(time.Hour))
+	assert.Equal(t, "1.0d", formatDuration(24*time.Hour))
+	assert.Equal(t, "0ms", formatDuration(0))
+	assert.Equal(t, "9000ms", formatDuration(9*time.Second))
 }
 
 func TestRenderMemSparkline_Empty(t *testing.T) {

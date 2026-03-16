@@ -143,6 +143,21 @@ func TestRenderConnectionError_NarrowTerminal(t *testing.T) {
 	assert.Contains(t, stripANSI(out), "Connection failed")
 }
 
+func TestFormatMs_Milliseconds(t *testing.T) {
+	assert.Equal(t, "123.4ms", formatMs(123.4))
+	assert.Equal(t, "0.0ms", formatMs(0))
+	assert.Equal(t, "9999.9ms", formatMs(9999.9))
+}
+
+func TestFormatMs_Seconds(t *testing.T) {
+	assert.Equal(t, "10.0s", formatMs(10000))
+	assert.Equal(t, "45.5s", formatMs(45500))
+}
+
+func TestFormatMs_Negative(t *testing.T) {
+	assert.Equal(t, "-5.0ms", formatMs(-5))
+}
+
 func stripANSI(s string) string {
 	var out []rune
 	inEsc := false

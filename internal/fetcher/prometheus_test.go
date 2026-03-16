@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/common/expfmt"
+	prommodel "github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -438,6 +440,34 @@ func TestSortBuckets(t *testing.T) {
 		assert.Equal(t, 0.1, buckets[2].UpperBound)
 		assert.True(t, math.IsInf(buckets[3].UpperBound, 1))
 	})
+}
+
+func TestSortBuckets_DuplicateUpperBounds(t *testing.T) {
+	buckets := []HistogramBucket{
+		{UpperBound: 0.1, CumulativeCount: 30},
+		{UpperBound: 0.01, CumulativeCount: 10},
+		{UpperBound: 0.1, CumulativeCount: 50},
+	}
+	sortBuckets(buckets)
+	assert.Equal(t, 0.01, buckets[0].UpperBound)
+	assert.Equal(t, 0.1, buckets[1].UpperBound)
+	assert.Equal(t, 0.1, buckets[2].UpperBound)
+}
+
+func TestMetricValue_HistogramReturnsZero(t *testing.T) {
+	// A histogram metric has no gauge/counter/untyped -> metricValue returns 0
+	// scalarValue on a histogram family falls through all three checks to return 0
+	metrics := `# HELP test_hist A histogram
+# TYPE test_hist histogram
+test_hist_bucket{le="0.1"} 10
+test_hist_bucket{le="+Inf"} 20
+test_hist_sum 15.5
+test_hist_count 20
+`
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, scalarValue(families, "test_hist"))
 }
 
 func TestPerHostMetrics_ResponseSizeExtraction(t *testing.T) {
