@@ -228,3 +228,107 @@ func TestHandler_WorkerMetrics_SortedDeterministic(t *testing.T) {
 	assert.Contains(t, body1, `/m.php`)
 	assert.Contains(t, body1, `/z.php`)
 }
+
+func stateWithHosts(hosts []model.HostDerived) model.State {
+	s := stateWithThreads(nil, nil)
+	s.HostDerived = hosts
+	return s
+}
+
+func TestHandler_HostMetrics(t *testing.T) {
+	hosts := []model.HostDerived{
+		{
+			Host:     "api.example.com",
+			RPS:      150.5,
+			AvgTime:  23.4,
+			InFlight: 5,
+			P50:      10, P90: 30, P95: 50, P99: 120,
+			HasPercentiles: true,
+			StatusCodes:    map[int]float64{200: 140, 204: 5, 404: 3, 500: 2.5},
+		},
+		{
+			Host:     "web.example.com",
+			RPS:      50,
+			AvgTime:  100,
+			InFlight: 2,
+		},
+	}
+	holder := &StateHolder{}
+	holder.Store(stateWithHosts(hosts))
+
+	body := get(holder).Body.String()
+
+	assert.Contains(t, body, `ember_host_rps{host="api.example.com"} 150.50`)
+	assert.Contains(t, body, `ember_host_rps{host="web.example.com"} 50.00`)
+
+	assert.Contains(t, body, `ember_host_latency_avg_milliseconds{host="api.example.com"} 23.40`)
+	assert.Contains(t, body, `ember_host_latency_avg_milliseconds{host="web.example.com"} 100.00`)
+
+	assert.Contains(t, body, `ember_host_latency_milliseconds{host="api.example.com",quantile="0.5"} 10.00`)
+	assert.Contains(t, body, `ember_host_latency_milliseconds{host="api.example.com",quantile="0.9"} 30.00`)
+	assert.Contains(t, body, `ember_host_latency_milliseconds{host="api.example.com",quantile="0.95"} 50.00`)
+	assert.Contains(t, body, `ember_host_latency_milliseconds{host="api.example.com",quantile="0.99"} 120.00`)
+	assert.NotContains(t, body, `ember_host_latency_milliseconds{host="web.example.com"`)
+
+	assert.Contains(t, body, `ember_host_inflight{host="api.example.com"} 5`)
+	assert.Contains(t, body, `ember_host_inflight{host="web.example.com"} 2`)
+
+	assert.Contains(t, body, `ember_host_status_rate{host="api.example.com",class="2xx"} 145.00`)
+	assert.Contains(t, body, `ember_host_status_rate{host="api.example.com",class="4xx"} 3.00`)
+	assert.Contains(t, body, `ember_host_status_rate{host="api.example.com",class="5xx"} 2.50`)
+	assert.NotContains(t, body, `ember_host_status_rate{host="web.example.com"`)
+}
+
+func TestHandler_HostMetrics_SkippedWhenNoHosts(t *testing.T) {
+	holder := &StateHolder{}
+	holder.Store(stateWithThreads(nil, nil))
+
+	body := get(holder).Body.String()
+	assert.NotContains(t, body, "ember_host_rps")
+	assert.NotContains(t, body, "ember_host_latency")
+	assert.NotContains(t, body, "ember_host_inflight")
+	assert.NotContains(t, body, "ember_host_status_rate")
+}
+
+func TestHandler_HostMetrics_SortedDeterministic(t *testing.T) {
+	hosts := []model.HostDerived{
+		{Host: "z.example.com", RPS: 1},
+		{Host: "a.example.com", RPS: 2},
+		{Host: "m.example.com", RPS: 3},
+	}
+	holder := &StateHolder{}
+	holder.Store(stateWithHosts(hosts))
+
+	body1 := get(holder).Body.String()
+	body2 := get(holder).Body.String()
+	require.Equal(t, body1, body2, "output should be deterministic")
+}
+
+func TestHandler_HostMetrics_ValidPrometheus(t *testing.T) {
+	hosts := []model.HostDerived{
+		{
+			Host:     "api.example.com",
+			RPS:      100,
+			AvgTime:  25,
+			InFlight: 3,
+			P50:      10, P90: 30, P95: 50, P99: 120,
+			HasPercentiles: true,
+			StatusCodes:    map[int]float64{200: 90, 404: 5, 500: 5},
+		},
+	}
+	holder := &StateHolder{}
+	holder.Store(stateWithHosts(hosts))
+
+	rec := get(holder)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(rec.Body)
+	require.NoError(t, err, "output must be valid Prometheus text format")
+
+	assert.Contains(t, families, "ember_host_rps")
+	assert.Contains(t, families, "ember_host_latency_avg_milliseconds")
+	assert.Contains(t, families, "ember_host_latency_milliseconds")
+	assert.Contains(t, families, "ember_host_inflight")
+	assert.Contains(t, families, "ember_host_status_rate")
+}

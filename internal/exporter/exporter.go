@@ -42,6 +42,7 @@ func Handler(holder *StateHolder) http.HandlerFunc {
 		writeThreadMetrics(w, &s)
 		writeThreadMemory(w, &s)
 		writeWorkerMetrics(w, &s)
+		writeHostMetrics(w, &s)
 		writePercentiles(w, &s)
 		writeProcessMetrics(w, &s)
 	}
@@ -116,6 +117,104 @@ func writeWorkerMetrics(out http.ResponseWriter, s *model.State) {
 		wm := s.Current.Metrics.Workers[name]
 		fmt.Fprintf(out, "frankenphp_worker_requests_total{worker=\"%s\"} %g\n", escapeLabelValue(name), wm.RequestCount)
 	}
+}
+
+func writeHostMetrics(w http.ResponseWriter, s *model.State) {
+	if len(s.HostDerived) == 0 {
+		return
+	}
+
+	hosts := sortedHostNames(s.HostDerived)
+
+	fmt.Fprintln(w, "# HELP ember_host_rps Requests per second by host")
+	fmt.Fprintln(w, "# TYPE ember_host_rps gauge")
+	for _, hd := range hosts {
+		fmt.Fprintf(w, "ember_host_rps{host=\"%s\"} %.2f\n", escapeLabelValue(hd.Host), hd.RPS)
+	}
+
+	fmt.Fprintln(w, "# HELP ember_host_latency_avg_milliseconds Average response time by host")
+	fmt.Fprintln(w, "# TYPE ember_host_latency_avg_milliseconds gauge")
+	for _, hd := range hosts {
+		fmt.Fprintf(w, "ember_host_latency_avg_milliseconds{host=\"%s\"} %.2f\n", escapeLabelValue(hd.Host), hd.AvgTime)
+	}
+
+	hasPercentiles := false
+	for _, hd := range hosts {
+		if hd.HasPercentiles {
+			hasPercentiles = true
+			break
+		}
+	}
+	if hasPercentiles {
+		fmt.Fprintln(w, "# HELP ember_host_latency_milliseconds Response time percentiles by host")
+		fmt.Fprintln(w, "# TYPE ember_host_latency_milliseconds gauge")
+		for _, hd := range hosts {
+			if !hd.HasPercentiles {
+				continue
+			}
+			h := escapeLabelValue(hd.Host)
+			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.5\"} %.2f\n", h, hd.P50)
+			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.9\"} %.2f\n", h, hd.P90)
+			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.95\"} %.2f\n", h, hd.P95)
+			fmt.Fprintf(w, "ember_host_latency_milliseconds{host=\"%s\",quantile=\"0.99\"} %.2f\n", h, hd.P99)
+		}
+	}
+
+	fmt.Fprintln(w, "# HELP ember_host_inflight In-flight requests by host")
+	fmt.Fprintln(w, "# TYPE ember_host_inflight gauge")
+	for _, hd := range hosts {
+		fmt.Fprintf(w, "ember_host_inflight{host=\"%s\"} %.0f\n", escapeLabelValue(hd.Host), hd.InFlight)
+	}
+
+	hasStatus := false
+	for _, hd := range hosts {
+		if len(hd.StatusCodes) > 0 {
+			hasStatus = true
+			break
+		}
+	}
+	if hasStatus {
+		fmt.Fprintln(w, "# HELP ember_host_status_rate Request rate by host and status class")
+		fmt.Fprintln(w, "# TYPE ember_host_status_rate gauge")
+		for _, hd := range hosts {
+			classes := statusClassRates(hd.StatusCodes)
+			h := escapeLabelValue(hd.Host)
+			for _, c := range []string{"2xx", "3xx", "4xx", "5xx"} {
+				if rate, ok := classes[c]; ok {
+					fmt.Fprintf(w, "ember_host_status_rate{host=\"%s\",class=\"%s\"} %.2f\n", h, c, rate)
+				}
+			}
+		}
+	}
+}
+
+func statusClassRates(codes map[int]float64) map[string]float64 {
+	if len(codes) == 0 {
+		return nil
+	}
+	classes := make(map[string]float64)
+	for code, rate := range codes {
+		switch {
+		case code >= 200 && code < 300:
+			classes["2xx"] += rate
+		case code >= 300 && code < 400:
+			classes["3xx"] += rate
+		case code >= 400 && code < 500:
+			classes["4xx"] += rate
+		case code >= 500 && code < 600:
+			classes["5xx"] += rate
+		}
+	}
+	return classes
+}
+
+func sortedHostNames(hosts []model.HostDerived) []model.HostDerived {
+	sorted := make([]model.HostDerived, len(hosts))
+	copy(sorted, hosts)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Host < sorted[j].Host
+	})
+	return sorted
 }
 
 func writePercentiles(w http.ResponseWriter, s *model.State) {
