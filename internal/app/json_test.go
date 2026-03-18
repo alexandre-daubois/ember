@@ -122,6 +122,83 @@ func TestBuildJSONOutput_WithErrors(t *testing.T) {
 	assert.Equal(t, "fetch threads: connection refused", out.Errors[0])
 }
 
+func TestBuildJSONOutput_DerivedErrorRate(t *testing.T) {
+	snap := &fetcher.Snapshot{FetchedAt: time.Now()}
+	var state model.State
+	state.Update(snap)
+	state.Derived.ErrorRate = 4.2
+
+	out := buildJSONOutput(snap, &state)
+
+	assert.Equal(t, 4.2, out.Derived.ErrorRate)
+}
+
+func TestBuildJSONOutput_DerivedErrorRate_Zero(t *testing.T) {
+	snap := &fetcher.Snapshot{FetchedAt: time.Now()}
+	var state model.State
+	state.Update(snap)
+
+	out := buildJSONOutput(snap, &state)
+
+	assert.Zero(t, out.Derived.ErrorRate)
+}
+
+func TestBuildJSONOutput_HostErrorRateAndAvgRequestSize(t *testing.T) {
+	snap := &fetcher.Snapshot{FetchedAt: time.Now()}
+	var state model.State
+	state.Update(snap)
+	state.HostDerived = []model.HostDerived{
+		{
+			Host:           "api.example.com",
+			ErrorRate:      3.5,
+			AvgRequestSize: 2048,
+		},
+		{
+			Host: "web.example.com",
+		},
+	}
+
+	out := buildJSONOutput(snap, &state)
+
+	require.Len(t, out.Hosts, 2)
+	assert.Equal(t, 3.5, out.Hosts[0].ErrorRate)
+	assert.Equal(t, 2048.0, out.Hosts[0].AvgRequestSize)
+	assert.Zero(t, out.Hosts[1].ErrorRate)
+	assert.Zero(t, out.Hosts[1].AvgRequestSize)
+}
+
+func TestBuildJSONOutput_HostTTFB(t *testing.T) {
+	snap := &fetcher.Snapshot{FetchedAt: time.Now()}
+	var state model.State
+	state.Update(snap)
+	state.HostDerived = []model.HostDerived{
+		{
+			Host:    "api.example.com",
+			HasTTFB: true,
+			TTFBP50: 5.0, TTFBP90: 15.0, TTFBP95: 25.0, TTFBP99: 50.0,
+		},
+		{
+			Host:    "web.example.com",
+			HasTTFB: false,
+		},
+	}
+
+	out := buildJSONOutput(snap, &state)
+
+	require.Len(t, out.Hosts, 2)
+
+	require.NotNil(t, out.Hosts[0].TTFBP50)
+	assert.Equal(t, 5.0, *out.Hosts[0].TTFBP50)
+	assert.Equal(t, 15.0, *out.Hosts[0].TTFBP90)
+	assert.Equal(t, 25.0, *out.Hosts[0].TTFBP95)
+	assert.Equal(t, 50.0, *out.Hosts[0].TTFBP99)
+
+	assert.Nil(t, out.Hosts[1].TTFBP50)
+	assert.Nil(t, out.Hosts[1].TTFBP90)
+	assert.Nil(t, out.Hosts[1].TTFBP95)
+	assert.Nil(t, out.Hosts[1].TTFBP99)
+}
+
 func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 	snap := &fetcher.Snapshot{FetchedAt: time.Now()}
 	var state model.State

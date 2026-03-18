@@ -344,6 +344,82 @@ func TestRenderHostDetailPanel_ResponseSize(t *testing.T) {
 	assert.Contains(t, panel, "4 KB")
 }
 
+func TestRenderHostDetailPanel_ErrorRate(t *testing.T) {
+	h := model.HostDerived{
+		Host:      "test.com",
+		ErrorRate: 7.5,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Errors")
+	assert.Contains(t, panel, "7.5/s")
+}
+
+func TestRenderHostDetailPanel_NoErrorRateWhenZero(t *testing.T) {
+	h := model.HostDerived{
+		Host:      "test.com",
+		ErrorRate: 0,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.NotContains(t, panel, "Errors")
+}
+
+func TestRenderHostDetailPanel_TTFB(t *testing.T) {
+	h := model.HostDerived{
+		Host:    "test.com",
+		HasTTFB: true,
+		TTFBP50: 2.0,
+		TTFBP90: 8.0,
+		TTFBP95: 15.0,
+		TTFBP99: 40.0,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "TTFB")
+	assert.Contains(t, panel, "2.0ms")
+	assert.Contains(t, panel, "8.0ms")
+	assert.Contains(t, panel, "15.0ms")
+	assert.Contains(t, panel, "40.0ms")
+}
+
+func TestRenderHostDetailPanel_NoTTFBWhenDisabled(t *testing.T) {
+	h := model.HostDerived{
+		Host:    "test.com",
+		HasTTFB: false,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.NotContains(t, panel, "TTFB")
+}
+
+func TestRenderHostDetailPanel_RequestSize(t *testing.T) {
+	h := model.HostDerived{
+		Host:           "test.com",
+		AvgRequestSize: 8192,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Transfer Size")
+	assert.Contains(t, panel, "Req avg")
+	assert.Contains(t, panel, "8 KB")
+}
+
+func TestRenderHostDetailPanel_BothRequestAndResponseSize(t *testing.T) {
+	h := model.HostDerived{
+		Host:            "test.com",
+		AvgRequestSize:  2048,
+		AvgResponseSize: 4096,
+	}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, panel, "Transfer Size")
+	assert.Contains(t, panel, "Req avg")
+	assert.Contains(t, panel, "2 KB")
+	assert.Contains(t, panel, "Resp avg")
+	assert.Contains(t, panel, "4 KB")
+}
+
 func TestRenderHostDetailPanel_StarHost(t *testing.T) {
 	h := model.HostDerived{
 		Host: "*",

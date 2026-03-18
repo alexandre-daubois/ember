@@ -424,6 +424,52 @@ func TestHandler_WithPrefix_AllMetricsPrefixed(t *testing.T) {
 	assert.NotContains(t, families, "process_cpu_percent")
 }
 
+func TestHandler_ErrorMetrics(t *testing.T) {
+	hosts := []model.HostDerived{
+		{Host: "api.example.com", ErrorRate: 3.5},
+		{Host: "web.example.com", ErrorRate: 0},
+		{Host: "cdn.example.com", ErrorRate: 1.2},
+	}
+	holder := &StateHolder{}
+	holder.Store(stateWithHosts(hosts))
+
+	body := get(holder).Body.String()
+
+	assert.Contains(t, body, "# HELP ember_host_error_rate")
+	assert.Contains(t, body, "# TYPE ember_host_error_rate gauge")
+	assert.Contains(t, body, `ember_host_error_rate{host="api.example.com"} 3.50`)
+	assert.Contains(t, body, `ember_host_error_rate{host="cdn.example.com"} 1.20`)
+	assert.NotContains(t, body, `ember_host_error_rate{host="web.example.com"}`)
+}
+
+func TestHandler_ErrorMetrics_SkippedWhenAllZero(t *testing.T) {
+	hosts := []model.HostDerived{
+		{Host: "api.example.com", ErrorRate: 0},
+		{Host: "web.example.com", ErrorRate: 0},
+	}
+	holder := &StateHolder{}
+	holder.Store(stateWithHosts(hosts))
+
+	body := get(holder).Body.String()
+	assert.NotContains(t, body, "ember_host_error_rate")
+}
+
+func TestHandler_ErrorMetrics_ValidPrometheus(t *testing.T) {
+	hosts := []model.HostDerived{
+		{Host: "api.example.com", ErrorRate: 5.0},
+	}
+	holder := &StateHolder{}
+	holder.Store(stateWithHosts(hosts))
+
+	rec := get(holder)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(rec.Body)
+	require.NoError(t, err, "output must be valid Prometheus text format")
+	assert.Contains(t, families, "ember_host_error_rate")
+}
+
 func TestHandler_EmptyPrefix_DefaultNames(t *testing.T) {
 	holder := &StateHolder{}
 	holder.Store(stateWithThreads(nil, nil))

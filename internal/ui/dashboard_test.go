@@ -126,6 +126,25 @@ func TestRenderDashboard_NoPausedWhenRunning(t *testing.T) {
 	assert.NotContains(t, out, "PAUSED")
 }
 
+func TestRenderDashboard_ShowsErrorRate(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{},
+		Derived: model.DerivedMetrics{ErrorRate: 12},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	assert.Contains(t, out, "Err/s")
+	assert.Contains(t, out, "12")
+}
+
+func TestRenderDashboard_HidesErrorRateWhenZero(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{},
+		Derived: model.DerivedMetrics{ErrorRate: 0},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	assert.NotContains(t, out, "Err/s")
+}
+
 func TestRenderConnectionError_ContainsErrorMessage(t *testing.T) {
 	out := renderConnectionError("connection refused", 80, 24)
 	plain := stripANSI(out)
