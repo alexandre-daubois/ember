@@ -39,7 +39,7 @@ Press `/` to enter filter mode. Type a hostname pattern to filter the table. Pre
 
 Press `Enter` on a host to open the detail panel:
 
-- **Traffic**: RPS, in-flight requests, total request count
+- **Traffic**: RPS, in-flight requests, total request count, error rate (when > 0, displayed in red)
 - **Latency**: P50, P90, P95, P99 (when available), average response time
 - **Status Codes**: Individual status codes with their rates
 - **HTTP Methods**: Request rates and percentage of total per method (GET, POST, etc.)

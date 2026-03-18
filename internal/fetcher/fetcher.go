@@ -48,6 +48,7 @@ type HostMetrics struct {
 	Methods           map[string]float64 `json:"methods,omitempty"`
 	ResponseSizeSum   float64            `json:"responseSizeSum"`
 	ResponseSizeCount float64            `json:"responseSizeCount"`
+	ErrorsTotal       float64            `json:"errorsTotal"`
 }
 
 type MetricsSnapshot struct {
@@ -58,6 +59,7 @@ type MetricsSnapshot struct {
 	Workers      map[string]*WorkerMetrics `json:"workers"`
 
 	// Caddy HTTP metrics (require `metrics` directive in Caddyfile)
+	HTTPRequestErrorsTotal   float64           `json:"httpRequestErrorsTotal"`
 	HTTPRequestsTotal        float64           `json:"httpRequestsTotal"`
 	HTTPRequestDurationSum   float64           `json:"httpRequestDurationSum"`
 	HTTPRequestDurationCount float64           `json:"httpRequestDurationCount"`

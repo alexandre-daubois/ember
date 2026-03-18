@@ -50,6 +50,7 @@ func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
 		writeThreadMemory(w, &s, p)
 		writeWorkerMetrics(w, &s, p)
 		writeHostMetrics(w, &s, p)
+		writeErrorMetrics(w, &s, p)
 		writePercentiles(w, &s, p)
 		writeProcessMetrics(w, &s, p)
 	}
@@ -240,6 +241,28 @@ func sortedHostNames(hosts []model.HostDerived) []model.HostDerived {
 		return cmp.Compare(a.Host, b.Host)
 	})
 	return sorted
+}
+
+func writeErrorMetrics(w http.ResponseWriter, s *model.State, prefix string) {
+	hasErrors := false
+	for _, hd := range s.HostDerived {
+		if hd.ErrorRate > 0 {
+			hasErrors = true
+			break
+		}
+	}
+	if !hasErrors {
+		return
+	}
+
+	name := prefixed(prefix, "ember_host_error_rate")
+	fmt.Fprintf(w, "# HELP %s Middleware error rate by host\n", name)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
+	for _, hd := range sortedHostNames(s.HostDerived) {
+		if hd.ErrorRate > 0 {
+			fmt.Fprintf(w, "%s{host=\"%s\"} %.2f\n", name, escapeLabelValue(hd.Host), hd.ErrorRate)
+		}
+	}
 }
 
 func writePercentiles(w http.ResponseWriter, s *model.State, prefix string) {

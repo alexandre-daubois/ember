@@ -64,6 +64,7 @@ ember daemon: exposing metrics on http://localhost:9191/metrics
 | `ember_host_latency_milliseconds` | gauge | `host`, `quantile` (`0.5`, `0.9`, `0.95`, `0.99`) | Latency percentiles |
 | `ember_host_inflight` | gauge | `host` | In-flight requests |
 | `ember_host_status_rate` | gauge | `host`, `class` (`2xx`, `3xx`, `4xx`, `5xx`) | Request rate by status class |
+| `ember_host_error_rate` | gauge | `host` | Middleware error rate (handler-level errors, distinct from HTTP status codes) |
 
 ### Process Metrics
 

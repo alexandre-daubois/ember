@@ -25,6 +25,7 @@ type jsonHost struct {
 	Host        string             `json:"host"`
 	RPS         float64            `json:"rps"`
 	AvgTime     float64            `json:"avgTime"`
+	ErrorRate   float64            `json:"errorRate,omitempty"`
 	InFlight    float64            `json:"inFlight"`
 	P50         *float64           `json:"p50,omitempty"`
 	P90         *float64           `json:"p90,omitempty"`
@@ -35,11 +36,12 @@ type jsonHost struct {
 }
 
 type jsonDerived struct {
-	RPS     float64  `json:"rps"`
-	AvgTime float64  `json:"avgTime"`
-	P50     *float64 `json:"p50,omitempty"`
-	P95     *float64 `json:"p95,omitempty"`
-	P99     *float64 `json:"p99,omitempty"`
+	RPS       float64  `json:"rps"`
+	AvgTime   float64  `json:"avgTime"`
+	ErrorRate float64  `json:"errorRate,omitempty"`
+	P50       *float64 `json:"p50,omitempty"`
+	P95       *float64 `json:"p95,omitempty"`
+	P99       *float64 `json:"p99,omitempty"`
 }
 
 func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration) {
@@ -79,8 +81,9 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 		FetchedAt: snap.FetchedAt,
 		Errors:    snap.Errors,
 		Derived: &jsonDerived{
-			RPS:     state.Derived.RPS,
-			AvgTime: state.Derived.AvgTime,
+			RPS:       state.Derived.RPS,
+			AvgTime:   state.Derived.AvgTime,
+			ErrorRate: state.Derived.ErrorRate,
 		},
 	}
 	if state.Derived.HasPercentiles {
@@ -93,6 +96,7 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 			Host:        hd.Host,
 			RPS:         hd.RPS,
 			AvgTime:     hd.AvgTime,
+			ErrorRate:   hd.ErrorRate,
 			InFlight:    hd.InFlight,
 			StatusCodes: hd.StatusCodes,
 			MethodRates: hd.MethodRates,

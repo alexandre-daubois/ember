@@ -72,9 +72,11 @@ Each line is a JSON object with the following fields:
 | `process` | Monitored process info: PID, CPU %, RSS (bytes), uptime |
 | `fetchedAt` | Timestamp of this poll (RFC 3339) |
 | `errors` | Array of error strings from this poll (omitted if empty) |
-| `derived` | Computed metrics: RPS, average response time, percentiles (omitted on first poll) |
+| `derived` | Computed metrics: RPS, average response time, error rate, percentiles (omitted on first poll) |
+| `derived.errorRate` | Middleware errors per second (omitted when 0) |
 | `derived.p50/p95/p99` | Request duration percentiles in ms (omitted when unavailable) |
 | `hosts` | Per-host breakdown (omitted when no host-level data) |
+| `hosts[].errorRate` | Middleware errors per second for this host (omitted when 0) |
 | `hosts[].statusCodes` | Status code → rate (req/s) |
 | `hosts[].methodRates` | HTTP method → rate (req/s) |
 

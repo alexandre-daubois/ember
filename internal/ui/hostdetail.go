@@ -35,6 +35,10 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 		lines = append(lines, detailKV("Total", formatNumber(int64(h.TotalRequests))))
 	}
 
+	if h.ErrorRate > 0 {
+		lines = append(lines, "  "+detailLabelStyle.Render("Errors")+dangerStyle.Render(formatDetailRate(h.ErrorRate)))
+	}
+
 	lines = append(lines, "")
 	lines = append(lines, sectionHeader("Latency", inner))
 	if h.HasPercentiles {

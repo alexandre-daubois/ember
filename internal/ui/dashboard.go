@@ -105,6 +105,10 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
 	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s",
 		rpsFmt, rpsSpark, avgRaw, inflightStr)
+	if d.ErrorRate > 0 {
+		errStr := fmt.Sprintf("%.0f", d.ErrorRate)
+		line2 += fmt.Sprintf("  Err/s %s", dangerStyle.Render(errStr))
+	}
 	if hasFrankenPHP {
 		queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
 		if snap.Metrics.QueueDepth > 0 {

@@ -107,6 +107,9 @@ const sampleCaddyMetrics = `# HELP caddy_http_requests_total Total HTTP requests
 # TYPE caddy_http_requests_total counter
 caddy_http_requests_total{handler="subroute",server="srv0",code="200"} 150
 caddy_http_requests_total{handler="subroute",server="srv0",code="404"} 10
+# HELP caddy_http_request_errors_total Total HTTP request errors
+# TYPE caddy_http_request_errors_total counter
+caddy_http_request_errors_total{handler="reverse_proxy",server="srv0"} 7
 # HELP caddy_http_request_duration_seconds Histogram of request durations
 # TYPE caddy_http_request_duration_seconds histogram
 caddy_http_request_duration_seconds_bucket{handler="subroute",server="srv0",le="0.005"} 50
@@ -124,6 +127,7 @@ func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(160), snap.HTTPRequestsTotal, "HTTPRequestsTotal")
+	assert.Equal(t, float64(7), snap.HTTPRequestErrorsTotal, "HTTPRequestErrorsTotal")
 	assert.Equal(t, 12.5, snap.HTTPRequestDurationSum, "HTTPRequestDurationSum")
 	assert.Equal(t, float64(160), snap.HTTPRequestDurationCount, "HTTPRequestDurationCount")
 	assert.Equal(t, float64(42), snap.HTTPRequestsInFlight, "HTTPRequestsInFlight")
@@ -159,12 +163,23 @@ func TestParsePrometheusMetrics_HasHTTPMetrics_False(t *testing.T) {
 	assert.False(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be false when only FrankenPHP metrics are present")
 }
 
+func TestParsePrometheusMetrics_NoErrorMetrics(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+	require.NoError(t, err)
+
+	assert.Equal(t, float64(0), snap.HTTPRequestErrorsTotal, "HTTPRequestErrorsTotal should be 0 without error metrics")
+}
+
 const samplePerHostMetrics = `# HELP caddy_http_requests_total Total HTTP requests
 # TYPE caddy_http_requests_total counter
 caddy_http_requests_total{host="example.com",handler="subroute",server="srv0",code="200"} 100
 caddy_http_requests_total{host="example.com",handler="subroute",server="srv0",code="404"} 5
 caddy_http_requests_total{host="api.example.com",handler="subroute",server="srv0",code="200"} 50
 caddy_http_requests_total{host="api.example.com",handler="subroute",server="srv0",code="500"} 2
+# HELP caddy_http_request_errors_total Total HTTP request errors
+# TYPE caddy_http_request_errors_total counter
+caddy_http_request_errors_total{host="example.com",handler="reverse_proxy"} 3
+caddy_http_request_errors_total{host="api.example.com",handler="reverse_proxy"} 12
 # HELP caddy_http_request_duration_seconds Histogram of request durations
 # TYPE caddy_http_request_duration_seconds histogram
 caddy_http_request_duration_seconds_bucket{host="example.com",le="0.005"} 30
@@ -197,6 +212,7 @@ func TestPerHostMetrics_GroupsByHost(t *testing.T) {
 	assert.Equal(t, float64(3), ex.InFlight)
 	assert.Equal(t, float64(100), ex.StatusCodes[200])
 	assert.Equal(t, float64(5), ex.StatusCodes[404])
+	assert.Equal(t, float64(3), ex.ErrorsTotal, "per-host ErrorsTotal")
 	assert.Len(t, ex.DurationBuckets, 3)
 
 	api := snap.Hosts["api.example.com"]
@@ -205,6 +221,7 @@ func TestPerHostMetrics_GroupsByHost(t *testing.T) {
 	assert.Equal(t, float64(7), api.InFlight)
 	assert.Equal(t, float64(50), api.StatusCodes[200])
 	assert.Equal(t, float64(2), api.StatusCodes[500])
+	assert.Equal(t, float64(12), api.ErrorsTotal, "per-host ErrorsTotal")
 }
 
 func TestPerHostMetrics_GroupsByServerLabel(t *testing.T) {

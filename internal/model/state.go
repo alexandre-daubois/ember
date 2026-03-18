@@ -119,6 +119,7 @@ type HostDerived struct {
 	Host               string
 	RPS                float64
 	AvgTime            float64
+	ErrorRate          float64
 	InFlight           float64
 	P50, P90, P95, P99 float64
 	HasPercentiles     bool
@@ -139,6 +140,7 @@ type State struct {
 type DerivedMetrics struct {
 	RPS            float64
 	AvgTime        float64
+	ErrorRate      float64
 	TotalIdle      int
 	TotalBusy      int
 	TotalCrashes   float64
@@ -299,6 +301,11 @@ func (s *State) computeDerived() DerivedMetrics {
 		d.AvgTime = (deltaTime / deltaCount) * 1000 // ms
 	}
 
+	deltaErrors := s.Current.Metrics.HTTPRequestErrorsTotal - s.Previous.Metrics.HTTPRequestErrorsTotal
+	if deltaErrors > 0 {
+		d.ErrorRate = deltaErrors / dt
+	}
+
 	return d
 }
 
@@ -331,6 +338,11 @@ func (s *State) computeHostDerived() []HostDerived {
 				if deltaCount > 0 {
 					hd.RPS = deltaCount / dt
 					hd.AvgTime = (deltaSum / deltaCount) * 1000
+				}
+
+				deltaErrors := curr.ErrorsTotal - prev.ErrorsTotal
+				if deltaErrors > 0 {
+					hd.ErrorRate = deltaErrors / dt
 				}
 
 				hd.StatusCodes = computeStatusCodeRates(curr.StatusCodes, prev.StatusCodes, dt)

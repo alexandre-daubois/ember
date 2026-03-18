@@ -57,6 +57,7 @@ func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
 	}
 
 	// Caddy HTTP metrics (available with `metrics` directive)
+	snap.HTTPRequestErrorsTotal = sumCounter(families, "caddy_http_request_errors_total")
 	snap.HTTPRequestsTotal = sumCounter(families, "caddy_http_requests_total")
 	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount, snap.DurationBuckets = histogramData(families, "caddy_http_request_duration_seconds")
 	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
@@ -307,6 +308,16 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 			hm := getOrCreate(host)
 			hm.ResponseSizeSum += h.GetSampleSum()
 			hm.ResponseSizeCount += float64(h.GetSampleCount())
+		}
+	}
+
+	if fam, ok := families["caddy_http_request_errors_total"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := hostOrServer(m)
+			if host == "" {
+				continue
+			}
+			getOrCreate(host).ErrorsTotal += metricValue(m)
 		}
 	}
 
