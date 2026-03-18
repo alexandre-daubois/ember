@@ -31,6 +31,10 @@ type jsonHost struct {
 	P90            *float64           `json:"p90,omitempty"`
 	P95            *float64           `json:"p95,omitempty"`
 	P99            *float64           `json:"p99,omitempty"`
+	TTFBP50        *float64           `json:"ttfbP50,omitempty"`
+	TTFBP90        *float64           `json:"ttfbP90,omitempty"`
+	TTFBP95        *float64           `json:"ttfbP95,omitempty"`
+	TTFBP99        *float64           `json:"ttfbP99,omitempty"`
 	StatusCodes    map[int]float64    `json:"statusCodes,omitempty"`
 	MethodRates    map[string]float64 `json:"methodRates,omitempty"`
 	AvgRequestSize float64            `json:"avgRequestSize,omitempty"`
@@ -108,6 +112,12 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 			jh.P90 = &hd.P90
 			jh.P95 = &hd.P95
 			jh.P99 = &hd.P99
+		}
+		if hd.HasTTFB {
+			jh.TTFBP50 = &hd.TTFBP50
+			jh.TTFBP90 = &hd.TTFBP90
+			jh.TTFBP95 = &hd.TTFBP95
+			jh.TTFBP99 = &hd.TTFBP99
 		}
 		out.Hosts = append(out.Hosts, jh)
 	}

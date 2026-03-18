@@ -77,6 +77,7 @@ Each line is a JSON object with the following fields:
 | `derived.p50/p95/p99` | Request duration percentiles in ms (omitted when unavailable) |
 | `hosts` | Per-host breakdown (omitted when no host-level data) |
 | `hosts[].errorRate` | Middleware errors per second for this host (omitted when 0) |
+| `hosts[].ttfbP50/P90/P95/P99` | Time-to-First-Byte percentiles in ms (omitted when unavailable) |
 | `hosts[].statusCodes` | Status code → rate (req/s) |
 | `hosts[].methodRates` | HTTP method → rate (req/s) |
 | `hosts[].avgRequestSize` | Average request body size in bytes (omitted when 0) |

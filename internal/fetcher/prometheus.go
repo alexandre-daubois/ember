@@ -295,6 +295,39 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		sortBuckets(hm.DurationBuckets)
 	}
 
+	ttfbBucketMaps := make(map[string]map[float64]float64)
+	if fam, ok := families["caddy_http_response_duration_seconds"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := hostOrServer(m)
+			if host == "" {
+				continue
+			}
+			h := m.GetHistogram()
+			if h == nil {
+				continue
+			}
+			hm := getOrCreate(host)
+			hm.TTFBSum += h.GetSampleSum()
+			hm.TTFBCount += float64(h.GetSampleCount())
+
+			if ttfbBucketMaps[host] == nil {
+				ttfbBucketMaps[host] = make(map[float64]float64)
+			}
+			for _, b := range h.GetBucket() {
+				ttfbBucketMaps[host][b.GetUpperBound()] += float64(b.GetCumulativeCount())
+			}
+		}
+	}
+
+	for host, bm := range ttfbBucketMaps {
+		hm := hosts[host]
+		hm.TTFBBuckets = make([]HistogramBucket, 0, len(bm))
+		for ub, count := range bm {
+			hm.TTFBBuckets = append(hm.TTFBBuckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
+		}
+		sortBuckets(hm.TTFBBuckets)
+	}
+
 	if fam, ok := families["caddy_http_response_size_bytes"]; ok {
 		for _, m := range fam.GetMetric() {
 			host := hostOrServer(m)

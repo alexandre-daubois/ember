@@ -54,6 +54,15 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 		lines = append(lines, greyStyle.Render("  —"))
 	}
 
+	if h.HasTTFB {
+		lines = append(lines, "")
+		lines = append(lines, sectionHeader("TTFB", inner))
+		lines = append(lines, detailKV("P50", formatMs(h.TTFBP50)))
+		lines = append(lines, detailKV("P90", formatMs(h.TTFBP90)))
+		lines = append(lines, detailKV("P95", formatMs(h.TTFBP95)))
+		lines = append(lines, detailKV("P99", formatMs(h.TTFBP99)))
+	}
+
 	if len(h.StatusCodes) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, sectionHeader("Status Codes", inner))

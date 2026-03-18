@@ -559,6 +559,57 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 	assert.Equal(t, float64(40), api.RequestSizeCount)
 }
 
+func TestPerHostMetrics_TTFBExtraction(t *testing.T) {
+	metrics := `# HELP caddy_http_response_duration_seconds Histogram of time-to-first-byte.
+# TYPE caddy_http_response_duration_seconds histogram
+caddy_http_response_duration_seconds_bucket{server="main",code="200",le="0.005"} 30
+caddy_http_response_duration_seconds_bucket{server="main",code="200",le="0.01"} 60
+caddy_http_response_duration_seconds_bucket{server="main",code="200",le="+Inf"} 100
+caddy_http_response_duration_seconds_sum{server="main",code="200"} 0.8
+caddy_http_response_duration_seconds_count{server="main",code="200"} 100
+caddy_http_response_duration_seconds_bucket{server="api",code="200",le="0.005"} 10
+caddy_http_response_duration_seconds_bucket{server="api",code="200",le="0.01"} 25
+caddy_http_response_duration_seconds_bucket{server="api",code="200",le="+Inf"} 40
+caddy_http_response_duration_seconds_sum{server="api",code="200"} 0.3
+caddy_http_response_duration_seconds_count{server="api",code="200"} 40
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{server="main"} 100
+caddy_http_requests_total{server="api"} 40
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{server="main"} 5.0
+caddy_http_request_duration_seconds_count{server="main"} 100
+caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
+caddy_http_request_duration_seconds_sum{server="api"} 2.0
+caddy_http_request_duration_seconds_count{server="api"} 40
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	main := snap.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, 0.8, main.TTFBSum)
+	assert.Equal(t, float64(100), main.TTFBCount)
+	assert.Len(t, main.TTFBBuckets, 3)
+	assert.Equal(t, 0.005, main.TTFBBuckets[0].UpperBound)
+
+	api := snap.Hosts["api"]
+	require.NotNil(t, api)
+	assert.Equal(t, 0.3, api.TTFBSum)
+	assert.Equal(t, float64(40), api.TTFBCount)
+	assert.Len(t, api.TTFBBuckets, 3)
+}
+
+func TestPerHostMetrics_NoTTFB(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(samplePerHostMetrics))
+	require.NoError(t, err)
+
+	ex := snap.Hosts["example.com"]
+	require.NotNil(t, ex)
+	assert.Empty(t, ex.TTFBBuckets)
+	assert.Equal(t, float64(0), ex.TTFBSum)
+}
+
 func TestParsePrometheusMetrics_Mixed(t *testing.T) {
 	mixed := sampleMetrics + sampleCaddyMetrics
 	snap, err := parsePrometheusMetrics(strings.NewReader(mixed))

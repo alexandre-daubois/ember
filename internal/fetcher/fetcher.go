@@ -51,6 +51,9 @@ type HostMetrics struct {
 	RequestSizeSum    float64            `json:"requestSizeSum"`
 	RequestSizeCount  float64            `json:"requestSizeCount"`
 	ErrorsTotal       float64            `json:"errorsTotal"`
+	TTFBSum           float64            `json:"ttfbSum"`
+	TTFBCount         float64            `json:"ttfbCount"`
+	TTFBBuckets       []HistogramBucket  `json:"ttfbBuckets,omitempty"`
 }
 
 type MetricsSnapshot struct {

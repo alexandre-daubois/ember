@@ -116,18 +116,20 @@ func (s HostSortField) Prev() HostSortField {
 }
 
 type HostDerived struct {
-	Host               string
-	RPS                float64
-	AvgTime            float64
-	ErrorRate          float64
-	InFlight           float64
-	P50, P90, P95, P99 float64
-	HasPercentiles     bool
-	StatusCodes        map[int]float64
-	MethodRates        map[string]float64
-	AvgResponseSize    float64
-	AvgRequestSize     float64
-	TotalRequests      float64
+	Host                               string
+	RPS                                float64
+	AvgTime                            float64
+	ErrorRate                          float64
+	InFlight                           float64
+	P50, P90, P95, P99                 float64
+	HasPercentiles                     bool
+	TTFBP50, TTFBP90, TTFBP95, TTFBP99 float64
+	HasTTFB                            bool
+	StatusCodes                        map[int]float64
+	MethodRates                        map[string]float64
+	AvgResponseSize                    float64
+	AvgRequestSize                     float64
+	TotalRequests                      float64
 }
 
 type State struct {
@@ -360,6 +362,17 @@ func (s *State) computeHostDerived() []HostDerived {
 						hd.P95 = p95
 						hd.P99 = p99
 						hd.HasPercentiles = true
+					}
+				}
+
+				if len(curr.TTFBBuckets) > 0 && len(prev.TTFBBuckets) > 0 {
+					p50, p90, p95, p99, ok := HistogramPercentiles(prev.TTFBBuckets, curr.TTFBBuckets)
+					if ok {
+						hd.TTFBP50 = p50
+						hd.TTFBP90 = p90
+						hd.TTFBP95 = p95
+						hd.TTFBP99 = p99
+						hd.HasTTFB = true
 					}
 				}
 			}

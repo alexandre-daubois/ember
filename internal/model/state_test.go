@@ -828,6 +828,94 @@ func TestComputeHostDerived_WithPercentiles(t *testing.T) {
 	assert.True(t, hd.P99 >= hd.P95, "P99 >= P95")
 }
 
+func TestComputeHostDerived_WithTTFB(t *testing.T) {
+	now := time.Now()
+
+	ttfbPrev := []fetcher.HistogramBucket{
+		{UpperBound: 0.005, CumulativeCount: 0},
+		{UpperBound: 0.01, CumulativeCount: 0},
+		{UpperBound: 0.05, CumulativeCount: 0},
+		{UpperBound: 1e308, CumulativeCount: 0},
+	}
+	ttfbCurr := []fetcher.HistogramBucket{
+		{UpperBound: 0.005, CumulativeCount: 40},
+		{UpperBound: 0.01, CumulativeCount: 80},
+		{UpperBound: 0.05, CumulativeCount: 100},
+		{UpperBound: 1e308, CumulativeCount: 100},
+	}
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-2 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:        "test.com",
+					TTFBBuckets: ttfbPrev,
+					StatusCodes: map[int]float64{},
+				},
+			},
+		},
+	}
+
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:          "test.com",
+					DurationCount: 100,
+					DurationSum:   5.0,
+					TTFBBuckets:   ttfbCurr,
+					StatusCodes:   map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	require.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assert.True(t, hd.HasTTFB)
+	assert.True(t, hd.TTFBP50 > 0, "TTFB P50")
+	assert.True(t, hd.TTFBP90 > 0, "TTFB P90")
+	assert.True(t, hd.TTFBP90 >= hd.TTFBP50, "TTFB P90 >= P50")
+}
+
+func TestComputeHostDerived_NoTTFBWithoutBuckets(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {Host: "test.com", DurationCount: 10, DurationSum: 1, StatusCodes: map[int]float64{}},
+			},
+		},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {Host: "test.com", DurationCount: 20, DurationSum: 2, StatusCodes: map[int]float64{}},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	require.Len(t, s.HostDerived, 1)
+	assert.False(t, s.HostDerived[0].HasTTFB)
+}
+
 func TestComputeHostDerived_NoPrevious(t *testing.T) {
 	snap := &fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{
