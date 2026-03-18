@@ -88,10 +88,15 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 		}
 	}
 
-	if h.AvgResponseSize > 0 {
+	if h.AvgRequestSize > 0 || h.AvgResponseSize > 0 {
 		lines = append(lines, "")
-		lines = append(lines, sectionHeader("Response Size", inner))
-		lines = append(lines, detailKV("Average", formatBytes(int64(h.AvgResponseSize))))
+		lines = append(lines, sectionHeader("Transfer Size", inner))
+		if h.AvgRequestSize > 0 {
+			lines = append(lines, detailKV("Req avg", formatBytes(int64(h.AvgRequestSize))))
+		}
+		if h.AvgResponseSize > 0 {
+			lines = append(lines, detailKV("Resp avg", formatBytes(int64(h.AvgResponseSize))))
+		}
 	}
 
 	lines = append(lines, "")

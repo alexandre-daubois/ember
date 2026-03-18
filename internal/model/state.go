@@ -126,6 +126,7 @@ type HostDerived struct {
 	StatusCodes        map[int]float64
 	MethodRates        map[string]float64
 	AvgResponseSize    float64
+	AvgRequestSize     float64
 	TotalRequests      float64
 }
 
@@ -329,6 +330,9 @@ func (s *State) computeHostDerived() []HostDerived {
 
 		if curr.ResponseSizeCount > 0 {
 			hd.AvgResponseSize = curr.ResponseSizeSum / curr.ResponseSizeCount
+		}
+		if curr.RequestSizeCount > 0 {
+			hd.AvgRequestSize = curr.RequestSizeSum / curr.RequestSizeCount
 		}
 
 		if s.Previous != nil && dt >= 0.1 {

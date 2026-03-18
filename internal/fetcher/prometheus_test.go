@@ -523,6 +523,42 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 	assert.Equal(t, float64(40), api.ResponseSizeCount)
 }
 
+func TestPerHostMetrics_RequestSizeExtraction(t *testing.T) {
+	metrics := `# HELP caddy_http_request_size_bytes Histogram of request sizes.
+# TYPE caddy_http_request_size_bytes histogram
+caddy_http_request_size_bytes_bucket{server="main",le="1000"} 80
+caddy_http_request_size_bytes_bucket{server="main",le="+Inf"} 100
+caddy_http_request_size_bytes_sum{server="main"} 250000
+caddy_http_request_size_bytes_count{server="main"} 100
+caddy_http_request_size_bytes_bucket{server="api",le="1000"} 20
+caddy_http_request_size_bytes_bucket{server="api",le="+Inf"} 40
+caddy_http_request_size_bytes_sum{server="api"} 80000
+caddy_http_request_size_bytes_count{server="api"} 40
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{server="main"} 100
+caddy_http_requests_total{server="api"} 40
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{server="main"} 5.0
+caddy_http_request_duration_seconds_count{server="main"} 100
+caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
+caddy_http_request_duration_seconds_sum{server="api"} 2.0
+caddy_http_request_duration_seconds_count{server="api"} 40
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	main := snap.Hosts["main"]
+	require.NotNil(t, main)
+	assert.Equal(t, float64(250000), main.RequestSizeSum)
+	assert.Equal(t, float64(100), main.RequestSizeCount)
+
+	api := snap.Hosts["api"]
+	require.NotNil(t, api)
+	assert.Equal(t, float64(80000), api.RequestSizeSum)
+	assert.Equal(t, float64(40), api.RequestSizeCount)
+}
+
 func TestParsePrometheusMetrics_Mixed(t *testing.T) {
 	mixed := sampleMetrics + sampleCaddyMetrics
 	snap, err := parsePrometheusMetrics(strings.NewReader(mixed))

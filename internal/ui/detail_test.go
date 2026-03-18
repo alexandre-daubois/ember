@@ -17,8 +17,8 @@ func TestFormatBytes(t *testing.T) {
 		input int64
 		want  string
 	}{
-		{0, "0 KB"},
-		{512, "0 KB"},
+		{0, "0 B"},
+		{512, "512 B"},
 		{1024, "1 KB"},
 		{1048576, "1 MB"},
 		{10485760, "10 MB"},
@@ -339,7 +339,8 @@ func TestRenderHostDetailPanel_ResponseSize(t *testing.T) {
 	}
 	panel := renderHostDetailPanel(h, 44, 30)
 
-	assert.Contains(t, panel, "Response Size")
+	assert.Contains(t, panel, "Transfer Size")
+	assert.Contains(t, panel, "Resp avg")
 	assert.Contains(t, panel, "4 KB")
 }
 

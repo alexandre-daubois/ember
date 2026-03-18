@@ -311,6 +311,22 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		}
 	}
 
+	if fam, ok := families["caddy_http_request_size_bytes"]; ok {
+		for _, m := range fam.GetMetric() {
+			host := hostOrServer(m)
+			if host == "" {
+				continue
+			}
+			h := m.GetHistogram()
+			if h == nil {
+				continue
+			}
+			hm := getOrCreate(host)
+			hm.RequestSizeSum += h.GetSampleSum()
+			hm.RequestSizeCount += float64(h.GetSampleCount())
+		}
+	}
+
 	if fam, ok := families["caddy_http_request_errors_total"]; ok {
 		for _, m := range fam.GetMetric() {
 			host := hostOrServer(m)

@@ -48,6 +48,8 @@ type HostMetrics struct {
 	Methods           map[string]float64 `json:"methods,omitempty"`
 	ResponseSizeSum   float64            `json:"responseSizeSum"`
 	ResponseSizeCount float64            `json:"responseSizeCount"`
+	RequestSizeSum    float64            `json:"requestSizeSum"`
+	RequestSizeCount  float64            `json:"requestSizeCount"`
 	ErrorsTotal       float64            `json:"errorsTotal"`
 }
 

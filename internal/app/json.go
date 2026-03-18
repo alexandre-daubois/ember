@@ -22,17 +22,18 @@ type jsonOutput struct {
 }
 
 type jsonHost struct {
-	Host        string             `json:"host"`
-	RPS         float64            `json:"rps"`
-	AvgTime     float64            `json:"avgTime"`
-	ErrorRate   float64            `json:"errorRate,omitempty"`
-	InFlight    float64            `json:"inFlight"`
-	P50         *float64           `json:"p50,omitempty"`
-	P90         *float64           `json:"p90,omitempty"`
-	P95         *float64           `json:"p95,omitempty"`
-	P99         *float64           `json:"p99,omitempty"`
-	StatusCodes map[int]float64    `json:"statusCodes,omitempty"`
-	MethodRates map[string]float64 `json:"methodRates,omitempty"`
+	Host           string             `json:"host"`
+	RPS            float64            `json:"rps"`
+	AvgTime        float64            `json:"avgTime"`
+	ErrorRate      float64            `json:"errorRate,omitempty"`
+	InFlight       float64            `json:"inFlight"`
+	P50            *float64           `json:"p50,omitempty"`
+	P90            *float64           `json:"p90,omitempty"`
+	P95            *float64           `json:"p95,omitempty"`
+	P99            *float64           `json:"p99,omitempty"`
+	StatusCodes    map[int]float64    `json:"statusCodes,omitempty"`
+	MethodRates    map[string]float64 `json:"methodRates,omitempty"`
+	AvgRequestSize float64            `json:"avgRequestSize,omitempty"`
 }
 
 type jsonDerived struct {
@@ -93,13 +94,14 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 	}
 	for _, hd := range state.HostDerived {
 		jh := jsonHost{
-			Host:        hd.Host,
-			RPS:         hd.RPS,
-			AvgTime:     hd.AvgTime,
-			ErrorRate:   hd.ErrorRate,
-			InFlight:    hd.InFlight,
-			StatusCodes: hd.StatusCodes,
-			MethodRates: hd.MethodRates,
+			Host:           hd.Host,
+			RPS:            hd.RPS,
+			AvgTime:        hd.AvgTime,
+			ErrorRate:      hd.ErrorRate,
+			InFlight:       hd.InFlight,
+			StatusCodes:    hd.StatusCodes,
+			MethodRates:    hd.MethodRates,
+			AvgRequestSize: hd.AvgRequestSize,
 		}
 		if hd.HasPercentiles {
 			jh.P50 = &hd.P50

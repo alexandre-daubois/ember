@@ -195,5 +195,8 @@ func formatBytes(b int64) string {
 		return fmt.Sprintf("%.0f MB", mb)
 	}
 	kb := float64(b) / 1024
-	return fmt.Sprintf("%.0f KB", kb)
+	if kb >= 1 {
+		return fmt.Sprintf("%.0f KB", kb)
+	}
+	return fmt.Sprintf("%d B", b)
 }

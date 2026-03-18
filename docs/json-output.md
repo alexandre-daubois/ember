@@ -79,6 +79,7 @@ Each line is a JSON object with the following fields:
 | `hosts[].errorRate` | Middleware errors per second for this host (omitted when 0) |
 | `hosts[].statusCodes` | Status code → rate (req/s) |
 | `hosts[].methodRates` | HTTP method → rate (req/s) |
+| `hosts[].avgRequestSize` | Average request body size in bytes (omitted when 0) |
 
 ## Scripting Examples
 

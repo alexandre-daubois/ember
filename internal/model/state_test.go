@@ -983,6 +983,48 @@ func TestComputeHostDerived_AvgResponseSize(t *testing.T) {
 	assert.InDelta(t, 5000, hd.AvgResponseSize, 1) // 500000/100
 }
 
+func TestComputeHostDerived_AvgRequestSize(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:             "test.com",
+					RequestSizeSum:   250000,
+					RequestSizeCount: 100,
+					StatusCodes:      map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	require.Len(t, s.HostDerived, 1)
+	assert.InDelta(t, 2500, s.HostDerived[0].AvgRequestSize, 1)
+}
+
+func TestComputeHostDerived_AvgRequestSize_ZeroCount(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"test.com": {
+					Host:        "test.com",
+					StatusCodes: map[int]float64{},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	require.Len(t, s.HostDerived, 1)
+	assert.Equal(t, float64(0), s.HostDerived[0].AvgRequestSize)
+}
+
 func TestComputeHostDerived_TotalRequests(t *testing.T) {
 	snap := &fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{

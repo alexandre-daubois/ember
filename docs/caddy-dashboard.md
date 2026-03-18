@@ -43,7 +43,7 @@ Press `Enter` on a host to open the detail panel:
 - **Latency**: P50, P90, P95, P99 (when available), average response time
 - **Status Codes**: Individual status codes with their rates
 - **HTTP Methods**: Request rates and percentage of total per method (GET, POST, etc.)
-- **Response Size**: Average response body size
+- **Transfer Size**: Average request body size and average response body size
 
 Press `Esc` to close the detail panel.
 
