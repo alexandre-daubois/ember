@@ -241,7 +241,10 @@ func TestDoWithRetry_AllRetriesFail(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/test", nil)
-	_, err := f.doWithRetry(context.Background(), req)
+	resp, err := f.doWithRetry(context.Background(), req)
+	if resp != nil {
+		resp.Body.Close()
+	}
 
 	require.Error(t, err)
 }
@@ -279,7 +282,10 @@ func TestDoWithRetry_RespectsContext(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/test", nil)
-	_, err := f.doWithRetry(ctx, req)
+	resp, err := f.doWithRetry(ctx, req)
+	if resp != nil {
+		resp.Body.Close()
+	}
 
 	require.Error(t, err)
 }

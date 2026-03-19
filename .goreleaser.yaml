@@ -38,5 +38,5 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/alexandre-daubois/ember"
-    description: "Real-time terminal dashboard for FrankenPHP"
+    description: "Real-time terminal dashboard for Caddy & FrankenPHP"
     directory: Casks

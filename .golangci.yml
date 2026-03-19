@@ -1,6 +1,11 @@
 version: "2"
 
 linters:
+  enable:
+    - bodyclose
+    - exhaustive
+    - misspell
+    - nolintlint
   exclusions:
     rules:
       - path: _test\.go
@@ -12,3 +17,7 @@ linters:
         - fmt.Fprintf
         - fmt.Fprintln
         - fmt.Fprint
+    exhaustive:
+      default-signifies-exhaustive: true
+    nolintlint:
+      require-explanation: true
