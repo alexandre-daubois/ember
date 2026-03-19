@@ -18,6 +18,7 @@ Monitor your Caddy server in real time: per-host traffic, latency percentiles, s
 - Daemon mode for headless operation
 - JSON output mode for scripting
 - Auto-detection of FrankenPHP and Caddy processes
+- Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))
 - Cross-platform binaries, Homebrew tap, and Docker image
 
 ## Install
