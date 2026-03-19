@@ -14,18 +14,18 @@ var (
 				Foreground(subtle)
 )
 
-func tabLabel(t Tab) string {
+func tabLabel(t tab) string {
 	switch t {
-	case TabCaddy:
+	case tabCaddy:
 		return "Caddy"
-	case TabFrankenPHP:
+	case tabFrankenPHP:
 		return "FrankenPHP"
 	default:
 		return "?"
 	}
 }
 
-func renderTabBar(tabs []Tab, active Tab, width int, counts map[Tab]string) string {
+func renderTabBar(tabs []tab, active tab, width int, counts map[tab]string) string {
 	var parts []string
 	for _, t := range tabs {
 		label := tabLabel(t)

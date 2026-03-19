@@ -178,7 +178,8 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	if metricsOK {
 		f.onConnected(ctx)
 
-		// Derive process metrics from Prometheus when gopsutil has no data
+		// Fall back to Prometheus process metrics when gopsutil returns nothing:
+		// in containers, gopsutil often cannot access the target process.
 		if proc.RSS == 0 && metrics.ProcessRSSBytes > 0 {
 			proc.RSS = uint64(metrics.ProcessRSSBytes)
 		}
@@ -235,6 +236,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}, nil
 }
 
+// onConnected lazily detects FrankenPHP and fetches Caddy server names on the
+// first successful metrics fetch, rather than at startup. This avoids blocking
+// when Caddy is not yet ready or temporarily unreachable.
 func (f *HTTPFetcher) onConnected(ctx context.Context) {
 	f.mu.Lock()
 	hasFP := f.hasFrankenPHP

@@ -34,11 +34,11 @@ type Config struct {
 	MetricsServerErr <-chan error
 }
 
-type Tab int
+type tab int
 
 const (
-	TabCaddy Tab = iota
-	TabFrankenPHP
+	tabCaddy tab = iota
+	tabFrankenPHP
 )
 
 type tabState struct {
@@ -74,9 +74,9 @@ type App struct {
 	fetching  bool
 	viewTime  time.Time
 
-	activeTab     Tab
-	tabs          []Tab
-	tabStates     map[Tab]*tabState
+	activeTab     tab
+	tabs          []tab
+	tabStates     map[tab]*tabState
 	hasFrankenPHP bool
 	hostSortBy    model.HostSortField
 }
@@ -86,13 +86,13 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 
-	tabs := []Tab{TabCaddy}
-	activeTab := TabCaddy
+	tabs := []tab{tabCaddy}
+	activeTab := tabCaddy
 	if cfg.HasFrankenPHP {
-		tabs = append(tabs, TabFrankenPHP)
+		tabs = append(tabs, tabFrankenPHP)
 	}
 
-	ts := make(map[Tab]*tabState)
+	ts := make(map[tab]*tabState)
 	for _, t := range tabs {
 		ts[t] = &tabState{}
 	}
@@ -109,7 +109,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	}
 }
 
-func (a *App) switchTab(target Tab) {
+func (a *App) switchTab(target tab) {
 	ts := a.tabStates[a.activeTab]
 	ts.cursor = a.cursor
 	ts.filter = a.filter
@@ -209,9 +209,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.state.Derived.RPS = 0
 				a.state.Derived.AvgTime = 0
 				a.state.Derived.HasPercentiles = false
-				if a.state.Percentiles != nil {
-					a.state.Percentiles.Reset()
-				}
+				a.state.ResetPercentiles()
 			}
 			a.clampCursor()
 			if len(msg.snap.Errors) > 0 {
@@ -280,15 +278,15 @@ func (a *App) View() string {
 	listWidth := a.width - panelWidth
 
 	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.history.rps, sparklineSize), lastN(a.history.cpu, sparklineSize), a.stale, a.paused, a.hasFrankenPHP)
-	counts := make(map[Tab]string)
+	counts := make(map[tab]string)
 	if a.state.Current != nil {
 		if hostCount := len(a.state.HostDerived); hostCount > 0 {
-			counts[TabCaddy] = fmt.Sprintf("%d hosts", hostCount)
+			counts[tabCaddy] = fmt.Sprintf("%d hosts", hostCount)
 		}
 		if a.hasFrankenPHP {
 			threadCount := len(a.state.Current.Threads.ThreadDebugStates)
 			if threadCount > 0 {
-				counts[TabFrankenPHP] = fmt.Sprintf("%d threads", threadCount)
+				counts[tabFrankenPHP] = fmt.Sprintf("%d threads", threadCount)
 			}
 		}
 	}
@@ -299,7 +297,7 @@ func (a *App) View() string {
 	var hosts []model.HostDerived
 	var contentList string
 	switch a.activeTab {
-	case TabFrankenPHP:
+	case tabFrankenPHP:
 		threads = a.filteredThreads()
 		if len(threads) == 0 && a.filter != "" {
 			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
@@ -310,7 +308,7 @@ func (a *App) View() string {
 				viewTime:      a.viewTime,
 			})
 		}
-	case TabCaddy:
+	case tabCaddy:
 		hosts = a.filteredHosts()
 		if len(hosts) == 0 && a.filter != "" {
 			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
@@ -354,7 +352,7 @@ func (a *App) View() string {
 	base := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	if a.mode == viewDetail {
-		if a.activeTab == TabCaddy {
+		if a.activeTab == tabCaddy {
 			if a.cursor >= 0 && a.cursor < len(hosts) {
 				h := hosts[a.cursor]
 				if sidePanel {
@@ -468,13 +466,13 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.cursor += a.pageSize()
 		a.clampCursor()
 	case "s":
-		if a.activeTab == TabCaddy {
+		if a.activeTab == tabCaddy {
 			a.hostSortBy = a.hostSortBy.Next()
 		} else {
 			a.sortBy = a.sortBy.Next()
 		}
 	case "S":
-		if a.activeTab == TabCaddy {
+		if a.activeTab == tabCaddy {
 			a.hostSortBy = a.hostSortBy.Prev()
 		} else {
 			a.sortBy = a.sortBy.Prev()
@@ -484,7 +482,7 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		a.mode = viewDetail
 	case "r":
-		if a.activeTab == TabFrankenPHP {
+		if a.activeTab == tabFrankenPHP {
 			a.mode = viewConfirmRestart
 		}
 	case "/":
@@ -528,7 +526,7 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.cursor += a.pageSize()
 		a.clampCursor()
 	case "r":
-		if a.activeTab == TabFrankenPHP {
+		if a.activeTab == tabFrankenPHP {
 			a.mode = viewConfirmRestart
 		}
 	case "?":
@@ -618,7 +616,7 @@ func (a *App) pageSize() int {
 
 func (a *App) listLen() int {
 	switch a.activeTab {
-	case TabCaddy:
+	case tabCaddy:
 		return len(a.filteredHosts())
 	default:
 		return len(a.filteredThreads())
@@ -628,7 +626,7 @@ func (a *App) listLen() int {
 func (a *App) clampCursor() {
 	var count int
 	switch a.activeTab {
-	case TabCaddy:
+	case tabCaddy:
 		count = len(a.filteredHosts())
 	default:
 		count = len(a.filteredThreads())
@@ -655,8 +653,8 @@ func (a *App) prevThreadMemory() map[int]int64 {
 
 func (a *App) enableFrankenPHP() {
 	a.hasFrankenPHP = true
-	a.tabs = append(a.tabs, TabFrankenPHP)
-	a.tabStates[TabFrankenPHP] = &tabState{}
+	a.tabs = append(a.tabs, tabFrankenPHP)
+	a.tabStates[tabFrankenPHP] = &tabState{}
 }
 
 func (a *App) doTick() tea.Cmd {

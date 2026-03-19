@@ -8,26 +8,26 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 )
 
-const DefaultPercentileExpiry = 5 * time.Minute
+const defaultPercentileExpiry = 5 * time.Minute
 
 type timedSample struct {
 	at    time.Time
 	value float64
 }
 
-type PercentileTracker struct {
+type percentileTracker struct {
 	samples []timedSample
 	expiry  time.Duration
 }
 
-func NewPercentileTracker(expiry time.Duration) *PercentileTracker {
+func newPercentileTracker(expiry time.Duration) *percentileTracker {
 	if expiry <= 0 {
-		expiry = DefaultPercentileExpiry
+		expiry = defaultPercentileExpiry
 	}
-	return &PercentileTracker{expiry: expiry}
+	return &percentileTracker{expiry: expiry}
 }
 
-func (pt *PercentileTracker) Record(durationMs float64, at time.Time) {
+func (pt *percentileTracker) record(durationMs float64, at time.Time) {
 	if durationMs <= 0 {
 		return
 	}
@@ -35,7 +35,7 @@ func (pt *PercentileTracker) Record(durationMs float64, at time.Time) {
 	pt.samples = append(pt.samples, timedSample{at: at, value: durationMs})
 }
 
-func (pt *PercentileTracker) Percentiles(now time.Time) (p50, p95, p99 float64, ok bool) {
+func (pt *percentileTracker) percentiles(now time.Time) (p50, p95, p99 float64, ok bool) {
 	pt.trim(now)
 	n := len(pt.samples)
 	if n == 0 {
@@ -54,16 +54,16 @@ func (pt *PercentileTracker) Percentiles(now time.Time) (p50, p95, p99 float64, 
 	return p50, p95, p99, true
 }
 
-func (pt *PercentileTracker) Count(now time.Time) int {
+func (pt *percentileTracker) count(now time.Time) int {
 	pt.trim(now)
 	return len(pt.samples)
 }
 
-func (pt *PercentileTracker) Reset() {
+func (pt *percentileTracker) reset() {
 	pt.samples = pt.samples[:0]
 }
 
-func (pt *PercentileTracker) trim(now time.Time) {
+func (pt *percentileTracker) trim(now time.Time) {
 	cutoff := now.Add(-pt.expiry)
 	i := 0
 	for i < len(pt.samples) && pt.samples[i].at.Before(cutoff) {
@@ -92,11 +92,11 @@ func percentileValue(sorted []float64, p float64) float64 {
 	return sorted[lower]*(1-frac) + sorted[upper]*frac
 }
 
-// HistogramPercentiles computes P50/P90/P95/P99 from the delta of two Prometheus
+// histogramPercentiles computes P50/P90/P95/P99 from the delta of two Prometheus
 // histogram bucket snapshots using linear interpolation within buckets
 // (same algorithm as Prometheus histogram_quantile).
 // Returns values in milliseconds and ok=true if computable.
-func HistogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p90, p95, p99 float64, ok bool) {
+func histogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p90, p95, p99 float64, ok bool) {
 	delta := subtractBuckets(prev, curr)
 	if len(delta) == 0 {
 		return 0, 0, 0, 0, false
@@ -113,7 +113,7 @@ func HistogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p90, p95, 
 		}
 	}
 
-	// Prometheus buckets are in seconds → convert to milliseconds
+	// Prometheus buckets are in seconds -> convert to milliseconds
 	return p50 * 1000, p90 * 1000, p95 * 1000, p99 * 1000, true
 }
 

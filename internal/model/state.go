@@ -9,7 +9,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 )
 
-const percentileExpiry = DefaultPercentileExpiry
+const percentileExpiry = defaultPercentileExpiry
 
 type SortField int
 
@@ -138,7 +138,7 @@ type State struct {
 	Previous    *fetcher.Snapshot
 	Derived     DerivedMetrics
 	HostDerived []HostDerived
-	Percentiles *PercentileTracker
+	percentiles *percentileTracker
 }
 
 type DerivedMetrics struct {
@@ -155,10 +155,16 @@ type DerivedMetrics struct {
 	HasPercentiles bool
 }
 
+func (s *State) ResetPercentiles() {
+	if s.percentiles != nil {
+		s.percentiles.reset()
+	}
+}
+
 // CopyForExport returns a copy safe for concurrent read from the exporter.
 func (s *State) CopyForExport() State {
 	cp := *s
-	cp.Percentiles = nil
+	cp.percentiles = nil
 	cp.Previous = nil
 	if s.Current != nil {
 		snap := *s.Current
@@ -211,8 +217,8 @@ func (s *State) CopyForExport() State {
 }
 
 func (s *State) Update(snap *fetcher.Snapshot) {
-	if s.Percentiles == nil {
-		s.Percentiles = NewPercentileTracker(percentileExpiry)
+	if s.percentiles == nil {
+		s.percentiles = newPercentileTracker(percentileExpiry)
 	}
 	s.detectCompletedRequests(snap)
 	s.Previous = s.Current
@@ -221,6 +227,11 @@ func (s *State) Update(snap *fetcher.Snapshot) {
 	s.HostDerived = s.computeHostDerived()
 }
 
+// detectCompletedRequests infers request completions by comparing thread states across
+// two consecutive polls: FrankenPHP does not emit a completion event, so a thread
+// transitioning from busy to idle (or starting a new request) is our only signal.
+// The estimated request duration uses the midpoint between polls as end time,
+// which halves the maximum estimation error compared to using either poll boundary.
 func (s *State) detectCompletedRequests(newSnap *fetcher.Snapshot) {
 	if s.Current == nil {
 		return
@@ -248,7 +259,7 @@ func (s *State) detectCompletedRequests(newSnap *fetcher.Snapshot) {
 				endEstimate = newSnap.FetchedAt.UnixMilli()
 			}
 			durationMs := float64(endEstimate - prev.RequestStartedAt)
-			s.Percentiles.Record(durationMs, newSnap.FetchedAt)
+			s.percentiles.record(durationMs, newSnap.FetchedAt)
 		}
 	}
 }
@@ -272,9 +283,10 @@ func (s *State) computeDerived() DerivedMetrics {
 		d.TotalCrashes += w.Crashes
 	}
 
-	// Percentiles: prefer Prometheus histogram buckets, fall back to thread-based tracker
+	// Prefer Prometheus histogram buckets over the thread-based tracker: histograms
+	// capture all requests, while the tracker only sees those that complete between two polls.
 	if s.Previous != nil && len(s.Current.Metrics.DurationBuckets) > 0 && len(s.Previous.Metrics.DurationBuckets) > 0 {
-		p50, p90, p95, p99, ok := HistogramPercentiles(s.Previous.Metrics.DurationBuckets, s.Current.Metrics.DurationBuckets)
+		p50, p90, p95, p99, ok := histogramPercentiles(s.Previous.Metrics.DurationBuckets, s.Current.Metrics.DurationBuckets)
 		if ok {
 			d.P50 = p50
 			d.P90 = p90
@@ -282,8 +294,8 @@ func (s *State) computeDerived() DerivedMetrics {
 			d.P99 = p99
 			d.HasPercentiles = true
 		}
-	} else if s.Percentiles != nil {
-		p50, p95, p99, ok := s.Percentiles.Percentiles(s.Current.FetchedAt)
+	} else if s.percentiles != nil {
+		p50, p95, p99, ok := s.percentiles.percentiles(s.Current.FetchedAt)
 		if ok {
 			d.P50 = p50
 			d.P95 = p95
@@ -385,7 +397,7 @@ func (s *State) computeHostDerived() []HostDerived {
 				hd.MethodRates = computeMethodRates(curr.Methods, prev.Methods, dt)
 
 				if len(curr.DurationBuckets) > 0 && len(prev.DurationBuckets) > 0 {
-					p50, p90, p95, p99, ok := HistogramPercentiles(prev.DurationBuckets, curr.DurationBuckets)
+					p50, p90, p95, p99, ok := histogramPercentiles(prev.DurationBuckets, curr.DurationBuckets)
 					if ok {
 						hd.P50 = p50
 						hd.P90 = p90
@@ -396,7 +408,7 @@ func (s *State) computeHostDerived() []HostDerived {
 				}
 
 				if len(curr.TTFBBuckets) > 0 && len(prev.TTFBBuckets) > 0 {
-					p50, p90, p95, p99, ok := HistogramPercentiles(prev.TTFBBuckets, curr.TTFBBuckets)
+					p50, p90, p95, p99, ok := histogramPercentiles(prev.TTFBBuckets, curr.TTFBBuckets)
 					if ok {
 						hd.TTFBP50 = p50
 						hd.TTFBP90 = p90

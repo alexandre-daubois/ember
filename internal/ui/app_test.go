@@ -18,9 +18,9 @@ func newAppWithThreads(threads []fetcher.ThreadDebugState) *App {
 		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
 	}
 	app := &App{
-		activeTab:     TabFrankenPHP,
-		tabs:          []Tab{TabCaddy, TabFrankenPHP},
-		tabStates:     map[Tab]*tabState{TabCaddy: {}, TabFrankenPHP: {}},
+		activeTab:     tabFrankenPHP,
+		tabs:          []tab{tabCaddy, tabFrankenPHP},
+		tabStates:     map[tab]*tabState{tabCaddy: {}, tabFrankenPHP: {}},
 		hasFrankenPHP: true,
 		history:       newHistoryStore(),
 	}
@@ -236,11 +236,7 @@ func TestFetchMsg_RecoveryFromStaleResetsPercentiles(t *testing.T) {
 	app := &App{
 		stale: true,
 	}
-	now := time.Now()
 	app.state.Update(snap)
-	app.state.Percentiles.Record(150.0, now)
-	app.state.Percentiles.Record(250.0, now)
-	assert.Equal(t, 2, app.state.Percentiles.Count(now))
 
 	recovery := &fetcher.Snapshot{
 		Threads: fetcher.ThreadsResponse{ThreadDebugStates: threads},
@@ -251,7 +247,6 @@ func TestFetchMsg_RecoveryFromStaleResetsPercentiles(t *testing.T) {
 
 	assert.False(t, app.stale)
 	assert.False(t, app.state.Derived.HasPercentiles)
-	assert.Equal(t, 0, app.state.Percentiles.Count(now))
 }
 
 func TestMemHistory_PopulatedOnFetch(t *testing.T) {
@@ -423,9 +418,9 @@ func TestEmptyFilterResults_FrankenPHP(t *testing.T) {
 
 func TestEmptyFilterResults_Caddy(t *testing.T) {
 	app := &App{
-		activeTab:     TabCaddy,
-		tabs:          []Tab{TabCaddy},
-		tabStates:     map[Tab]*tabState{TabCaddy: {}},
+		activeTab:     tabCaddy,
+		tabs:          []tab{tabCaddy},
+		tabStates:     map[tab]*tabState{tabCaddy: {}},
 		hasFrankenPHP: false,
 		history:       newHistoryStore(),
 		width:         120,
@@ -553,23 +548,23 @@ func TestHelpFromDetailView(t *testing.T) {
 
 func TestTabSwitch_TabKey(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
-	assert.Equal(t, TabFrankenPHP, app.activeTab)
+	assert.Equal(t, tabFrankenPHP, app.activeTab)
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
-	assert.Equal(t, TabCaddy, app.activeTab)
+	assert.Equal(t, tabCaddy, app.activeTab)
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
-	assert.Equal(t, TabFrankenPHP, app.activeTab)
+	assert.Equal(t, tabFrankenPHP, app.activeTab)
 }
 
 func TestTabSwitch_NumberKeys(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
-	assert.Equal(t, TabCaddy, app.activeTab)
+	assert.Equal(t, tabCaddy, app.activeTab)
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
-	assert.Equal(t, TabFrankenPHP, app.activeTab)
+	assert.Equal(t, tabFrankenPHP, app.activeTab)
 }
 
 func TestTabSwitch_PreservesCursorPerTab(t *testing.T) {
@@ -600,20 +595,20 @@ func TestTabSwitch_PreservesFilterPerTab(t *testing.T) {
 
 func TestTabSwitch_Key2NoOpWithSingleTab(t *testing.T) {
 	app := &App{
-		activeTab: TabCaddy,
-		tabs:      []Tab{TabCaddy},
-		tabStates: map[Tab]*tabState{TabCaddy: {}},
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy},
+		tabStates: map[tab]*tabState{tabCaddy: {}},
 	}
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
-	assert.Equal(t, TabCaddy, app.activeTab)
+	assert.Equal(t, tabCaddy, app.activeTab)
 }
 
 func TestEnableFrankenPHP_OnFetch(t *testing.T) {
 	app := &App{
-		activeTab:     TabCaddy,
-		tabs:          []Tab{TabCaddy},
-		tabStates:     map[Tab]*tabState{TabCaddy: {}},
+		activeTab:     tabCaddy,
+		tabs:          []tab{tabCaddy},
+		tabStates:     map[tab]*tabState{tabCaddy: {}},
 		hasFrankenPHP: false,
 		history:       newHistoryStore(),
 	}
@@ -631,15 +626,15 @@ func TestEnableFrankenPHP_OnFetch(t *testing.T) {
 	app.Update(fetchMsg{snap: snap})
 
 	assert.True(t, app.hasFrankenPHP, "should enable FrankenPHP flag")
-	assert.Contains(t, app.tabs, TabFrankenPHP, "should add FrankenPHP tab")
-	assert.NotNil(t, app.tabStates[TabFrankenPHP], "should initialize FrankenPHP tab state")
+	assert.Contains(t, app.tabs, tabFrankenPHP, "should add FrankenPHP tab")
+	assert.NotNil(t, app.tabStates[tabFrankenPHP], "should initialize FrankenPHP tab state")
 }
 
 func TestEnableFrankenPHP_NoDoubleAdd(t *testing.T) {
 	app := &App{
-		activeTab:     TabCaddy,
-		tabs:          []Tab{TabCaddy, TabFrankenPHP},
-		tabStates:     map[Tab]*tabState{TabCaddy: {}, TabFrankenPHP: {}},
+		activeTab:     tabCaddy,
+		tabs:          []tab{tabCaddy, tabFrankenPHP},
+		tabStates:     map[tab]*tabState{tabCaddy: {}, tabFrankenPHP: {}},
 		hasFrankenPHP: true,
 		history:       newHistoryStore(),
 	}

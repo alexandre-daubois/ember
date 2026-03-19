@@ -553,7 +553,7 @@ func TestHealthHandler_StaleThresholdFloor(t *testing.T) {
 	holder := &StateHolder{}
 	holder.Store(s)
 
-	// interval=500ms → 3x = 1.5s, but floor is 5s, so 4s-old data should be OK
+	// interval=500ms -> 3x = 1.5s, but floor is 5s, so 4s-old data should be OK
 	rec := healthz(holder, 500*time.Millisecond)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }

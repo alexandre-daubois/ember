@@ -315,7 +315,7 @@ func TestPerHostMetrics_StatusCodesFromHistogram(t *testing.T) {
 func TestStatusCodesFromHistogram_NoHistogram(t *testing.T) {
 	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
-	// FrankenPHP-only metrics have no histogram → nil
+	// FrankenPHP-only metrics have no histogram -> nil
 	assert.Empty(t, snap.DurationBuckets)
 }
 

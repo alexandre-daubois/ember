@@ -515,9 +515,9 @@ func newAppWithHosts(hosts []model.HostDerived) *App {
 		},
 	}
 	app := &App{
-		activeTab: TabCaddy,
-		tabs:      []Tab{TabCaddy},
-		tabStates: map[Tab]*tabState{TabCaddy: {}},
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy},
+		tabStates: map[tab]*tabState{tabCaddy: {}},
 		width:     120,
 		height:    30,
 		history:   newHistoryStore(),

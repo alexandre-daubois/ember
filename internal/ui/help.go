@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused bool, width int, activeTab Tab) string {
+func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused bool, width int, activeTab tab) string {
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
@@ -19,7 +19,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 	}
 
 	var sortLabel string
-	if activeTab == TabCaddy {
+	if activeTab == tabCaddy {
 		sortLabel = hostSortBy.String()
 	} else {
 		sortLabel = sortBy.String()
@@ -31,7 +31,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 		{"s/S", "sort(" + sortLabel + ")"},
 		{"p", pauseLabel},
 	}
-	if activeTab == TabFrankenPHP {
+	if activeTab == tabFrankenPHP {
 		bindings = append(bindings, binding{"r", "restart"})
 	}
 	bindings = append(bindings,

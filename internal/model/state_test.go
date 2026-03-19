@@ -567,7 +567,7 @@ func TestState_Update_MultipleCompletedRequests(t *testing.T) {
 	s.Update(curr)
 
 	assert.True(t, s.Derived.HasPercentiles)
-	assert.Equal(t, 3, s.Percentiles.Count(now))
+	assert.Equal(t, 3, s.percentiles.count(now))
 }
 
 func TestState_Update_HistogramTakesPriorityOverThreadBased(t *testing.T) {
@@ -1307,11 +1307,11 @@ func TestState_CopyForExport_NilsPercentiles(t *testing.T) {
 
 	var s State
 	s.Update(snap)
-	require.NotNil(t, s.Percentiles)
+	require.NotNil(t, s.percentiles)
 
 	cp := s.CopyForExport()
-	assert.Nil(t, cp.Percentiles, "CopyForExport should nil out Percentiles")
-	assert.NotNil(t, s.Percentiles, "original should keep its Percentiles")
+	assert.Nil(t, cp.percentiles, "CopyForExport should nil out percentiles")
+	assert.NotNil(t, s.percentiles, "original should keep its percentiles")
 }
 
 func TestState_CopyForExport_DeepCopiesCurrent(t *testing.T) {
