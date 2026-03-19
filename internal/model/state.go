@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -161,6 +162,35 @@ func (s *State) CopyForExport() State {
 	cp.Previous = nil
 	if s.Current != nil {
 		snap := *s.Current
+		snap.Threads.ThreadDebugStates = slices.Clone(snap.Threads.ThreadDebugStates)
+		snap.Metrics.DurationBuckets = slices.Clone(snap.Metrics.DurationBuckets)
+		snap.Errors = slices.Clone(snap.Errors)
+		if snap.Metrics.Workers != nil {
+			workers := make(map[string]*fetcher.WorkerMetrics, len(snap.Metrics.Workers))
+			for k, v := range snap.Metrics.Workers {
+				wc := *v
+				workers[k] = &wc
+			}
+			snap.Metrics.Workers = workers
+		}
+		if snap.Metrics.Hosts != nil {
+			hosts := make(map[string]*fetcher.HostMetrics, len(snap.Metrics.Hosts))
+			for k, v := range snap.Metrics.Hosts {
+				hc := *v
+				if v.StatusCodes != nil {
+					hc.StatusCodes = make(map[int]float64, len(v.StatusCodes))
+					maps.Copy(hc.StatusCodes, v.StatusCodes)
+				}
+				if v.Methods != nil {
+					hc.Methods = make(map[string]float64, len(v.Methods))
+					maps.Copy(hc.Methods, v.Methods)
+				}
+				hc.DurationBuckets = slices.Clone(v.DurationBuckets)
+				hc.TTFBBuckets = slices.Clone(v.TTFBBuckets)
+				hosts[k] = &hc
+			}
+			snap.Metrics.Hosts = hosts
+		}
 		cp.Current = &snap
 	}
 	if s.HostDerived != nil {

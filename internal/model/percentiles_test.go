@@ -247,6 +247,16 @@ func TestHistogramQuantile_FallbackLastBucket(t *testing.T) {
 	assert.Equal(t, 0.01, result)
 }
 
+func TestHistogramPercentiles_AllZeroCounts(t *testing.T) {
+	curr := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 0},
+		{UpperBound: 0.05, CumulativeCount: 0},
+		{UpperBound: math.Inf(1), CumulativeCount: 0},
+	}
+	_, _, _, _, ok := HistogramPercentiles(nil, curr)
+	assert.False(t, ok, "zero-total buckets should return ok=false")
+}
+
 func TestHistogramQuantile_RankExceedsAllBuckets(t *testing.T) {
 	// All counts are below rank
 	buckets := []fetcher.HistogramBucket{

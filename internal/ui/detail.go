@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/charmbracelet/lipgloss"
@@ -111,7 +112,7 @@ func renderStateBadge(t fetcher.ThreadDebugState) string {
 
 func sectionHeader(label string, width int) string {
 	prefix := " ── " + label + " "
-	remaining := width - len(prefix)
+	remaining := width - utf8.RuneCountInString(prefix)
 	if remaining > 0 {
 		prefix += strings.Repeat("─", remaining)
 	}

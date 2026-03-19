@@ -107,8 +107,10 @@ func HistogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p90, p95, 
 	p95 = histogramQuantile(0.95, delta)
 	p99 = histogramQuantile(0.99, delta)
 
-	if math.IsNaN(p50) || math.IsInf(p50, 0) {
-		return 0, 0, 0, 0, false
+	for _, v := range []float64{p50, p90, p95, p99} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, 0, 0, 0, false
+		}
 	}
 
 	// Prometheus buckets are in seconds → convert to milliseconds

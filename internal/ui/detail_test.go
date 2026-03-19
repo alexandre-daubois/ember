@@ -485,6 +485,19 @@ func TestHostDetailPanel_RestartNotAvailable(t *testing.T) {
 	assert.Equal(t, viewDetail, app.mode, "r should not trigger restart on Caddy tab")
 }
 
+func TestSectionHeader_FillsWidth(t *testing.T) {
+	raw := sectionHeader("Request", 40)
+	plain := stripANSI(raw)
+	assert.Equal(t, 40, len([]rune(plain)), "section header should fill the target width in runes")
+}
+
+func TestSectionHeader_NarrowWidth(t *testing.T) {
+	raw := sectionHeader("Request", 5)
+	plain := stripANSI(raw)
+	assert.NotEmpty(t, plain, "narrow section header should still produce output")
+	assert.LessOrEqual(t, len([]rune(plain)), 14, "should not exceed prefix + label length")
+}
+
 func newAppWithHosts(hosts []model.HostDerived) *App {
 	hostMetrics := make(map[string]*fetcher.HostMetrics)
 	for _, h := range hosts {

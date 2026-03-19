@@ -637,3 +637,39 @@ func TestFetchThreads_PerRequestTimeout(t *testing.T) {
 	require.Error(t, err)
 	assert.Less(t, elapsed, requestTimeout+2*time.Second, "should timeout within per-request deadline + retries")
 }
+
+func TestHTTPFetcher_ConcurrentAccess(t *testing.T) {
+	srv := newTestServer(200, ThreadsResponse{}, 200, "")
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+
+	const goroutines = 10
+	done := make(chan struct{})
+	for range goroutines {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			f.DetectFrankenPHP(context.Background())
+		}()
+		go func() {
+			defer func() { done <- struct{}{} }()
+			f.FetchServerNames(context.Background())
+		}()
+		go func() {
+			defer func() { done <- struct{}{} }()
+			_ = f.HasFrankenPHP()
+		}()
+		go func() {
+			defer func() { done <- struct{}{} }()
+			_ = f.ServerNames()
+		}()
+		go func() {
+			defer func() { done <- struct{}{} }()
+			_, _ = f.Fetch(context.Background())
+		}()
+	}
+
+	for range goroutines * 5 {
+		<-done
+	}
+}

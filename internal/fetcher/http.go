@@ -21,12 +21,13 @@ const (
 )
 
 type HTTPFetcher struct {
-	baseURL       string
-	httpClient    *http.Client
-	procHandle    *processHandle
-	hasFrankenPHP bool
-	serverNames   []string
+	baseURL    string
+	httpClient *http.Client
+	procHandle *processHandle
 
+	mu             sync.Mutex
+	hasFrankenPHP  bool
+	serverNames    []string
 	lastPromCPU    float64
 	lastPromSample time.Time
 }
@@ -60,11 +61,16 @@ func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
-	f.hasFrankenPHP = resp.StatusCode == http.StatusOK
-	return f.hasFrankenPHP
+	result := resp.StatusCode == http.StatusOK
+	f.mu.Lock()
+	f.hasFrankenPHP = result
+	f.mu.Unlock()
+	return result
 }
 
 func (f *HTTPFetcher) HasFrankenPHP() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.hasFrankenPHP
 }
 
@@ -98,11 +104,15 @@ func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 		names = append(names, name)
 	}
 	slices.Sort(names)
+	f.mu.Lock()
 	f.serverNames = names
+	f.mu.Unlock()
 	return names
 }
 
 func (f *HTTPFetcher) ServerNames() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.serverNames
 }
 
@@ -118,7 +128,11 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	if f.hasFrankenPHP {
+	f.mu.Lock()
+	hasFP := f.hasFrankenPHP
+	f.mu.Unlock()
+
+	if hasFP {
 		g.Go(func() error {
 			t, err := f.fetchThreads(gCtx)
 			if err != nil {
@@ -170,6 +184,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 		}
 		if proc.CPUPercent == 0 && metrics.ProcessCPUSecondsTotal > 0 {
 			now := time.Now()
+			f.mu.Lock()
 			if !f.lastPromSample.IsZero() {
 				elapsed := now.Sub(f.lastPromSample).Seconds()
 				if elapsed > 0 {
@@ -181,6 +196,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 			}
 			f.lastPromCPU = metrics.ProcessCPUSecondsTotal
 			f.lastPromSample = now
+			f.mu.Unlock()
 		}
 		if proc.CreateTime == 0 && metrics.ProcessStartTimeSeconds > 0 {
 			startSec := int64(metrics.ProcessStartTimeSeconds)
@@ -190,8 +206,11 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}
 
 	// Seed known server names as empty host entries so they appear immediately
-	if len(f.serverNames) > 0 && metrics.Hosts != nil {
-		for _, name := range f.serverNames {
+	f.mu.Lock()
+	names := f.serverNames
+	f.mu.Unlock()
+	if len(names) > 0 && metrics.Hosts != nil {
+		for _, name := range names {
 			if _, ok := metrics.Hosts[name]; !ok {
 				metrics.Hosts[name] = &HostMetrics{
 					Host:        name,
@@ -202,21 +221,32 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 		}
 	}
 
+	f.mu.Lock()
+	currentHasFP := f.hasFrankenPHP
+	f.mu.Unlock()
+
 	return &Snapshot{
 		Threads:       threads,
 		Metrics:       metrics,
 		Process:       proc,
 		FetchedAt:     time.Now(),
 		Errors:        errs,
-		HasFrankenPHP: f.hasFrankenPHP,
+		HasFrankenPHP: currentHasFP,
 	}, nil
 }
 
 func (f *HTTPFetcher) onConnected(ctx context.Context) {
-	if !f.hasFrankenPHP {
+	f.mu.Lock()
+	hasFP := f.hasFrankenPHP
+	f.mu.Unlock()
+	if !hasFP {
 		f.DetectFrankenPHP(ctx)
 	}
-	if len(f.serverNames) == 0 {
+
+	f.mu.Lock()
+	hasNames := len(f.serverNames) > 0
+	f.mu.Unlock()
+	if !hasNames {
 		f.FetchServerNames(ctx)
 	}
 }

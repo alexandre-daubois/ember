@@ -1437,3 +1437,77 @@ func TestState_CopyForExport_NilHostDerived(t *testing.T) {
 	cp := s.CopyForExport()
 	assert.Nil(t, cp.HostDerived)
 }
+
+func TestState_CopyForExport_DeepCopiesSnapshotWorkers(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"/app/worker.php": {Worker: "/app/worker.php", Crashes: 3},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+	cp := s.CopyForExport()
+
+	cp.Current.Metrics.Workers["/app/worker.php"].Crashes = 999
+	assert.Equal(t, 3.0, s.Current.Metrics.Workers["/app/worker.php"].Crashes,
+		"mutating copy should not affect original")
+}
+
+func TestState_CopyForExport_DeepCopiesSnapshotHosts(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Hosts: map[string]*fetcher.HostMetrics{
+				"example.com": {
+					Host:        "example.com",
+					StatusCodes: map[int]float64{200: 10},
+					Methods:     map[string]float64{"GET": 5},
+					DurationBuckets: []fetcher.HistogramBucket{
+						{UpperBound: 0.01, CumulativeCount: 50},
+					},
+				},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+	cp := s.CopyForExport()
+
+	cp.Current.Metrics.Hosts["example.com"].StatusCodes[200] = 999
+	cp.Current.Metrics.Hosts["example.com"].Methods["GET"] = 999
+	cp.Current.Metrics.Hosts["example.com"].DurationBuckets[0].CumulativeCount = 999
+	cp.Current.Metrics.Hosts["new.com"] = &fetcher.HostMetrics{Host: "new.com"}
+
+	assert.Equal(t, 10.0, s.Current.Metrics.Hosts["example.com"].StatusCodes[200],
+		"mutating copy StatusCodes should not affect original")
+	assert.Equal(t, 5.0, s.Current.Metrics.Hosts["example.com"].Methods["GET"],
+		"mutating copy Methods should not affect original")
+	assert.Equal(t, 50.0, s.Current.Metrics.Hosts["example.com"].DurationBuckets[0].CumulativeCount,
+		"mutating copy DurationBuckets should not affect original")
+	assert.NotContains(t, s.Current.Metrics.Hosts, "new.com",
+		"adding to copy Hosts map should not affect original")
+}
+
+func TestState_CopyForExport_DeepCopiesSnapshotBuckets(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets: []fetcher.HistogramBucket{
+				{UpperBound: 0.01, CumulativeCount: 100},
+				{UpperBound: 0.05, CumulativeCount: 200},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+	cp := s.CopyForExport()
+
+	cp.Current.Metrics.DurationBuckets[0].CumulativeCount = 999
+	assert.Equal(t, 100.0, s.Current.Metrics.DurationBuckets[0].CumulativeCount,
+		"mutating copy DurationBuckets should not affect original")
+}
