@@ -111,6 +111,7 @@ Keybindings:
 	f.StringVar(&cfg.metricsPrefix, "metrics-prefix", "", "Prefix for exported Prometheus metric names")
 
 	cmd.AddCommand(newStatusCmd(&cfg))
+	cmd.AddCommand(newWaitCmd(&cfg))
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd

@@ -92,6 +92,25 @@ ember status --interval 2s
 
 The `--addr`, `--interval`, and `--frankenphp-pid` flags are available.
 
+### `ember wait`
+
+Blocks until the Caddy admin API is reachable, then exits with code 0. If `--timeout` is set and Caddy is still unreachable, exits with code 1.
+
+**Examples:**
+
+```bash
+ember wait
+ember wait --timeout 30s
+ember wait --addr http://prod:2019 && ember status
+docker compose up -d && ember wait && ./deploy.sh
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--timeout` | duration | `0` (forever) | Maximum time to wait |
+
+The `--addr` and `--interval` flags are available.
+
 ## Keybindings
 
 ### Navigation
