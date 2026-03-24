@@ -82,6 +82,26 @@ Each line is a JSON object with the following fields:
 | `hosts[].methodRates` | HTTP method → rate (req/s) |
 | `hosts[].avgRequestSize` | Average request body size in bytes (omitted when 0) |
 
+## Single Snapshot
+
+The `--once` flag outputs a single JSON object and exits, without needing to kill the process:
+
+```bash
+ember --json --once
+```
+
+This is useful for scripting, CI pipelines, or feeding data into other tools:
+
+```bash
+# Get current state as JSON
+ember --json --once | jq '.process.cpuPercent'
+
+# Check if any host has 5xx errors
+ember --json --once | jq -e '.hosts[] | select(.statusCodes["500"] > 0)'
+```
+
+> **Note:** Derived metrics (RPS, average latency, percentiles) require two data points and will be zero on a single snapshot since there is no previous poll to compute a delta.
+
 ## Scripting Examples
 
 ### Watch RPS in real time

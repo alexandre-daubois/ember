@@ -15,6 +15,7 @@ ember [flags]
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
 | `--pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
 | `--json` | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
+| `--once` | bool | `false` | Output a single snapshot and exit. Requires `--json`. See [JSON Output](json-output.md). |
 | `--expose` | string | _(none)_ | Start Prometheus metrics endpoint on this address (e.g. `:9191`). See [Prometheus Export](prometheus-export.md). |
 | `--daemon` | bool | `false` | Headless mode: no TUI. Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
 | `--metrics-prefix` | string | _(none)_ | Prefix for exported Prometheus metric names. See [Prometheus Export](prometheus-export.md). |
@@ -32,6 +33,9 @@ ember --addr http://prod:2019
 
 # Pipe-friendly JSON output
 ember --json
+
+# Single JSON snapshot and exit
+ember --json --once
 
 # JSON output at a slower rate
 ember --json --interval 5s
@@ -51,6 +55,42 @@ ember --expose :9191 --metrics-prefix myapp
 # Explicitly specify a FrankenPHP PID
 ember --pid 42
 ```
+
+## Subcommands
+
+### `ember status`
+
+One-line health check of Caddy. Performs two fetches separated by the polling interval to compute derived metrics, then prints a compact status line and exits.
+
+Exit code 0 means Caddy is reachable, 1 means unreachable.
+
+**Output format:**
+
+```
+Caddy OK | 5 hosts | 450 rps | P99 12ms | CPU 3.2% | RSS 48MB | up 3d 2h
+```
+
+With FrankenPHP:
+
+```
+Caddy OK | 5 hosts | 450 rps | P99 12ms | CPU 3.2% | RSS 48MB | up 3d 2h | FrankenPHP 8/20 busy | 2 workers
+```
+
+If Caddy is unreachable:
+
+```
+Caddy UNREACHABLE | http://localhost:2019
+```
+
+**Examples:**
+
+```bash
+ember status
+ember status --addr http://prod:2019
+ember status --interval 2s
+```
+
+The `--addr`, `--interval`, and `--pid` flags are available.
 
 ## Keybindings
 

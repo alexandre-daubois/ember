@@ -49,7 +49,7 @@ type jsonDerived struct {
 	P99       *float64 `json:"p99,omitempty"`
 }
 
-func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration) {
+func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration, once bool) {
 	enc := json.NewEncoder(os.Stdout)
 	var state model.State
 
@@ -64,6 +64,10 @@ func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration) {
 	}
 
 	poll()
+
+	if once {
+		return
+	}
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

@@ -18,6 +18,7 @@ type config struct {
 	slowThreshold int
 	noColor       bool
 	jsonMode      bool
+	once          bool
 	pid           int
 	expose        string
 	daemon        bool
@@ -53,6 +54,7 @@ Keybindings:
 		Example: `  ember                                  # default: localhost:2019
   ember --addr http://prod:2019           # custom address
   ember --json                            # pipe-friendly JSON output
+  ember --json --once                     # single JSON snapshot and exit
   ember --expose :9191                    # TUI + Prometheus endpoint
   ember --expose :9191 --daemon           # headless metrics exporter`,
 		SilenceUsage:  true,
@@ -84,7 +86,7 @@ Keybindings:
 
 			switch {
 			case cfg.jsonMode:
-				runJSON(ctx, f, cfg.interval)
+				runJSON(ctx, f, cfg.interval, cfg.once)
 			case cfg.daemon:
 				return runDaemon(ctx, f, &cfg)
 			default:
@@ -94,17 +96,21 @@ Keybindings:
 		},
 	}
 
+	pf := cmd.PersistentFlags()
+	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
+	pf.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
+	pf.IntVar(&cfg.pid, "pid", 0, "FrankenPHP PID (auto-detected if not set)")
+
 	f := cmd.Flags()
-	f.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
-	f.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
 	f.IntVar(&cfg.slowThreshold, "slow-threshold", 500, "Slow request threshold in ms")
 	f.BoolVar(&cfg.noColor, "no-color", false, "Disable colors")
 	f.BoolVar(&cfg.jsonMode, "json", false, "JSON output mode (streaming JSONL)")
-	f.IntVar(&cfg.pid, "pid", 0, "FrankenPHP PID (auto-detected if not set)")
+	f.BoolVar(&cfg.once, "once", false, "Output a single snapshot and exit (requires --json)")
 	f.StringVar(&cfg.expose, "expose", "", "Expose Prometheus metrics (e.g. :9191)")
 	f.BoolVar(&cfg.daemon, "daemon", false, "Headless mode (requires --expose)")
 	f.StringVar(&cfg.metricsPrefix, "metrics-prefix", "", "Prefix for exported Prometheus metric names")
 
+	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd
@@ -119,6 +125,12 @@ func Run(args []string, version string) error {
 func validate(cfg *config) error {
 	if cfg.daemon && cfg.expose == "" {
 		return fmt.Errorf("--daemon requires --expose")
+	}
+	if cfg.once && !cfg.jsonMode {
+		return fmt.Errorf("--once requires --json")
+	}
+	if cfg.once && cfg.daemon {
+		return fmt.Errorf("--once is incompatible with --daemon")
 	}
 	return nil
 }

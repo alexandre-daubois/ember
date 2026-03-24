@@ -98,6 +98,31 @@ func TestRun_CompletionFish(t *testing.T) {
 	assert.Contains(t, buf.String(), "ember")
 }
 
+func TestValidate_OnceRequiresJSON(t *testing.T) {
+	cfg := &config{once: true, jsonMode: false}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--once requires --json")
+}
+
+func TestValidate_OnceWithDaemon(t *testing.T) {
+	cfg := &config{once: true, jsonMode: true, daemon: true, expose: ":9191"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--once is incompatible with --daemon")
+}
+
+func TestValidate_OnceWithJSONOK(t *testing.T) {
+	cfg := &config{once: true, jsonMode: true}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestRun_OnceWithoutJSON(t *testing.T) {
+	err := Run([]string{"--once"}, "0.0.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--once requires --json")
+}
+
 func TestRun_HelpContainsKeybindings(t *testing.T) {
 	cmd := newRootCmd("1.0.0")
 	cmd.SetArgs([]string{"--help"})

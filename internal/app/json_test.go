@@ -1,6 +1,12 @@
 package app
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -214,4 +220,44 @@ func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 	assert.Equal(t, 12.5, *out.Derived.P50)
 	assert.Equal(t, 45.0, *out.Derived.P95)
 	assert.Equal(t, 120.0, *out.Derived.P99)
+}
+
+func TestRunJSON_Once(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/metrics":
+			w.WriteHeader(200)
+			w.Write([]byte(`# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="test.com",code="200"} 100
+`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+
+	// capture stdout
+	r, w, _ := os.Pipe()
+	origStdout := os.Stdout
+	os.Stdout = w
+
+	ctx := context.Background()
+	runJSON(ctx, f, time.Second, true)
+
+	w.Close()
+	os.Stdout = origStdout
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	require.Len(t, lines, 1, "once mode should produce exactly one JSON line")
+
+	var parsed jsonOutput
+	require.NoError(t, json.Unmarshal(lines[0], &parsed))
+	assert.NotZero(t, parsed.FetchedAt)
+	assert.Contains(t, output, "test.com")
 }

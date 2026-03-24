@@ -8,7 +8,7 @@ Ember is a real-time TUI dashboard for [Caddy](https://caddyserver.com/) and [Fr
 - [Caddy Configuration](caddy-configuration.md): What Ember needs from your Caddyfile
 - [Caddy Dashboard](caddy-dashboard.md): Per-host traffic, latency percentiles, status codes
 - [FrankenPHP Dashboard](frankenphp-dashboard.md): Thread introspection, worker management, memory tracking
-- [CLI Reference](cli-reference.md): All flags, keybindings, and shell completions
+- [CLI Reference](cli-reference.md): Flags, subcommands, keybindings, and shell completions
 - [JSON Output](json-output.md): Streaming JSONL mode for scripting
 - [Prometheus Export](prometheus-export.md): Metrics endpoint, health checks, and daemon mode
 - [Docker](docker.md): Running Ember in a container
