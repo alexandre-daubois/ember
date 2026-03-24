@@ -245,7 +245,7 @@ func formatDiff(d diffResult) string {
 	if len(d.hosts) > 0 {
 		b.WriteString("\nPer-host changes\n")
 		for _, h := range d.hosts {
-			b.WriteString(fmt.Sprintf("\n  %s\n", h.host))
+			fmt.Fprintf(&b, "\n  %s\n", h.host)
 			writeDiffLines(&b, h.lines)
 		}
 	}
@@ -265,6 +265,6 @@ func writeDiffLines(b *strings.Builder, lines []diffLine) {
 		if l.regression {
 			marker = "! "
 		}
-		b.WriteString(fmt.Sprintf("%s  %-14s %10s -> %-10s  %s\n", marker, l.label, l.before, l.after, l.delta))
+		fmt.Fprintf(b, "%s  %-14s %10s -> %-10s  %s\n", marker, l.label, l.before, l.after, l.delta)
 	}
 }
