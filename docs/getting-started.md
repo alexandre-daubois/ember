@@ -28,6 +28,16 @@ docker run --rm --network host ghcr.io/alexandre-daubois/ember
 
 > **Note:** The Docker image runs in daemon mode by default. See [Docker](docker.md) for details.
 
+## Setup
+
+Run `ember init` to check your Caddy configuration and enable metrics if needed:
+
+```bash
+ember init
+```
+
+This verifies that the admin API is reachable, enables the `metrics` directive via the API if missing (no restart required), and detects FrankenPHP.
+
 ## First Run
 
 Start Ember:

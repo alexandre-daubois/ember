@@ -64,6 +64,32 @@ ember --frankenphp-pid 42
 
 ## Subcommands
 
+### `ember init`
+
+Checks that Caddy is properly configured for Ember and offers to enable HTTP metrics via the admin API if they are missing. Does not modify any files on disk.
+
+**What it checks:**
+1. Admin API is reachable
+2. HTTP servers are configured
+3. HTTP metrics directive is enabled
+4. FrankenPHP presence, threads, and workers
+5. Metrics are actually flowing
+
+**What it can do:**
+- Enable the `metrics` directive via `POST /config/apps/http/metrics` (no Caddy restart needed)
+
+**Examples:**
+
+```bash
+ember init
+ember init --addr https://prod:2019 --ca-cert ca.pem
+ember init -y    # skip confirmation prompts
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-y`, `--yes` | bool | `false` | Skip confirmation prompts |
+
 ### `ember version`
 
 Prints the current version. With `--check`, queries the GitHub Releases API to see if a newer version is available.

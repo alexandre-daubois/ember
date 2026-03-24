@@ -134,6 +134,7 @@ Keybindings:
 	cmd.AddCommand(newWaitCmd(&cfg))
 	cmd.AddCommand(newVersionCmd(version))
 	cmd.AddCommand(newDiffCmd())
+	cmd.AddCommand(newInitCmd(&cfg))
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd

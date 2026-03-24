@@ -405,3 +405,117 @@ func (f *HTTPFetcher) doWithRetry(ctx context.Context, req *http.Request) (*http
 	}
 	return nil, lastErr
 }
+
+// CheckAdminAPI returns nil if the Caddy admin API is reachable.
+func (f *HTTPFetcher) CheckAdminAPI(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/config/", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("admin API unreachable: %w", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	return nil
+}
+
+// CheckMetricsEnabled returns true if the HTTP metrics directive is configured.
+func (f *HTTPFetcher) CheckMetricsEnabled(ctx context.Context) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/config/apps/http/metrics", nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+
+	// /config/apps/http/metrics returns "null" when not set, or a JSON object when set
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return false, nil
+	}
+	return string(raw) != "null", nil
+}
+
+// EnableMetrics activates the HTTP metrics directive via the admin API.
+func (f *HTTPFetcher) EnableMetrics(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.baseURL+"/config/apps/http/metrics", strings.NewReader("{}"))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("enable metrics: %w", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("enable metrics: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// FrankenPHPConfig holds the FrankenPHP app configuration from Caddy.
+type FrankenPHPConfig struct {
+	NumThreads int                      `json:"num_threads"`
+	Workers    []FrankenPHPWorkerConfig `json:"workers"`
+}
+
+// FrankenPHPWorkerConfig holds a single worker definition.
+type FrankenPHPWorkerConfig struct {
+	FileName string `json:"file_name"`
+	Name     string `json:"name"`
+	Num      int    `json:"num"`
+}
+
+// FetchFrankenPHPConfig reads the FrankenPHP app config from the admin API.
+func (f *HTTPFetcher) FetchFrankenPHPConfig(ctx context.Context) (*FrankenPHPConfig, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/config/apps/frankenphp", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil
+	}
+
+	var cfg FrankenPHPConfig
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
