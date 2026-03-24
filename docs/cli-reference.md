@@ -21,6 +21,10 @@ ember [flags]
 | `--daemon` | bool | `false` | Headless mode: no TUI. Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
 | `--metrics-prefix` | string | _(none)_ | Prefix for exported Prometheus metric names. See [Prometheus Export](prometheus-export.md). |
 | `--log-format` | string | `text` | Log format for daemon/json modes (`text` or `json`). JSON format is suitable for log aggregation systems. |
+| `--ca-cert` | string | _(none)_ | Path to CA certificate for TLS verification |
+| `--client-cert` | string | _(none)_ | Path to client certificate for mTLS |
+| `--client-key` | string | _(none)_ | Path to client private key for mTLS |
+| `--insecure` | bool | `false` | Skip TLS certificate verification |
 | `--no-color` | bool | `false` | Disable colors |
 | `--version` | | | Print version and exit |
 

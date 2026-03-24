@@ -33,6 +33,9 @@ Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 			defer tCancel()
 
 			f := fetcher.NewHTTPFetcher(cfg.addr, 0)
+			if err := configureTLS(f, cfg); err != nil {
+				return err
+			}
 			return runWait(ctx, cmd.OutOrStdout(), f, cfg.addr, cfg.interval)
 		},
 	}

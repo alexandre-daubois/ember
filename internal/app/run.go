@@ -27,6 +27,10 @@ type config struct {
 	metricsPrefix string
 	logFormat     string
 	logger        *slog.Logger
+	caCert        string
+	clientCert    string
+	clientKey     string
+	insecure      bool
 }
 
 func newRootCmd(version string) *cobra.Command {
@@ -88,6 +92,9 @@ Keybindings:
 			}
 
 			f := fetcher.NewHTTPFetcher(cfg.addr, pid)
+			if err := configureTLS(f, &cfg); err != nil {
+				return err
+			}
 			hasFrankenPHP := f.DetectFrankenPHP(ctx)
 			f.FetchServerNames(ctx)
 
@@ -108,6 +115,10 @@ Keybindings:
 	pf.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set)")
+	pf.StringVar(&cfg.caCert, "ca-cert", "", "Path to CA certificate for TLS verification")
+	pf.StringVar(&cfg.clientCert, "client-cert", "", "Path to client certificate for mTLS")
+	pf.StringVar(&cfg.clientKey, "client-key", "", "Path to client private key for mTLS")
+	pf.BoolVar(&cfg.insecure, "insecure", false, "Skip TLS certificate verification")
 
 	f := cmd.Flags()
 	f.IntVar(&cfg.slowThreshold, "slow-threshold", 500, "Slow request threshold in ms")
@@ -138,6 +149,22 @@ func contextWithTimeout(parent context.Context, timeout time.Duration) (context.
 		return context.WithTimeout(parent, timeout)
 	}
 	return parent, func() {}
+}
+
+func configureTLS(f *fetcher.HTTPFetcher, cfg *config) error {
+	tlsCfg, err := fetcher.BuildTLSConfig(fetcher.TLSOptions{
+		CACert:     cfg.caCert,
+		ClientCert: cfg.clientCert,
+		ClientKey:  cfg.clientKey,
+		Insecure:   cfg.insecure,
+	})
+	if err != nil {
+		return err
+	}
+	if tlsCfg != nil {
+		f.SetTLSConfig(tlsCfg)
+	}
+	return nil
 }
 
 func initLogger(cfg *config) {

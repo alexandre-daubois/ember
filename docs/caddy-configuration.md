@@ -58,6 +58,50 @@ ember --addr http://10.0.0.5:2019
 
 The admin API must be reachable from wherever Ember runs.
 
+## TLS and mTLS
+
+When the Caddy admin API is served over HTTPS (recommended for production), Ember needs TLS configuration to connect.
+
+### Custom CA Certificate
+
+If your Caddy instance uses a certificate signed by a private CA (e.g., internal PKI, self-signed):
+
+```bash
+ember --addr https://caddy.internal:2019 --ca-cert /path/to/ca.pem
+```
+
+### Mutual TLS (mTLS)
+
+Caddy can require clients to present a certificate. Pass both a client certificate and its private key:
+
+```bash
+ember --addr https://caddy.internal:2019 \
+  --ca-cert /path/to/ca.pem \
+  --client-cert /path/to/client.pem \
+  --client-key /path/to/client-key.pem
+```
+
+### Skip TLS Verification
+
+For development or debugging only:
+
+```bash
+ember --addr https://localhost:2019 --insecure
+```
+
+> **Warning:** `--insecure` disables all certificate verification. Do not use in production.
+
+### TLS Flag Reference
+
+| Flag | Description |
+|------|-------------|
+| `--ca-cert` | Path to a PEM-encoded CA certificate to trust |
+| `--client-cert` | Path to a PEM-encoded client certificate (for mTLS) |
+| `--client-key` | Path to the private key matching `--client-cert` |
+| `--insecure` | Skip all TLS verification |
+
+These flags are global and work with all modes (TUI, JSON, daemon) and subcommands (`status`, `wait`).
+
 ## Minimal Caddyfile
 
 A complete working example:

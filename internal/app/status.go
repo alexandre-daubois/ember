@@ -44,6 +44,9 @@ Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 			}
 
 			f := fetcher.NewHTTPFetcher(cfg.addr, pid)
+			if err := configureTLS(f, cfg); err != nil {
+				return err
+			}
 			return runStatus(ctx, cmd.OutOrStdout(), f, cfg.addr, cfg.interval)
 		},
 	}

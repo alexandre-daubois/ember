@@ -2,10 +2,13 @@ package fetcher
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -45,6 +48,61 @@ func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 		},
 		procHandle: ph,
 	}
+}
+
+// SetTLSConfig replaces the HTTP transport with one using the given TLS configuration.
+func (f *HTTPFetcher) SetTLSConfig(tlsConfig *tls.Config) {
+	f.httpClient.Transport = &http.Transport{
+		TLSClientConfig:     tlsConfig,
+		MaxIdleConns:        2,
+		MaxIdleConnsPerHost: 2,
+		IdleConnTimeout:     30 * time.Second,
+	}
+}
+
+// TLSOptions holds paths for TLS certificate files.
+type TLSOptions struct {
+	CACert     string
+	ClientCert string
+	ClientKey  string
+	Insecure   bool
+}
+
+// BuildTLSConfig creates a *tls.Config from file paths.
+func BuildTLSConfig(opts TLSOptions) (*tls.Config, error) {
+	if !opts.Insecure && opts.CACert == "" && opts.ClientCert == "" {
+		return nil, nil
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	if opts.Insecure {
+		tlsConfig.InsecureSkipVerify = true //nolint:gosec // user explicitly requested --insecure
+	}
+
+	if opts.CACert != "" {
+		caCert, err := os.ReadFile(opts.CACert)
+		if err != nil {
+			return nil, fmt.Errorf("read CA cert: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("invalid CA cert in %s", opts.CACert)
+		}
+		tlsConfig.RootCAs = pool
+	}
+
+	if opts.ClientCert != "" && opts.ClientKey != "" {
+		cert, err := tls.LoadX509KeyPair(opts.ClientCert, opts.ClientKey)
+		if err != nil {
+			return nil, fmt.Errorf("load client cert: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return tlsConfig, nil
 }
 
 func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
