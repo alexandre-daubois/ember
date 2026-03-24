@@ -13,7 +13,7 @@ ember [flags]
 | `--addr` | string | `http://localhost:2019` | Caddy admin API address |
 | `--interval` | duration | `1s` | Polling interval |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
-| `--pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
+| `--frankenphp-pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
 | `--json` | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
 | `--once` | bool | `false` | Output a single snapshot and exit. Requires `--json`. See [JSON Output](json-output.md). |
 | `--expose` | string | _(none)_ | Start Prometheus metrics endpoint on this address (e.g. `:9191`). See [Prometheus Export](prometheus-export.md). |
@@ -53,7 +53,7 @@ ember --slow-threshold 200
 ember --expose :9191 --metrics-prefix myapp
 
 # Explicitly specify a FrankenPHP PID
-ember --pid 42
+ember --frankenphp-pid 42
 ```
 
 ## Subcommands
@@ -90,7 +90,7 @@ ember status --addr http://prod:2019
 ember status --interval 2s
 ```
 
-The `--addr`, `--interval`, and `--pid` flags are available.
+The `--addr`, `--interval`, and `--frankenphp-pid` flags are available.
 
 ## Keybindings
 

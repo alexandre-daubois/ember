@@ -2,7 +2,7 @@
 
 The FrankenPHP tab appears when Ember detects a FrankenPHP server. It provides per-thread introspection, worker management, and memory tracking.
 
-> **Note:** If the FrankenPHP tab does not appear, Ember could not reach the `/frankenphp/threads` admin API endpoint. Use `--pid` to specify the process manually, or verify that the admin API is accessible. See [Caddy Configuration](caddy-configuration.md).
+> **Note:** If the FrankenPHP tab does not appear, Ember could not reach the `/frankenphp/threads` admin API endpoint. Use `--frankenphp-pid` to specify the process manually, or verify that the admin API is accessible. See [Caddy Configuration](caddy-configuration.md).
 
 ## Dashboard Header
 

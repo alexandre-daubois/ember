@@ -32,7 +32,7 @@ Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
 
-			pid := int32(cfg.pid)
+			pid := int32(cfg.frankenphpPID)
 			if pid == 0 {
 				detected, err := fetcher.FindFrankenPHPProcess(ctx)
 				if err != nil {

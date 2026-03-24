@@ -43,10 +43,10 @@ Ember automatically detects FrankenPHP by sending `GET /frankenphp/threads` to t
 If auto-detection does not work, you can specify the process ID manually:
 
 ```bash
-ember --pid 12345
+ember --frankenphp-pid 12345
 ```
 
-When no `--pid` is provided, Ember scans the process list for a FrankenPHP process. If none is found, it falls back to scanning for a Caddy process for CPU/RSS monitoring. When process scanning is unavailable, Ember derives CPU and RSS from the standard Go `process_*` Prometheus metrics exposed by Caddy's `/metrics` endpoint.
+When no `--frankenphp-pid` is provided, Ember scans the process list for a FrankenPHP process. If none is found, it falls back to scanning for a Caddy process for CPU/RSS monitoring. When process scanning is unavailable, Ember derives CPU and RSS from the standard Go `process_*` Prometheus metrics exposed by Caddy's `/metrics` endpoint.
 
 ## Remote Caddy Instances
 

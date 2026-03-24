@@ -19,7 +19,7 @@ type config struct {
 	noColor       bool
 	jsonMode      bool
 	once          bool
-	pid           int
+	frankenphpPID int
 	expose        string
 	daemon        bool
 	metricsPrefix string
@@ -66,7 +66,7 @@ Keybindings:
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
 
-			pid := int32(cfg.pid)
+			pid := int32(cfg.frankenphpPID)
 			if pid == 0 {
 				detected, err := fetcher.FindFrankenPHPProcess(ctx)
 				if err != nil {
@@ -99,7 +99,7 @@ Keybindings:
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
 	pf.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
-	pf.IntVar(&cfg.pid, "pid", 0, "FrankenPHP PID (auto-detected if not set)")
+	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set)")
 
 	f := cmd.Flags()
 	f.IntVar(&cfg.slowThreshold, "slow-threshold", 500, "Slow request threshold in ms")
