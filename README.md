@@ -1,4 +1,4 @@
-# Ember - Real-time TUI dashboard for Caddy & FrankenPHP
+# Ember - Real-time monitoring for Caddy & FrankenPHP
 
 [![CI](https://github.com/alexandre-daubois/ember/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandre-daubois/ember/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/alexandre-daubois/ember/graph/badge.svg?token=3BG1TUO91L)](https://codecov.io/github/alexandre-daubois/ember)
@@ -83,7 +83,7 @@ ember status
 
 ## How It Works
 
-Ember polls the Caddy admin API and Prometheus metrics endpoint at a regular interval (default: 1s), computes deltas and derived metrics (RPS, percentiles, error rates), and renders everything in a [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI.
+Ember polls the Caddy admin API and Prometheus metrics endpoint at a regular interval (default: 1s), computes deltas and derived metrics (RPS, percentiles, error rates), and renders them through one of several output modes: an interactive [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI (default), streaming JSONL, a headless daemon with Prometheus export, or a one-shot `status` command.
 
 ## Documentation
 

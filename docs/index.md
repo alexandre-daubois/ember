@@ -1,6 +1,6 @@
 # Ember Documentation
 
-Ember is a real-time TUI dashboard for [Caddy](https://caddyserver.com/) and [FrankenPHP](https://frankenphp.dev/). It connects to the Caddy admin API and gives you live visibility into per-host traffic, latency percentiles, status codes, thread-level introspection, worker management, and more, all from your terminal.
+Ember is a real-time monitoring tool for [Caddy](https://caddyserver.com/) and [FrankenPHP](https://frankenphp.dev/). It connects to the Caddy admin API and gives you live visibility into per-host traffic, latency percentiles, status codes, thread-level introspection, worker management, and more: through an interactive terminal dashboard, streaming JSON, a headless daemon, or a quick status command.
 
 ## Table of Contents
 

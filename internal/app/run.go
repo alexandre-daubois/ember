@@ -30,9 +30,9 @@ func newRootCmd(version string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "ember [flags]",
-		Short:   "Real-time TUI dashboard for Caddy & FrankenPHP",
+		Short:   "Real-time monitoring for Caddy & FrankenPHP",
 		Version: version,
-		Long: `Ember - Real-time TUI dashboard for Caddy & FrankenPHP
+		Long: `Ember - Real-time monitoring for Caddy & FrankenPHP
 
 Monitor your Caddy server in real time: per-host traffic, latency
 percentiles, status codes, and more. When FrankenPHP is detected,
