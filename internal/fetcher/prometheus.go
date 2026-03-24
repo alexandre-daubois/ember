@@ -11,14 +11,21 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func parsePrometheusMetrics(r io.Reader) (MetricsSnapshot, error) {
+func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			snap = MetricsSnapshot{}
+			err = fmt.Errorf("parse prometheus: panic: %v", r)
+		}
+	}()
+
 	parser := expfmt.NewTextParser(model.UTF8Validation)
-	families, err := parser.TextToMetricFamilies(r)
-	if err != nil {
-		return MetricsSnapshot{}, fmt.Errorf("parse prometheus: %w", err)
+	families, parseErr := parser.TextToMetricFamilies(r)
+	if parseErr != nil {
+		return MetricsSnapshot{}, fmt.Errorf("parse prometheus: %w", parseErr)
 	}
 
-	snap := MetricsSnapshot{
+	snap = MetricsSnapshot{
 		Workers: make(map[string]*WorkerMetrics),
 		Hosts:   make(map[string]*HostMetrics),
 	}
