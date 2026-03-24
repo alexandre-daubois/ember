@@ -25,11 +25,21 @@ The `--daemon` flag disables the TUI and requires `--expose`. Ember polls the Ca
 ember --expose :9191 --daemon --addr http://caddy:2019
 ```
 
-Logs are written to stderr:
+Logs are written to stderr. Use `--log-format json` for structured JSON logs suitable for log aggregation:
 
+```bash
+ember --expose :9191 --daemon --log-format json
 ```
-ember daemon: exposing metrics on http://localhost:9191/metrics
+
+### State Dump via SIGUSR1
+
+Send `SIGUSR1` to a running daemon to dump the full state snapshot to stderr as JSON. This is useful for debugging without interrupting the process:
+
+```bash
+kill -USR1 $(pgrep ember)
 ```
+
+The dump includes threads, metrics, process info, and derived metrics. Not available on Windows.
 
 ## Exported Metrics
 

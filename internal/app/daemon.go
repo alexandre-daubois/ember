@@ -54,6 +54,8 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 	ticker := time.NewTicker(cfg.interval)
 	defer ticker.Stop()
 
+	dumpCh := dumpSignal()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -66,6 +68,8 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 			return nil
 		case <-ticker.C:
 			poll()
+		case <-dumpCh:
+			dumpState(&state, log)
 		}
 	}
 }
