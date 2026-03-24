@@ -168,6 +168,36 @@ func TestRun_TimeoutInheritedBySubcommands(t *testing.T) {
 	assert.Contains(t, buf.String(), "--timeout")
 }
 
+func TestInitLogger_Text(t *testing.T) {
+	cfg := &config{logFormat: "text"}
+	initLogger(cfg)
+	assert.NotNil(t, cfg.logger)
+}
+
+func TestInitLogger_JSON(t *testing.T) {
+	cfg := &config{logFormat: "json"}
+	initLogger(cfg)
+	assert.NotNil(t, cfg.logger)
+}
+
+func TestInitLogger_DefaultIsText(t *testing.T) {
+	cfg := &config{}
+	initLogger(cfg)
+	assert.NotNil(t, cfg.logger)
+}
+
+func TestRun_LogFormatFlagAvailable(t *testing.T) {
+	cmd := newRootCmd("1.0.0")
+	cmd.SetArgs([]string{"--help"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "--log-format")
+}
+
 func TestRun_HelpContainsKeybindings(t *testing.T) {
 	cmd := newRootCmd("1.0.0")
 	cmd.SetArgs([]string{"--help"})

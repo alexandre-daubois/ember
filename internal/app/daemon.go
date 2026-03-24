@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/exporter"
@@ -34,16 +32,17 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			cancel(fmt.Errorf("metrics server: %w", err))
+			cancel(err)
 		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "ember daemon: exposing metrics on %s\n", metricsURL(cfg.expose))
+	log := cfg.logger
+	log.Info("daemon started", "metrics_url", metricsURL(cfg.expose))
 
 	poll := func() {
 		snap, err := f.Fetch(ctx)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			log.Error("fetch failed", "err", err)
 			return
 		}
 		state.Update(snap)

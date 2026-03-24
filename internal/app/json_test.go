@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -244,7 +245,7 @@ caddy_http_requests_total{host="test.com",code="200"} 100
 	os.Stdout = w
 
 	ctx := context.Background()
-	runJSON(ctx, f, time.Second, true)
+	runJSON(ctx, f, time.Second, true, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 
 	w.Close()
 	os.Stdout = origStdout

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,6 +25,8 @@ type config struct {
 	expose        string
 	daemon        bool
 	metricsPrefix string
+	logFormat     string
+	logger        *slog.Logger
 }
 
 func newRootCmd(version string) *cobra.Command {
@@ -61,6 +64,7 @@ Keybindings:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			initLogger(&cfg)
 			return validate(&cfg)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -89,7 +93,7 @@ Keybindings:
 
 			switch {
 			case cfg.jsonMode:
-				runJSON(ctx, f, cfg.interval, cfg.once)
+				runJSON(ctx, f, cfg.interval, cfg.once, cfg.logger)
 			case cfg.daemon:
 				return runDaemon(ctx, f, &cfg)
 			default:
@@ -113,6 +117,7 @@ Keybindings:
 	f.StringVar(&cfg.expose, "expose", "", "Expose Prometheus metrics (e.g. :9191)")
 	f.BoolVar(&cfg.daemon, "daemon", false, "Headless mode (requires --expose)")
 	f.StringVar(&cfg.metricsPrefix, "metrics-prefix", "", "Prefix for exported Prometheus metric names")
+	f.StringVar(&cfg.logFormat, "log-format", "text", "Log format for daemon/json modes (text or json)")
 
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
@@ -133,6 +138,15 @@ func contextWithTimeout(parent context.Context, timeout time.Duration) (context.
 		return context.WithTimeout(parent, timeout)
 	}
 	return parent, func() {}
+}
+
+func initLogger(cfg *config) {
+	switch cfg.logFormat {
+	case "json":
+		cfg.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	default:
+		cfg.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
 }
 
 func validate(cfg *config) error {

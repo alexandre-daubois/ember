@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -49,14 +49,14 @@ type jsonDerived struct {
 	P99       *float64 `json:"p99,omitempty"`
 }
 
-func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration, once bool) {
+func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration, once bool, log *slog.Logger) {
 	enc := json.NewEncoder(os.Stdout)
 	var state model.State
 
 	poll := func() {
 		snap, err := f.Fetch(ctx)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			log.Error("fetch failed", "err", err)
 			return
 		}
 		state.Update(snap)
