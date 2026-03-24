@@ -61,16 +61,13 @@ docker run --rm --network host ghcr.io/alexandre-daubois/ember
 
 ## Quick Start
 
-Make sure Caddy is running with the admin API and metrics enabled:
+Make sure Caddy is running with the admin API enabled (it is by default). Then:
 
-```
-{
-    admin localhost:2019
-    metrics
-}
+```bash
+ember init
 ```
 
-Then:
+This checks your Caddy setup and enables metrics via the admin API if needed (no restart required). Once ready:
 
 ```bash
 ember
