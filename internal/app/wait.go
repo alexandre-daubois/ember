@@ -14,9 +14,7 @@ import (
 )
 
 func newWaitCmd(cfg *config) *cobra.Command {
-	var timeout time.Duration
-
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "wait",
 		Short: "Wait until Caddy is reachable",
 		Long: `Blocks until the Caddy admin API responds, then exits with code 0.
@@ -31,20 +29,13 @@ Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-
-			if timeout > 0 {
-				ctx, cancel = context.WithTimeout(ctx, timeout)
-				defer cancel()
-			}
+			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
+			defer tCancel()
 
 			f := fetcher.NewHTTPFetcher(cfg.addr, 0)
 			return runWait(ctx, cmd.OutOrStdout(), f, cfg.addr, cfg.interval)
 		},
 	}
-
-	cmd.Flags().DurationVar(&timeout, "timeout", 0, "Maximum time to wait (0 = wait forever)")
-
-	return cmd
 }
 
 func runWait(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr string, interval time.Duration) error {

@@ -31,6 +31,8 @@ Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
+			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
+			defer tCancel()
 
 			pid := int32(cfg.frankenphpPID)
 			if pid == 0 {

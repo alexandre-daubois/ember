@@ -12,6 +12,7 @@ ember [flags]
 |------|------|---------|-------------|
 | `--addr` | string | `http://localhost:2019` | Caddy admin API address |
 | `--interval` | duration | `1s` | Polling interval |
+| `--timeout` | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
 | `--frankenphp-pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
 | `--json` | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
@@ -105,11 +106,7 @@ ember wait --addr http://prod:2019 && ember status
 docker compose up -d && ember wait && ./deploy.sh
 ```
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--timeout` | duration | `0` (forever) | Maximum time to wait |
-
-The `--addr` and `--interval` flags are available.
+The `--addr`, `--interval`, and `--timeout` flags are available.
 
 ## Keybindings
 

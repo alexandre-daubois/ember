@@ -2,7 +2,9 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -121,6 +123,49 @@ func TestRun_OnceWithoutJSON(t *testing.T) {
 	err := Run([]string{"--once"}, "0.0.0")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--once requires --json")
+}
+
+func TestContextWithTimeout_Zero(t *testing.T) {
+	parent := context.Background()
+	ctx, cancel := contextWithTimeout(parent, 0)
+	defer cancel()
+
+	_, hasDeadline := ctx.Deadline()
+	assert.False(t, hasDeadline, "zero timeout should not set a deadline")
+}
+
+func TestContextWithTimeout_NonZero(t *testing.T) {
+	parent := context.Background()
+	ctx, cancel := contextWithTimeout(parent, 5*time.Second)
+	defer cancel()
+
+	deadline, hasDeadline := ctx.Deadline()
+	assert.True(t, hasDeadline)
+	assert.True(t, deadline.After(time.Now()))
+}
+
+func TestRun_TimeoutFlagAvailable(t *testing.T) {
+	cmd := newRootCmd("1.0.0")
+	cmd.SetArgs([]string{"--help"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "--timeout")
+}
+
+func TestRun_TimeoutInheritedBySubcommands(t *testing.T) {
+	cmd := newRootCmd("1.0.0")
+	cmd.SetArgs([]string{"wait", "--help"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "--timeout")
 }
 
 func TestRun_HelpContainsKeybindings(t *testing.T) {

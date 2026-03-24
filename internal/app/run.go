@@ -15,6 +15,7 @@ import (
 type config struct {
 	addr          string
 	interval      time.Duration
+	timeout       time.Duration
 	slowThreshold int
 	noColor       bool
 	jsonMode      bool
@@ -65,6 +66,8 @@ Keybindings:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
+			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
+			defer tCancel()
 
 			pid := int32(cfg.frankenphpPID)
 			if pid == 0 {
@@ -99,6 +102,7 @@ Keybindings:
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
 	pf.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
+	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set)")
 
 	f := cmd.Flags()
@@ -121,6 +125,13 @@ func Run(args []string, version string) error {
 	cmd := newRootCmd(version)
 	cmd.SetArgs(args)
 	return cmd.Execute()
+}
+
+func contextWithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout > 0 {
+		return context.WithTimeout(parent, timeout)
+	}
+	return parent, func() {}
 }
 
 func validate(cfg *config) error {
