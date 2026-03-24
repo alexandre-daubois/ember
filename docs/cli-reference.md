@@ -128,6 +128,43 @@ docker compose up -d && ember wait && ./deploy.sh
 
 The `--addr`, `--interval`, and `--timeout` flags are available.
 
+### `ember diff`
+
+Compares two JSON snapshots produced by `ember --json --once` and shows the deltas for key metrics. Useful for validating deployments and benchmarks.
+
+Exit code 0 means no regressions detected, 1 means regressions found (>10% degradation on latency, error rate, or CPU; >10% drop on RPS).
+
+**Examples:**
+
+```bash
+ember --json --once > before.json
+# ... deploy or benchmark ...
+ember --json --once > after.json
+ember diff before.json after.json
+```
+
+**Sample output:**
+
+```
+Global
+    Requests             1720 -> 2023        +17.6%
+    Avg (cumul.)       76.9ms -> 77.7ms      +1.0%
+    Errors                  0 -> 0           =
+    In-flight             3.0 -> 1.0         -66.7%
+    CPU                     0 -> 0           =
+    RSS                39.5MB -> 39.5MB      =
+
+Per-host changes
+
+  api
+    In-flight             3.0 -> 1.0         -66.7%
+
+  app
+    In-flight             1.0 -> 0           -100.0%
+
+No regressions detected
+```
+
 ## Keybindings
 
 ### Navigation

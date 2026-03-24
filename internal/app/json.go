@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"os"
 	"time"
 
@@ -125,5 +126,27 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 		}
 		out.Hosts = append(out.Hosts, jh)
 	}
+
+	sanitizeForJSON(&out)
+
 	return out
+}
+
+func sanitizeForJSON(out *jsonOutput) {
+	out.Metrics.DurationBuckets = sanitizeBuckets(out.Metrics.DurationBuckets)
+	for _, h := range out.Metrics.Hosts {
+		h.DurationBuckets = sanitizeBuckets(h.DurationBuckets)
+		h.TTFBBuckets = sanitizeBuckets(h.TTFBBuckets)
+	}
+}
+
+func sanitizeBuckets(buckets []fetcher.HistogramBucket) []fetcher.HistogramBucket {
+	clean := make([]fetcher.HistogramBucket, 0, len(buckets))
+	for _, b := range buckets {
+		if math.IsInf(b.UpperBound, 0) || math.IsNaN(b.UpperBound) {
+			continue
+		}
+		clean = append(clean, b)
+	}
+	return clean
 }

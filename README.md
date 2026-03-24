@@ -35,6 +35,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - JSON output mode for scripting, with `--once` for single snapshots
 - Quick health check: `ember status` for a one-line Caddy summary
 - Readiness gate: `ember wait` blocks until Caddy is up
+- Deployment validation: `ember diff before.json after.json` compares snapshots
 - Auto-detection of FrankenPHP and Caddy processes
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))
 - Cross-platform binaries, Homebrew tap, and Docker image

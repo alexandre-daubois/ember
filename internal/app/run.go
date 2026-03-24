@@ -133,6 +133,7 @@ Keybindings:
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
 	cmd.AddCommand(newVersionCmd(version))
+	cmd.AddCommand(newDiffCmd())
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd
