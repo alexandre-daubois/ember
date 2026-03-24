@@ -59,6 +59,21 @@ ember --frankenphp-pid 42
 
 ## Subcommands
 
+### `ember version`
+
+Prints the current version. With `--check`, queries the GitHub Releases API to see if a newer version is available.
+
+**Examples:**
+
+```bash
+ember version
+ember version --check
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--check` | bool | `false` | Check for newer version on GitHub |
+
 ### `ember status`
 
 One-line health check of Caddy. Performs two fetches separated by the polling interval to compute derived metrics, then prints a compact status line and exits.

@@ -116,6 +116,7 @@ Keybindings:
 
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
+	cmd.AddCommand(newVersionCmd(version))
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd
