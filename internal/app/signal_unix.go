@@ -19,6 +19,13 @@ func dumpSignal() <-chan os.Signal {
 	return ch
 }
 
+// reloadSignal returns a channel that receives a value each time SIGHUP is sent to the process.
+func reloadSignal() <-chan os.Signal {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGHUP)
+	return ch
+}
+
 func dumpState(state *model.State, log *slog.Logger) {
 	if state.Current == nil {
 		log.Info("dump requested but no data available yet")

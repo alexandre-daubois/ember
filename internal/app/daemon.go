@@ -44,6 +44,19 @@ func (e *errorThrottle) recover(log *slog.Logger) {
 	}
 }
 
+func reloadTLS(f fetcher.Fetcher, cfg *config, log *slog.Logger) {
+	hf, ok := f.(*fetcher.HTTPFetcher)
+	if !ok {
+		log.Warn("TLS reload not supported for this fetcher")
+		return
+	}
+	if err := configureTLS(hf, cfg); err != nil {
+		log.Error("TLS reload failed", "err", err)
+		return
+	}
+	log.Info("TLS certificates reloaded (SIGHUP)")
+}
+
 func metricsURL(addr string) string {
 	if len(addr) > 0 && addr[0] == ':' {
 		addr = "localhost" + addr
@@ -97,6 +110,7 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 	defer ticker.Stop()
 
 	dumpCh := dumpSignal()
+	reloadCh := reloadSignal()
 
 	for {
 		select {
@@ -112,6 +126,8 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 			poll()
 		case <-dumpCh:
 			dumpState(&state, log)
+		case <-reloadCh:
+			reloadTLS(f, cfg, log)
 		}
 	}
 }

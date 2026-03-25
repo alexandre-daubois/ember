@@ -71,6 +71,9 @@ Keybindings:
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			bindEnv(cmd)
+			if _, ok := os.LookupEnv("NO_COLOR"); ok {
+				cfg.noColor = true
+			}
 			initLogger(&cfg)
 			return validate(&cfg)
 		},

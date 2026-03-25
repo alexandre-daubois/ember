@@ -353,6 +353,14 @@ func TestBindEnv_UnsetEnvKeepsDefault(t *testing.T) {
 	assert.Equal(t, "http://localhost:2019", cmd.Flag("addr").Value.String())
 }
 
+func TestNoColorEnv(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+
+	err := Run([]string{"--addr", "http://192.0.2.1:1", "--timeout", "1s", "status"}, "0.0.0")
+	assert.Error(t, err)
+	assert.NotContains(t, err.Error(), "NO_COLOR")
+}
+
 func TestRun_HelpContainsKeybindings(t *testing.T) {
 	cmd := newRootCmd("1.0.0")
 	cmd.SetArgs([]string{"--help"})

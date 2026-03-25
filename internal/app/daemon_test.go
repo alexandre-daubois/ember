@@ -2,10 +2,12 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,4 +82,43 @@ func TestErrorThrottle_RecoverNoopWhenNotFailing(t *testing.T) {
 	et.recover(log)
 
 	assert.Empty(t, buf.String(), "recover should not log when not failing")
+}
+
+func TestReloadTLS_NoTLSConfig(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	f := fetcher.NewHTTPFetcher("http://localhost:2019", 0)
+	cfg := &config{}
+
+	reloadTLS(f, cfg, log)
+
+	assert.Contains(t, buf.String(), "TLS certificates reloaded")
+}
+
+func TestReloadTLS_InvalidCert(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	f := fetcher.NewHTTPFetcher("http://localhost:2019", 0)
+	cfg := &config{caCert: "/nonexistent/ca.pem"}
+
+	reloadTLS(f, cfg, log)
+
+	assert.Contains(t, buf.String(), "TLS reload failed")
+}
+
+type mockFetcher struct{}
+
+func (m *mockFetcher) Fetch(_ context.Context) (*fetcher.Snapshot, error) {
+	return &fetcher.Snapshot{}, nil
+}
+
+func TestReloadTLS_NonHTTPFetcher(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	reloadTLS(&mockFetcher{}, &config{}, log)
+
+	assert.Contains(t, buf.String(), "not supported")
 }

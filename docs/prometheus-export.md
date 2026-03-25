@@ -45,6 +45,16 @@ kill -USR1 $(pgrep ember)
 
 The dump includes threads, metrics, process info, and derived metrics. Not available on Windows.
 
+### TLS Certificate Reload via SIGHUP
+
+Send `SIGHUP` to a running daemon to reload TLS certificates from disk without restarting:
+
+```bash
+kill -HUP $(pgrep ember)
+```
+
+This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies the new configuration. Useful for certificate rotation in long-running deployments. Not available on Windows.
+
 ## Exported Metrics
 
 ### FrankenPHP Thread Metrics
