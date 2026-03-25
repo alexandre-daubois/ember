@@ -19,27 +19,31 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 **Caddy Monitoring**
 
 - Per-host traffic table with RPS, average latency, status codes, and sparklines
-- Latency percentiles (P50, P90, P99) per host in the detail panel
-- Full-screen ASCII graphs (CPU, RPS, RSS)
+- Latency percentiles (P50, P90, P95, P99) and Time-to-First-Byte per host
+- Sorting, filtering, and full-screen ASCII graphs (CPU, RPS, RSS)
+- Automatic Caddy restart detection
 
 **FrankenPHP Introspection**
 
 - Per-thread state, method, URI, duration, and memory tracking
 - Worker management with queue depth and crash monitoring
 - Graphs for queue depth and busy threads
+- Automatic detection and recovery when FrankenPHP starts or stops
 
 **Integration & Operations**
 
-- Prometheus metrics export (`/metrics`) and health endpoint (`/healthz`)
-- Daemon mode for headless operation
+- Prometheus metrics export (`/metrics`) with optional basic auth and health endpoint (`/healthz`)
+- Daemon mode for headless operation, with error throttling and TLS certificate reload via SIGHUP
 - JSON output mode for scripting, with `--once` for single snapshots
-- Quick health check: `ember status` for a one-line Caddy summary
-- Readiness gate: `ember wait` blocks until Caddy is up
+- Quick health check: `ember status` (text or `--json`) for a one-line Caddy summary
+- Readiness gate: `ember wait` blocks until Caddy is up (`-q` for silent scripting)
 - Deployment validation: `ember diff before.json after.json` compares snapshots
-- Zero-config setup: `ember init` checks Caddy and enables metrics via the admin API
-- Auto-detection of FrankenPHP and Caddy processes
+- Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
+- TLS and mTLS support for secured Caddy admin APIs
+- Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, ...) for container deployments
+- `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))
-- Cross-platform binaries, Homebrew tap, and Docker image
+- Cross-platform binaries (Linux, macOS, Windows), Homebrew tap, and Docker image
 
 ## Install
 
