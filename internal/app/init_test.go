@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -250,4 +251,28 @@ func TestRun_InitInheritsAddr(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "--addr")
+}
+
+func TestRun_InitQuietFlag(t *testing.T) {
+	cmd := newRootCmd("1.0.0")
+	cmd.SetArgs([]string{"init", "--help"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := cmd.Execute()
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "--quiet")
+	assert.Contains(t, buf.String(), "-q")
+}
+
+func TestRunInit_Quiet(t *testing.T) {
+	is := &initServer{metricsEnabled: true, hasFrankenPHP: false, hasHTTPMetrics: true}
+	srv := newInitTestServer(is)
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+	err := runInit(context.Background(), io.Discard, strings.NewReader(""), f, srv.URL, false)
+
+	require.NoError(t, err)
 }

@@ -16,6 +16,7 @@ import (
 
 func newInitCmd(cfg *config) *cobra.Command {
 	var yes bool
+	var quiet bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -27,7 +28,8 @@ This command does not modify any files on disk. It only uses the Caddy
 admin API to read and optionally write configuration.`,
 		Example: `  ember init
   ember init --addr https://prod:2019 --ca-cert ca.pem
-  ember init -y`,
+  ember init -y
+  ember init -yq`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -41,11 +43,16 @@ admin API to read and optionally write configuration.`,
 				return err
 			}
 
-			return runInit(ctx, cmd.OutOrStdout(), os.Stdin, f, cfg.addr, yes)
+			w := cmd.OutOrStdout()
+			if quiet {
+				w = io.Discard
+			}
+			return runInit(ctx, w, os.Stdin, f, cfg.addr, yes)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress output (errors still reported via exit code)")
 
 	return cmd
 }

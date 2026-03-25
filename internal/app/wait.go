@@ -14,7 +14,9 @@ import (
 )
 
 func newWaitCmd(cfg *config) *cobra.Command {
-	return &cobra.Command{
+	var quiet bool
+
+	cmd := &cobra.Command{
 		Use:   "wait",
 		Short: "Wait until Caddy is reachable",
 		Long: `Blocks until the Caddy admin API responds, then exits with code 0.
@@ -23,6 +25,7 @@ If --timeout is set and Caddy is still unreachable, exits with code 1.
 Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 		Example: `  ember wait
   ember wait --timeout 30s
+  ember wait -q --timeout 10s && ./deploy.sh
   ember wait --addr http://prod:2019 && ember status`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -36,9 +39,18 @@ Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 			if err := configureTLS(f, cfg); err != nil {
 				return err
 			}
-			return runWait(ctx, cmd.OutOrStdout(), f, cfg.addr, cfg.interval)
+
+			w := cmd.OutOrStdout()
+			if quiet {
+				w = io.Discard
+			}
+			return runWait(ctx, w, f, cfg.addr, cfg.interval)
 		},
 	}
+
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress output (exit code only)")
+
+	return cmd
 }
 
 func runWait(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr string, interval time.Duration) error {

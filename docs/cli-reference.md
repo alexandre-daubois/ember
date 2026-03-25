@@ -99,11 +99,13 @@ Checks that Caddy is properly configured for Ember and offers to enable HTTP met
 ember init
 ember init --addr https://prod:2019 --ca-cert ca.pem
 ember init -y    # skip confirmation prompts
+ember init -yq   # skip prompts, suppress output
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `-y`, `--yes` | bool | `false` | Skip confirmation prompts |
+| `-q`, `--quiet` | bool | `false` | Suppress output (errors still reported via exit code) |
 
 ### `ember version`
 
@@ -163,11 +165,16 @@ Blocks until the Caddy admin API is reachable, then exits with code 0. If `--tim
 ```bash
 ember wait
 ember wait --timeout 30s
+ember wait -q --timeout 10s && ./deploy.sh
 ember wait --addr http://prod:2019 && ember status
 docker compose up -d && ember wait && ./deploy.sh
 ```
 
-The `--addr`, `--interval`, and `--timeout` flags are available.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `-q`, `--quiet` | bool | `false` | Suppress output (exit code only) |
+
+The `--addr`, `--interval`, and `--timeout` flags are also available.
 
 ### `ember diff`
 
