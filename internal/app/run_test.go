@@ -159,6 +159,30 @@ func TestValidate_AddrHTTPOK(t *testing.T) {
 	assert.NoError(t, validate(cfg))
 }
 
+func TestValidate_MetricsAuthBadFormat(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: "nopassword"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "user:password format")
+}
+
+func TestValidate_MetricsAuthRequiresExpose(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", metricsAuth: "user:pass"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--metrics-auth requires --expose")
+}
+
+func TestValidate_MetricsAuthOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: "admin:secret"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_MetricsAuthEmptyOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191"}
+	assert.NoError(t, validate(cfg))
+}
+
 func TestRun_IntervalTooLow(t *testing.T) {
 	err := Run([]string{"--interval", "10ms"}, "0.0.0")
 	assert.Error(t, err)

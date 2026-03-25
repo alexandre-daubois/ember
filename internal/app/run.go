@@ -32,6 +32,7 @@ type config struct {
 	clientCert    string
 	clientKey     string
 	insecure      bool
+	metricsAuth   string
 }
 
 func newRootCmd(version string) *cobra.Command {
@@ -131,6 +132,7 @@ Keybindings:
 	f.BoolVar(&cfg.daemon, "daemon", false, "Headless mode (requires --expose)")
 	f.StringVar(&cfg.metricsPrefix, "metrics-prefix", "", "Prefix for exported Prometheus metric names")
 	f.StringVar(&cfg.logFormat, "log-format", "text", "Log format for daemon/json modes (text or json)")
+	f.StringVar(&cfg.metricsAuth, "metrics-auth", "", "Basic auth for metrics endpoint (user:password)")
 
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
@@ -216,6 +218,14 @@ func validate(cfg *config) error {
 	}
 	if !strings.HasPrefix(cfg.addr, "http://") && !strings.HasPrefix(cfg.addr, "https://") {
 		return fmt.Errorf("--addr must start with http:// or https://")
+	}
+	if cfg.metricsAuth != "" {
+		if !strings.Contains(cfg.metricsAuth, ":") {
+			return fmt.Errorf("--metrics-auth must be in user:password format")
+		}
+		if cfg.expose == "" {
+			return fmt.Errorf("--metrics-auth requires --expose")
+		}
 	}
 	return nil
 }

@@ -117,6 +117,16 @@ This turns `frankenphp_threads_total` into `myapp_frankenphp_threads_total`, `em
 
 > **Tip:** Use `/healthz` as a Kubernetes liveness probe to detect when Ember loses contact with Caddy.
 
+## Authentication
+
+Use `--metrics-auth` to protect the `/metrics` and `/healthz` endpoints with HTTP Basic Authentication:
+
+```bash
+ember --expose :9191 --daemon --metrics-auth admin:secret
+```
+
+When enabled, all requests to the metrics server must include valid credentials. Unauthenticated requests receive a `401 Unauthorized` response.
+
 ## Prometheus Scrape Configuration
 
 Minimal `prometheus.yml` snippet:
@@ -125,6 +135,19 @@ Minimal `prometheus.yml` snippet:
 scrape_configs:
   - job_name: ember
     scrape_interval: 5s
+    static_configs:
+      - targets: ["localhost:9191"]
+```
+
+With authentication:
+
+```yaml
+scrape_configs:
+  - job_name: ember
+    scrape_interval: 5s
+    basic_auth:
+      username: admin
+      password: secret
     static_configs:
       - targets: ["localhost:9191"]
 ```

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/exporter"
@@ -28,7 +29,13 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval))
-	srv := &http.Server{Addr: cfg.expose, Handler: mux}
+
+	var handler http.Handler = mux
+	if cfg.metricsAuth != "" {
+		user, pass, _ := strings.Cut(cfg.metricsAuth, ":")
+		handler = exporter.BasicAuth(mux, user, pass)
+	}
+	srv := &http.Server{Addr: cfg.expose, Handler: handler}
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

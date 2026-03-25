@@ -25,6 +25,7 @@ ember [flags]
 | `--client-cert` | string | _(none)_ | Path to client certificate for mTLS |
 | `--client-key` | string | _(none)_ | Path to client private key for mTLS |
 | `--insecure` | bool | `false` | Skip TLS certificate verification |
+| `--metrics-auth` | string | _(none)_ | Basic auth for the metrics endpoint (`user:password`). Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
 | `--no-color` | bool | `false` | Disable colors |
 | `--version` | | | Print version and exit |
 

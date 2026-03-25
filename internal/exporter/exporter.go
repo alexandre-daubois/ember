@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"cmp"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -336,6 +337,20 @@ func escapeLabelValue(s string) string {
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	return s
+}
+
+// BasicAuth wraps an http.Handler with HTTP Basic Authentication.
+// It uses constant-time comparison to prevent timing attacks.
+func BasicAuth(next http.Handler, user, pass string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 || subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Basic realm="ember metrics"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func sortedWorkerNames[V any](m map[string]V) []string {
