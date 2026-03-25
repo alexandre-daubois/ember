@@ -28,6 +28,19 @@ ember [flags]
 | `--no-color` | bool | `false` | Disable colors |
 | `--version` | | | Print version and exit |
 
+## Environment Variables
+
+Some flags can be set via environment variables. Explicit flags always take precedence over environment variables.
+
+| Variable | Flag | Example |
+|----------|------|---------|
+| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019` |
+| `EMBER_INTERVAL` | `--interval` | `EMBER_INTERVAL=5s` |
+| `EMBER_EXPOSE` | `--expose` | `EMBER_EXPOSE=:9191` |
+| `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
+
+This is especially useful in container deployments where flags are less convenient than environment variables.
+
 ## Examples
 
 ```bash

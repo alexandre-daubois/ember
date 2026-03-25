@@ -244,6 +244,60 @@ func TestRun_LogFormatFlagAvailable(t *testing.T) {
 	assert.Contains(t, buf.String(), "--log-format")
 }
 
+func TestBindEnv_AddrFromEnv(t *testing.T) {
+	t.Setenv("EMBER_ADDR", "http://remote:2019")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, "http://remote:2019", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_FlagOverridesEnv(t *testing.T) {
+	t.Setenv("EMBER_ADDR", "http://env:2019")
+
+	cmd := newRootCmd("0.0.0")
+	cmd.Flag("addr").Value.Set("http://flag:2019")
+	cmd.Flag("addr").Changed = true
+	bindEnv(cmd)
+
+	assert.Equal(t, "http://flag:2019", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_IntervalFromEnv(t *testing.T) {
+	t.Setenv("EMBER_INTERVAL", "5s")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, "5s", cmd.Flag("interval").Value.String())
+}
+
+func TestBindEnv_ExposeFromEnv(t *testing.T) {
+	t.Setenv("EMBER_EXPOSE", ":9191")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, ":9191", cmd.Flag("expose").Value.String())
+}
+
+func TestBindEnv_MetricsPrefixFromEnv(t *testing.T) {
+	t.Setenv("EMBER_METRICS_PREFIX", "myapp")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, "myapp", cmd.Flag("metrics-prefix").Value.String())
+}
+
+func TestBindEnv_UnsetEnvKeepsDefault(t *testing.T) {
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, "http://localhost:2019", cmd.Flag("addr").Value.String())
+}
+
 func TestRun_HelpContainsKeybindings(t *testing.T) {
 	cmd := newRootCmd("1.0.0")
 	cmd.SetArgs([]string{"--help"})

@@ -69,6 +69,7 @@ Keybindings:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			bindEnv(cmd)
 			initLogger(&cfg)
 			return validate(&cfg)
 		},
@@ -176,6 +177,25 @@ func initLogger(cfg *config) {
 		cfg.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	default:
 		cfg.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+}
+
+var envBindings = map[string]string{
+	"addr":           "EMBER_ADDR",
+	"interval":       "EMBER_INTERVAL",
+	"expose":         "EMBER_EXPOSE",
+	"metrics-prefix": "EMBER_METRICS_PREFIX",
+}
+
+func bindEnv(cmd *cobra.Command) {
+	for name, env := range envBindings {
+		f := cmd.Flag(name)
+		if f == nil || f.Changed {
+			continue
+		}
+		if val, ok := os.LookupEnv(env); ok {
+			_ = f.Value.Set(val)
+		}
 	}
 }
 
