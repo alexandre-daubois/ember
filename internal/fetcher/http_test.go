@@ -537,6 +537,69 @@ func TestOnConnected_StopsAfterSuccess(t *testing.T) {
 	assert.True(t, f.HasFrankenPHP())
 }
 
+func TestOnConnected_RefreshesServerNamesAfterInterval(t *testing.T) {
+	var serverCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/config/apps/http/servers":
+			serverCalls.Add(1)
+			w.WriteHeader(200)
+			json.NewEncoder(w).Encode(map[string]any{
+				"main": map[string]any{"listen": []string{":443"}},
+			})
+		case "/metrics":
+			w.WriteHeader(200)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+
+	// first fetch: triggers refresh (lastServerNamesRefresh is zero)
+	f.Fetch(context.Background())
+	first := serverCalls.Load()
+	assert.True(t, first >= 1)
+
+	// second fetch: no refresh (within 30s)
+	f.Fetch(context.Background())
+	assert.Equal(t, first, serverCalls.Load(), "should not refresh within interval")
+
+	// simulate time passing beyond the refresh interval
+	f.mu.Lock()
+	f.lastServerNamesRefresh = time.Now().Add(-serverNamesRefreshInterval - time.Second)
+	f.mu.Unlock()
+
+	// third fetch: triggers refresh again
+	f.Fetch(context.Background())
+	assert.True(t, serverCalls.Load() > first, "should refresh after interval elapsed")
+}
+
+func TestOnConnected_DoesNotMarkRefreshedOnFailure(t *testing.T) {
+	var serverCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/config/apps/http/servers":
+			serverCalls.Add(1)
+			w.WriteHeader(500)
+		case "/metrics":
+			w.WriteHeader(200)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+
+	f.Fetch(context.Background())
+	f.Fetch(context.Background())
+	f.Fetch(context.Background())
+
+	assert.True(t, serverCalls.Load() >= 3, "should retry every fetch when server names fail")
+}
+
 func TestFetch_HasFrankenPHPInSnapshot(t *testing.T) {
 	srv := newTestServer(200, ThreadsResponse{}, 200, "")
 	defer srv.Close()

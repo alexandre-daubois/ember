@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	maxRetries     = 3
-	requestTimeout = 5 * time.Second
-	initialBackoff = 200 * time.Millisecond
+	maxRetries                 = 3
+	requestTimeout             = 5 * time.Second
+	initialBackoff             = 200 * time.Millisecond
+	serverNamesRefreshInterval = 30 * time.Second
 )
 
 type HTTPFetcher struct {
@@ -28,11 +29,12 @@ type HTTPFetcher struct {
 	httpClient *http.Client
 	procHandle *processHandle
 
-	mu             sync.Mutex
-	hasFrankenPHP  bool
-	serverNames    []string
-	lastPromCPU    float64
-	lastPromSample time.Time
+	mu                     sync.Mutex
+	hasFrankenPHP          bool
+	serverNames            []string
+	lastPromCPU            float64
+	lastPromSample         time.Time
+	lastServerNamesRefresh time.Time
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
@@ -294,9 +296,10 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}, nil
 }
 
-// onConnected lazily detects FrankenPHP and fetches Caddy server names on the
-// first successful metrics fetch, rather than at startup. This avoids blocking
-// when Caddy is not yet ready or temporarily unreachable.
+// onConnected lazily detects FrankenPHP and refreshes Caddy server names
+// on the first successful metrics fetch and periodically thereafter.
+// This avoids blocking when Caddy is not yet ready or temporarily unreachable,
+// while still picking up vhosts added after Ember started.
 func (f *HTTPFetcher) onConnected(ctx context.Context) {
 	f.mu.Lock()
 	hasFP := f.hasFrankenPHP
@@ -306,10 +309,14 @@ func (f *HTTPFetcher) onConnected(ctx context.Context) {
 	}
 
 	f.mu.Lock()
-	hasNames := len(f.serverNames) > 0
+	stale := time.Since(f.lastServerNamesRefresh) >= serverNamesRefreshInterval
 	f.mu.Unlock()
-	if !hasNames {
-		f.FetchServerNames(ctx)
+	if stale {
+		if names := f.FetchServerNames(ctx); names != nil {
+			f.mu.Lock()
+			f.lastServerNamesRefresh = time.Now()
+			f.mu.Unlock()
+		}
 	}
 }
 
