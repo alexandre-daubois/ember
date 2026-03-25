@@ -99,7 +99,7 @@ func TestIntegration_Status(t *testing.T) {
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, addr, 500*time.Millisecond)
+	err := runStatus(ctx, &buf, f, addr, 500*time.Millisecond, false)
 
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Caddy OK")

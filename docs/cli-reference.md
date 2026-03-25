@@ -150,11 +150,32 @@ Caddy UNREACHABLE | http://localhost:2019
 
 ```bash
 ember status
+ember status --json
+ember status --json | jq .rps
 ember status --addr http://prod:2019
 ember status --interval 2s
 ```
 
-The `--addr`, `--interval`, and `--frankenphp-pid` flags are available.
+With `--json`, the output is a JSON object:
+
+```json
+{
+  "status": "ok",
+  "hosts": 5,
+  "rps": 450,
+  "p99": 12.3,
+  "cpuPercent": 3.2,
+  "rssBytes": 50331648,
+  "uptime": "3d 2h",
+  "frankenphp": { "busy": 8, "total": 20, "workers": 2 }
+}
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | `false` | Output status as JSON |
+
+The `--addr`, `--interval`, and `--frankenphp-pid` flags are also available.
 
 ### `ember wait`
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +17,9 @@ import (
 )
 
 func newStatusCmd(cfg *config) *cobra.Command {
-	return &cobra.Command{
+	var statusJSON bool
+
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "One-line health check of Caddy",
 		Long: `Performs two fetches separated by the polling interval to compute
@@ -24,6 +27,7 @@ derived metrics (RPS, latency), then prints a compact status line and exits.
 
 Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 		Example: `  ember status
+  ember status --json
   ember status --addr http://prod:2019
   ember status --interval 2s`,
 		SilenceUsage:  true,
@@ -47,25 +51,32 @@ Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 			if err := configureTLS(f, cfg); err != nil {
 				return err
 			}
-			return runStatus(ctx, cmd.OutOrStdout(), f, cfg.addr, cfg.interval)
+			return runStatus(ctx, cmd.OutOrStdout(), f, cfg.addr, cfg.interval, statusJSON)
 		},
 	}
+
+	cmd.Flags().BoolVar(&statusJSON, "json", false, "Output status as JSON")
+
+	return cmd
 }
 
-func runStatus(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr string, interval time.Duration) error {
+func runStatus(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr string, interval time.Duration, jsonMode bool) error {
 	f.DetectFrankenPHP(ctx)
 	f.FetchServerNames(ctx)
 
 	snap, _ := f.Fetch(ctx)
 	if !isReachable(snap) {
-		fmt.Fprintf(w, "Caddy UNREACHABLE | %s\n", addr)
+		if jsonMode {
+			_ = json.NewEncoder(w).Encode(statusJSON{Status: "unreachable", Addr: addr})
+		} else {
+			fmt.Fprintf(w, "Caddy UNREACHABLE | %s\n", addr)
+		}
 		return fmt.Errorf("caddy unreachable at %s", addr)
 	}
 
 	var state model.State
 	state.Update(snap)
 
-	// second fetch after interval to get delta-based metrics (RPS, latency)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -75,8 +86,59 @@ func runStatus(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr st
 	snap2, _ := f.Fetch(ctx)
 	state.Update(snap2)
 
+	if jsonMode {
+		return json.NewEncoder(w).Encode(buildStatusJSON(&state, f.HasFrankenPHP()))
+	}
 	fmt.Fprintln(w, formatStatusLine(&state, f.HasFrankenPHP()))
 	return nil
+}
+
+type statusJSON struct {
+	Status      string   `json:"status"`
+	Addr        string   `json:"addr,omitempty"`
+	Hosts       int      `json:"hosts,omitempty"`
+	RPS         float64  `json:"rps"`
+	P99         *float64 `json:"p99,omitempty"`
+	CPUPercent  float64  `json:"cpuPercent"`
+	RSSBytes    uint64   `json:"rssBytes"`
+	UptimeHuman string   `json:"uptime,omitempty"`
+	FrankenPHP  *fpJSON  `json:"frankenphp,omitempty"`
+}
+
+type fpJSON struct {
+	Busy    int `json:"busy"`
+	Total   int `json:"total"`
+	Workers int `json:"workers"`
+}
+
+func buildStatusJSON(state *model.State, hasFrankenPHP bool) statusJSON {
+	snap := state.Current
+	d := state.Derived
+
+	s := statusJSON{
+		Status:     "ok",
+		Hosts:      len(snap.Metrics.Hosts),
+		RPS:        d.RPS,
+		CPUPercent: snap.Process.CPUPercent,
+		RSSBytes:   snap.Process.RSS,
+	}
+
+	if d.HasPercentiles {
+		s.P99 = &d.P99
+	}
+	if snap.Process.Uptime > 0 {
+		s.UptimeHuman = model.FormatUptime(snap.Process.Uptime)
+	}
+	if hasFrankenPHP {
+		total := d.TotalBusy + d.TotalIdle
+		s.FrankenPHP = &fpJSON{
+			Busy:    d.TotalBusy,
+			Total:   total,
+			Workers: len(snap.Metrics.Workers),
+		}
+	}
+
+	return s
 }
 
 func isReachable(snap *fetcher.Snapshot) bool {

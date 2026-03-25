@@ -186,7 +186,7 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	var buf bytes.Buffer
-	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond)
+	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, false)
 
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Caddy OK")
@@ -202,7 +202,7 @@ func TestRunStatus_Unreachable(t *testing.T) {
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	var buf bytes.Buffer
-	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond)
+	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, false)
 
 	require.Error(t, err)
 	assert.Contains(t, buf.String(), "UNREACHABLE")
@@ -227,9 +227,97 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 	cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, srv.URL, 10*time.Second)
+	err := runStatus(ctx, &buf, f, srv.URL, 10*time.Second, false)
 
 	require.Error(t, err)
+}
+
+func TestRunStatus_JSON(t *testing.T) {
+	metrics := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="test.com",code="200"} 100
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{host="test.com",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{host="test.com"} 5.0
+caddy_http_request_duration_seconds_count{host="test.com"} 100
+`
+	srv := newStatusTestServer(metrics)
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+
+	var buf bytes.Buffer
+	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, true)
+
+	require.NoError(t, err)
+
+	var result statusJSON
+	require.NoError(t, json.NewDecoder(&buf).Decode(&result))
+	assert.Equal(t, "ok", result.Status)
+	assert.True(t, result.Hosts > 0)
+	assert.Nil(t, result.FrankenPHP)
+}
+
+func TestRunStatus_JSON_Unreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+
+	var buf bytes.Buffer
+	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, true)
+
+	require.Error(t, err)
+
+	var result statusJSON
+	require.NoError(t, json.NewDecoder(&buf).Decode(&result))
+	assert.Equal(t, "unreachable", result.Status)
+	assert.Equal(t, srv.URL, result.Addr)
+}
+
+func TestBuildStatusJSON_Basic(t *testing.T) {
+	s := testState()
+	s.Derived.RPS = 450
+
+	result := buildStatusJSON(&s, false)
+
+	assert.Equal(t, "ok", result.Status)
+	assert.Equal(t, 1, result.Hosts)
+	assert.Equal(t, 450.0, result.RPS)
+	assert.Equal(t, 3.2, result.CPUPercent)
+	assert.Equal(t, uint64(48*1024*1024), result.RSSBytes)
+	assert.Equal(t, "3d 2h", result.UptimeHuman)
+	assert.Nil(t, result.P99)
+	assert.Nil(t, result.FrankenPHP)
+}
+
+func TestBuildStatusJSON_WithFrankenPHP(t *testing.T) {
+	s := testState(func(snap *fetcher.Snapshot) {
+		snap.Metrics.Workers = map[string]*fetcher.WorkerMetrics{
+			"/app/worker.php": {Total: 10},
+		}
+	})
+	s.Derived.TotalBusy = 5
+	s.Derived.TotalIdle = 15
+
+	result := buildStatusJSON(&s, true)
+
+	require.NotNil(t, result.FrankenPHP)
+	assert.Equal(t, 5, result.FrankenPHP.Busy)
+	assert.Equal(t, 20, result.FrankenPHP.Total)
+	assert.Equal(t, 1, result.FrankenPHP.Workers)
+}
+
+func TestBuildStatusJSON_WithPercentiles(t *testing.T) {
+	s := testState()
+	s.Derived.HasPercentiles = true
+	s.Derived.P99 = 85.3
+
+	result := buildStatusJSON(&s, false)
+
+	require.NotNil(t, result.P99)
+	assert.Equal(t, 85.3, *result.P99)
 }
 
 func TestRun_StatusHelp(t *testing.T) {
