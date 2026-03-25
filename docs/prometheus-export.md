@@ -31,6 +31,10 @@ Logs are written to stderr. Use `--log-format json` for structured JSON logs sui
 ember --expose :9191 --daemon --log-format json
 ```
 
+### Error Throttling
+
+When the daemon cannot reach Caddy, it logs one error message immediately, then suppresses repeated errors for 30 seconds to avoid flooding logs. The suppressed count is included in the next log line. When connectivity is restored, a `"fetch recovered"` message is logged.
+
 ### State Dump via SIGUSR1
 
 Send `SIGUSR1` to a running daemon to dump the full state snapshot to stderr as JSON. This is useful for debugging without interrupting the process:
