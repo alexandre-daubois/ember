@@ -48,17 +48,6 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    services:
-      caddy:
-        image: caddy:latest
-        ports:
-          - 2019:2019
-          - 80:80
-        options: >-
-          --health-cmd "wget -qO- http://localhost:2019/config/ || exit 1"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v6
 
@@ -66,7 +55,34 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install Caddy
+        run: |
+          sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+          sudo apt-get update
+          sudo apt-get install -y caddy
+
+      - name: Start Caddy
+        run: |
+          cat > /tmp/Caddyfile <<'CADDYFILE'
+          {
+            admin localhost:2019
+            metrics
+          }
+          :80 {
+            respond "OK" 200
+          }
+          CADDYFILE
+          caddy fmt --overwrite /tmp/Caddyfile
+          caddy start --config /tmp/Caddyfile
+
+      - name: Wait for Caddy
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:2019/config/ > /dev/null 2>&1 && break
+            sleep 1
+          done
+
       - name: Integration tests
         run: go test -tags integration -race -v ./internal/app/
-        env:
-          EMBER_TEST_CADDY_ADDR: http://localhost:2019
