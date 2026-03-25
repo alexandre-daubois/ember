@@ -55,16 +55,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install Caddy
-        run: |
-          sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
-          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-          curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-          sudo apt-get update
-          sudo apt-get install -y caddy
-
       - name: Start Caddy
         run: |
+          sudo systemctl stop caddy || true
+          caddy stop || true
           cat > /tmp/Caddyfile <<'CADDYFILE'
           {
             admin localhost:2019
