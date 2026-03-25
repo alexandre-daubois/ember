@@ -1511,3 +1511,155 @@ func TestState_CopyForExport_DeepCopiesSnapshotBuckets(t *testing.T) {
 	assert.Equal(t, 100.0, s.Current.Metrics.DurationBuckets[0].CumulativeCount,
 		"mutating copy DurationBuckets should not affect original")
 }
+
+func TestState_Update_CounterReset_DiscardsPrevious(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 1000,
+			HTTPRequestDurationSum:   50.0,
+			HTTPRequestsTotal:        1000,
+		},
+	}
+	// caddy restarted: counters reset to zero and start climbing again
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 5,
+			HTTPRequestDurationSum:   0.25,
+			HTTPRequestsTotal:        5,
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	require.NotNil(t, s.Current)
+
+	s.Update(curr)
+
+	assert.Nil(t, s.Previous, "Previous should be discarded on counter reset")
+	assert.Equal(t, float64(0), s.Derived.RPS, "RPS should be zero after reset (no previous)")
+}
+
+func TestState_Update_CounterReset_WorkerMetrics(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{"w": {RequestCount: 500}},
+			HTTPRequestDurationCount: 500,
+		},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{"w": {RequestCount: 2}},
+			HTTPRequestDurationCount: 2,
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.Nil(t, s.Previous)
+	assert.Equal(t, float64(0), s.Derived.RPS)
+}
+
+func TestState_Update_NoFalseReset(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 100,
+			HTTPRequestsTotal:        100,
+		},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 200,
+			HTTPRequestsTotal:        200,
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.NotNil(t, s.Previous, "Normal increment should not trigger reset")
+	assert.True(t, s.Derived.RPS > 0, "RPS should be computed normally")
+}
+
+func TestState_Update_CounterReset_HostMetrics(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 1000,
+			HTTPRequestsTotal:        1000,
+			Hosts: map[string]*fetcher.HostMetrics{
+				"api": {Host: "api", DurationCount: 500, DurationSum: 25.0, StatusCodes: map[int]float64{200: 500}, Methods: map[string]float64{"GET": 500}},
+			},
+		},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 3,
+			HTTPRequestsTotal:        3,
+			Hosts: map[string]*fetcher.HostMetrics{
+				"api": {Host: "api", DurationCount: 3, DurationSum: 0.15, StatusCodes: map[int]float64{200: 3}, Methods: map[string]float64{"GET": 3}},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.Nil(t, s.Previous, "Counter reset should be detected")
+	require.Len(t, s.HostDerived, 1)
+	assert.Equal(t, float64(0), s.HostDerived[0].RPS, "Per-host RPS should be zero after reset")
+}
+
+func TestDetectCounterReset_NoPrevious(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{HTTPRequestDurationCount: 100},
+	}
+	var s State
+	assert.False(t, s.detectCounterReset(snap))
+}
+
+func TestDetectCounterReset_HTTPRequestsTotal(t *testing.T) {
+	var s State
+	s.Current = &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{HTTPRequestsTotal: 1000},
+	}
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{HTTPRequestsTotal: 5},
+	}
+	assert.True(t, s.detectCounterReset(snap))
+}
+
+func TestDetectCounterReset_ZeroPreviousIgnored(t *testing.T) {
+	var s State
+	s.Current = &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{HTTPRequestDurationCount: 0},
+	}
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{HTTPRequestDurationCount: 0},
+	}
+	assert.False(t, s.detectCounterReset(snap), "zero-to-zero should not be a reset")
+}

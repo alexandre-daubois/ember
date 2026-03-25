@@ -220,11 +220,37 @@ func (s *State) Update(snap *fetcher.Snapshot) {
 	if s.percentiles == nil {
 		s.percentiles = newPercentileTracker(percentileExpiry)
 	}
+
+	if s.detectCounterReset(snap) {
+		s.percentiles.reset()
+		s.Previous = nil
+		s.Current = snap
+		s.Derived = s.computeDerived()
+		s.HostDerived = s.computeHostDerived()
+		return
+	}
+
 	s.detectCompletedRequests(snap)
 	s.Previous = s.Current
 	s.Current = snap
 	s.Derived = s.computeDerived()
 	s.HostDerived = s.computeHostDerived()
+}
+
+// detectCounterReset returns true when cumulative Prometheus counters have
+// decreased, which indicates that Caddy (or FrankenPHP) was restarted.
+// Discarding Previous on reset avoids negative deltas in derived metrics.
+func (s *State) detectCounterReset(snap *fetcher.Snapshot) bool {
+	if s.Current == nil {
+		return false
+	}
+	if s.Current.Metrics.HTTPRequestDurationCount > 0 && snap.Metrics.HTTPRequestDurationCount < s.Current.Metrics.HTTPRequestDurationCount {
+		return true
+	}
+	if s.Current.Metrics.HTTPRequestsTotal > 0 && snap.Metrics.HTTPRequestsTotal < s.Current.Metrics.HTTPRequestsTotal {
+		return true
+	}
+	return false
 }
 
 // detectCompletedRequests infers request completions by comparing thread states across
