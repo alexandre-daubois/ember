@@ -451,6 +451,46 @@ func TestOnConnected_DetectsFrankenPHP(t *testing.T) {
 	assert.Len(t, snap.Threads.ThreadDebugStates, 1)
 }
 
+func TestOnConnected_FrankenPHPDisappears(t *testing.T) {
+	frankenPHPAvailable := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/frankenphp/threads":
+			if frankenPHPAvailable {
+				w.WriteHeader(200)
+				json.NewEncoder(w).Encode(ThreadsResponse{
+					ThreadDebugStates: []ThreadDebugState{{Index: 0, State: "ready"}},
+				})
+			} else {
+				w.WriteHeader(404)
+			}
+		case "/metrics":
+			w.WriteHeader(200)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+
+	// first fetch: detects FrankenPHP
+	f.Fetch(context.Background())
+	assert.True(t, f.HasFrankenPHP())
+
+	// disable FrankenPHP and expire the check timer
+	frankenPHPAvailable = false
+	f.mu.Lock()
+	f.lastFrankenPHPCheck = time.Now().Add(-serverNamesRefreshInterval - time.Second)
+	f.mu.Unlock()
+
+	// next fetch: re-checks and detects disappearance
+	snap, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+	assert.False(t, snap.HasFrankenPHP, "should detect FrankenPHP removal")
+	assert.False(t, f.HasFrankenPHP())
+}
+
 func TestOnConnected_FetchesServerNames(t *testing.T) {
 	serverNamesAvailable := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

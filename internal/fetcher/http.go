@@ -35,6 +35,7 @@ type HTTPFetcher struct {
 	lastPromCPU            float64
 	lastPromSample         time.Time
 	lastServerNamesRefresh time.Time
+	lastFrankenPHPCheck    time.Time
 }
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
@@ -302,10 +303,15 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 // while still picking up vhosts added after Ember started.
 func (f *HTTPFetcher) onConnected(ctx context.Context) {
 	f.mu.Lock()
-	hasFP := f.hasFrankenPHP
+	fpStale := time.Since(f.lastFrankenPHPCheck) >= serverNamesRefreshInterval
 	f.mu.Unlock()
-	if !hasFP {
-		f.DetectFrankenPHP(ctx)
+	if fpStale {
+		detected := f.DetectFrankenPHP(ctx)
+		if detected {
+			f.mu.Lock()
+			f.lastFrankenPHPCheck = time.Now()
+			f.mu.Unlock()
+		}
 	}
 
 	f.mu.Lock()
