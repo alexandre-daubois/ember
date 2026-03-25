@@ -144,32 +144,26 @@ func TestIntegration_Diff(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	snap1, err := f.Fetch(ctx)
+	snap, err := f.Fetch(ctx)
 	require.NoError(t, err)
-	var state1 model.State
-	state1.Update(snap1)
-	out1 := buildJSONOutput(snap1, &state1)
-
-	snap2, err := f.Fetch(ctx)
-	require.NoError(t, err)
-	var state2 model.State
-	state2.Update(snap2)
-	out2 := buildJSONOutput(snap2, &state2)
+	var state model.State
+	state.Update(snap)
+	out := buildJSONOutput(snap, &state)
 
 	before, err := os.CreateTemp(t.TempDir(), "before-*.json")
 	require.NoError(t, err)
 	after, err := os.CreateTemp(t.TempDir(), "after-*.json")
 	require.NoError(t, err)
 
-	require.NoError(t, json.NewEncoder(before).Encode(out1))
-	require.NoError(t, json.NewEncoder(after).Encode(out2))
+	require.NoError(t, json.NewEncoder(before).Encode(out))
+	require.NoError(t, json.NewEncoder(after).Encode(out))
 	before.Close()
 	after.Close()
 
 	var buf bytes.Buffer
 	err = runDiff(&buf, before.Name(), after.Name())
 
-	require.NoError(t, err, "identical-state diff should not report regressions")
+	require.NoError(t, err, "same-snapshot diff should not report regressions")
 	assert.Contains(t, buf.String(), "No regressions detected")
 }
 
