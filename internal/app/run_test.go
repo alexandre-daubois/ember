@@ -195,6 +195,28 @@ func TestRun_AddrMissingScheme(t *testing.T) {
 	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
 }
 
+func TestRun_SubcommandValidatesAddr(t *testing.T) {
+	err := Run([]string{"wait", "--addr", "localhost:2019"}, "0.0.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
+}
+
+func TestRun_SubcommandValidatesInterval(t *testing.T) {
+	err := Run([]string{"status", "--interval", "5ms"}, "0.0.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--interval must be at least")
+}
+
+func TestRun_DiffStillWorks(t *testing.T) {
+	err := Run([]string{"diff", "--help"}, "0.0.0")
+	assert.NoError(t, err)
+}
+
+func TestRun_VersionStillWorks(t *testing.T) {
+	err := Run([]string{"version"}, "0.0.0")
+	assert.NoError(t, err)
+}
+
 func TestContextWithTimeout_Zero(t *testing.T) {
 	parent := context.Background()
 	ctx, cancel := contextWithTimeout(parent, 0)

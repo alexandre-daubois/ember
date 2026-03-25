@@ -69,7 +69,7 @@ Keybindings:
   ember --expose :9191 --daemon           # headless metrics exporter`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			bindEnv(cmd)
 			initLogger(&cfg)
 			return validate(&cfg)
