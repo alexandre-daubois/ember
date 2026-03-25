@@ -6,12 +6,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/stretchr/testify/assert"
@@ -189,4 +193,115 @@ func TestIntegration_AdminAPI(t *testing.T) {
 
 	err := f.CheckAdminAPI(ctx)
 	require.NoError(t, err, "admin API should be reachable")
+}
+
+func freePort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	l.Close()
+	return addr
+}
+
+func TestIntegration_Daemon_Metrics(t *testing.T) {
+	addr := caddyAddr()
+	f := fetcher.NewHTTPFetcher(addr, 0)
+
+	expose := freePort(t)
+	holder := &exporter.StateHolder{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
+	srv := &http.Server{Addr: expose, Handler: mux}
+
+	go func() { _ = srv.ListenAndServe() }()
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// poll twice to populate derived metrics
+	var state model.State
+	snap, err := f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+	holder.Store(state.CopyForExport())
+
+	time.Sleep(500 * time.Millisecond)
+
+	snap, err = f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+	holder.Store(state.CopyForExport())
+
+	metricsURL := fmt.Sprintf("http://%s/metrics", expose)
+	resp, err := http.Get(metricsURL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "text/plain")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	metricsBody := string(body)
+
+	assert.Contains(t, metricsBody, "process_cpu_percent")
+	assert.Contains(t, metricsBody, "process_rss_bytes")
+	assert.Contains(t, metricsBody, "# TYPE")
+	assert.Contains(t, metricsBody, "# HELP")
+}
+
+func TestIntegration_Daemon_Healthz(t *testing.T) {
+	addr := caddyAddr()
+	f := fetcher.NewHTTPFetcher(addr, 0)
+
+	expose := freePort(t)
+	holder := &exporter.StateHolder{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
+	srv := &http.Server{Addr: expose, Handler: mux}
+
+	go func() { _ = srv.ListenAndServe() }()
+	defer srv.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	healthURL := fmt.Sprintf("http://%s/healthz", expose)
+
+	// no data yet: 503
+	resp, err := http.Get(healthURL)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+	// feed a fresh snapshot
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var state model.State
+	snap, err := f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+	holder.Store(state.CopyForExport())
+
+	// now healthy: 200
+	resp, err = http.Get(healthURL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	var healthBody map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&healthBody))
+	assert.Equal(t, "ok", healthBody["status"])
+	assert.Contains(t, healthBody, "last_fetch")
+	assert.Contains(t, healthBody, "age_seconds")
 }
