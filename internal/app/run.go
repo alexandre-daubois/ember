@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -178,6 +179,8 @@ func initLogger(cfg *config) {
 	}
 }
 
+const minInterval = 100 * time.Millisecond
+
 func validate(cfg *config) error {
 	if cfg.daemon && cfg.expose == "" {
 		return fmt.Errorf("--daemon requires --expose")
@@ -187,6 +190,12 @@ func validate(cfg *config) error {
 	}
 	if cfg.once && cfg.daemon {
 		return fmt.Errorf("--once is incompatible with --daemon")
+	}
+	if cfg.interval < minInterval {
+		return fmt.Errorf("--interval must be at least %s", minInterval)
+	}
+	if !strings.HasPrefix(cfg.addr, "http://") && !strings.HasPrefix(cfg.addr, "https://") {
+		return fmt.Errorf("--addr must start with http:// or https://")
 	}
 	return nil
 }

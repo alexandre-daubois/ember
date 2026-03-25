@@ -17,13 +17,13 @@ func TestValidate_DaemonRequiresExpose(t *testing.T) {
 }
 
 func TestValidate_DaemonWithExposeOK(t *testing.T) {
-	cfg := &config{daemon: true, expose: ":9191"}
+	cfg := &config{daemon: true, expose: ":9191", interval: 1 * time.Second, addr: "http://localhost:2019"}
 	err := validate(cfg)
 	assert.NoError(t, err)
 }
 
 func TestValidate_NoDaemonOK(t *testing.T) {
-	cfg := &config{}
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
 	assert.NoError(t, validate(cfg))
 }
 
@@ -115,7 +115,7 @@ func TestValidate_OnceWithDaemon(t *testing.T) {
 }
 
 func TestValidate_OnceWithJSONOK(t *testing.T) {
-	cfg := &config{once: true, jsonMode: true}
+	cfg := &config{once: true, jsonMode: true, interval: 1 * time.Second, addr: "http://localhost:2019"}
 	assert.NoError(t, validate(cfg))
 }
 
@@ -123,6 +123,52 @@ func TestRun_OnceWithoutJSON(t *testing.T) {
 	err := Run([]string{"--once"}, "0.0.0")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--once requires --json")
+}
+
+func TestValidate_IntervalTooLow(t *testing.T) {
+	cfg := &config{interval: 10 * time.Millisecond, addr: "http://localhost:2019"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--interval must be at least")
+}
+
+func TestValidate_IntervalAtMinimumOK(t *testing.T) {
+	cfg := &config{interval: 100 * time.Millisecond, addr: "http://localhost:2019"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_IntervalAboveMinimumOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_AddrMissingScheme(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "localhost:2019"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
+}
+
+func TestValidate_AddrHTTPSOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "https://caddy.internal:2019"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_AddrHTTPOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestRun_IntervalTooLow(t *testing.T) {
+	err := Run([]string{"--interval", "10ms"}, "0.0.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--interval must be at least")
+}
+
+func TestRun_AddrMissingScheme(t *testing.T) {
+	err := Run([]string{"--addr", "localhost:2019"}, "0.0.0")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
 }
 
 func TestContextWithTimeout_Zero(t *testing.T) {
