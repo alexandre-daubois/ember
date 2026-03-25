@@ -19,6 +19,7 @@ type initServer struct {
 	metricsEnabled bool
 	hasFrankenPHP  bool
 	hasHTTPMetrics bool
+	wildcardHost   bool
 	servers        map[string]any
 	fpConfig       *fetcher.FrankenPHPConfig
 	enabledMetrics bool
@@ -71,7 +72,9 @@ func newInitTestServer(s *initServer) *httptest.Server {
 
 		case r.URL.Path == "/metrics" && r.Method == http.MethodGet:
 			w.WriteHeader(200)
-			if s.hasHTTPMetrics {
+			if s.hasHTTPMetrics && s.wildcardHost {
+				w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{code=\"200\"} 100\n# TYPE caddy_http_request_duration_seconds histogram\ncaddy_http_request_duration_seconds_bucket{le=\"+Inf\"} 100\ncaddy_http_request_duration_seconds_sum 5.0\ncaddy_http_request_duration_seconds_count 100\n"))
+			} else if s.hasHTTPMetrics {
 				w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{host=\"test.com\",code=\"200\"} 100\n"))
 			}
 			if s.hasFrankenPHP {
@@ -264,6 +267,42 @@ func TestRun_InitQuietFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "--quiet")
 	assert.Contains(t, buf.String(), "-q")
+}
+
+func TestRunInit_WildcardHostWarning(t *testing.T) {
+	is := &initServer{metricsEnabled: true, hasHTTPMetrics: true, wildcardHost: true, servers: map[string]any{"srv0": nil}}
+	srv := newInitTestServer(is)
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+	var buf bytes.Buffer
+	err := runInit(context.Background(), &buf, strings.NewReader(""), f, srv.URL, true)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "All traffic grouped under")
+	assert.Contains(t, buf.String(), "host matchers")
+}
+
+func TestRunInit_NoWildcardWarningWithRealHosts(t *testing.T) {
+	is := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	srv := newInitTestServer(is)
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+	var buf bytes.Buffer
+	err := runInit(context.Background(), &buf, strings.NewReader(""), f, srv.URL, true)
+
+	require.NoError(t, err)
+	assert.NotContains(t, buf.String(), "All traffic grouped under")
+}
+
+func TestHasWildcardHost(t *testing.T) {
+	assert.False(t, hasWildcardHost(nil))
+	assert.False(t, hasWildcardHost(map[string]*fetcher.HostMetrics{}))
+	assert.True(t, hasWildcardHost(map[string]*fetcher.HostMetrics{"*": {Host: "*", RequestsTotal: 100}}))
+	assert.True(t, hasWildcardHost(map[string]*fetcher.HostMetrics{"*": {RequestsTotal: 50}, "example.com": {}}))
+	assert.False(t, hasWildcardHost(map[string]*fetcher.HostMetrics{"*": {RequestsTotal: 0}}))
+	assert.False(t, hasWildcardHost(map[string]*fetcher.HostMetrics{"example.com": {RequestsTotal: 100}}))
 }
 
 func TestRunInit_Quiet(t *testing.T) {

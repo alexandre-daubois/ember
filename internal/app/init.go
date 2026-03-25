@@ -133,6 +133,14 @@ func runInit(ctx context.Context, w io.Writer, r io.Reader, f *fetcher.HTTPFetch
 		printCheck(w, initCheck{label: fmt.Sprintf("frankenphp_* metrics present (%.0f threads)", snap.Metrics.TotalThreads), ok: true})
 	}
 
+	if snap != nil && hasWildcardHost(snap.Metrics.Hosts) {
+		printCheck(w, initCheck{
+			label:  "All traffic grouped under \"*\" (no per-host breakdown)",
+			ok:     false,
+			detail: "add host matchers to your Caddyfile routes for per-host metrics",
+		})
+	}
+
 	fmt.Fprintln(w, "\nEmber is ready. Run \"ember\" to start the dashboard.")
 	return nil
 }
@@ -147,6 +155,11 @@ func printCheck(w io.Writer, c initCheck) {
 	} else {
 		fmt.Fprintf(w, "%s%s\n", marker, c.label)
 	}
+}
+
+func hasWildcardHost(hosts map[string]*fetcher.HostMetrics) bool {
+	h, ok := hosts["*"]
+	return ok && h.RequestsTotal > 0
 }
 
 func promptYesNo(w io.Writer, r io.Reader, prompt string, autoYes bool) bool {
