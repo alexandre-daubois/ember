@@ -39,8 +39,9 @@ Some flags can be set via environment variables. Explicit flags always take prec
 | `EMBER_INTERVAL` | `--interval` | `EMBER_INTERVAL=5s` |
 | `EMBER_EXPOSE` | `--expose` | `EMBER_EXPOSE=:9191` |
 | `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
+| `EMBER_METRICS_AUTH` | `--metrics-auth` | `EMBER_METRICS_AUTH=admin:secret` |
 
-This is especially useful in container deployments where flags are less convenient than environment variables.
+This is especially useful in container deployments where flags are less convenient than environment variables. Using `EMBER_METRICS_AUTH` is recommended over the flag to avoid exposing credentials in `ps` output.
 
 ## Examples
 

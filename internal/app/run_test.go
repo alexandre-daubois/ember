@@ -315,6 +315,15 @@ func TestBindEnv_MetricsPrefixFromEnv(t *testing.T) {
 	assert.Equal(t, "myapp", cmd.Flag("metrics-prefix").Value.String())
 }
 
+func TestBindEnv_MetricsAuthFromEnv(t *testing.T) {
+	t.Setenv("EMBER_METRICS_AUTH", "admin:secret")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, "admin:secret", cmd.Flag("metrics-auth").Value.String())
+}
+
 func TestBindEnv_UnsetEnvKeepsDefault(t *testing.T) {
 	cmd := newRootCmd("0.0.0")
 	bindEnv(cmd)

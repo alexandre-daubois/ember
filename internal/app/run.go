@@ -187,6 +187,7 @@ var envBindings = map[string]string{
 	"interval":       "EMBER_INTERVAL",
 	"expose":         "EMBER_EXPOSE",
 	"metrics-prefix": "EMBER_METRICS_PREFIX",
+	"metrics-auth":   "EMBER_METRICS_AUTH",
 }
 
 func bindEnv(cmd *cobra.Command) {
