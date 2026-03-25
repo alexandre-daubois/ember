@@ -15,8 +15,8 @@ Each line is a JSON object with the following fields:
 ```json
 {
   "threads": {
-    "ThreadDebugStates": [...],
-    "ReservedThreadCount": 0
+    "threadDebugStates": [...],
+    "reservedThreadCount": 0
   },
   "metrics": {
     "totalThreads": 0,

@@ -13,13 +13,32 @@ import (
 )
 
 type jsonOutput struct {
-	Threads   fetcher.ThreadsResponse `json:"threads"`
+	Threads   jsonThreadsResponse     `json:"threads"`
 	Metrics   fetcher.MetricsSnapshot `json:"metrics"`
 	Process   fetcher.ProcessMetrics  `json:"process"`
 	FetchedAt time.Time               `json:"fetchedAt"`
 	Errors    []string                `json:"errors,omitempty"`
 	Derived   *jsonDerived            `json:"derived,omitempty"`
 	Hosts     []jsonHost              `json:"hosts,omitempty"`
+}
+
+type jsonThreadsResponse struct {
+	ThreadDebugStates   []jsonThreadState `json:"threadDebugStates"`
+	ReservedThreadCount int               `json:"reservedThreadCount"`
+}
+
+type jsonThreadState struct {
+	Index                    int    `json:"index"`
+	Name                     string `json:"name"`
+	State                    string `json:"state"`
+	IsWaiting                bool   `json:"isWaiting"`
+	IsBusy                   bool   `json:"isBusy"`
+	WaitingSinceMilliseconds int64  `json:"waitingSinceMilliseconds"`
+	CurrentURI               string `json:"currentUri,omitempty"`
+	CurrentMethod            string `json:"currentMethod,omitempty"`
+	RequestStartedAt         int64  `json:"requestStartedAt,omitempty"`
+	MemoryUsage              int64  `json:"memoryUsage,omitempty"`
+	RequestCount             int64  `json:"requestCount,omitempty"`
 }
 
 type jsonHost struct {
@@ -85,7 +104,7 @@ func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration, onc
 
 func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 	out := jsonOutput{
-		Threads:   snap.Threads,
+		Threads:   convertThreads(snap.Threads),
 		Metrics:   snap.Metrics,
 		Process:   snap.Process,
 		FetchedAt: snap.FetchedAt,
@@ -130,6 +149,29 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 	sanitizeForJSON(&out)
 
 	return out
+}
+
+func convertThreads(t fetcher.ThreadsResponse) jsonThreadsResponse {
+	states := make([]jsonThreadState, len(t.ThreadDebugStates))
+	for i, s := range t.ThreadDebugStates {
+		states[i] = jsonThreadState{
+			Index:                    s.Index,
+			Name:                     s.Name,
+			State:                    s.State,
+			IsWaiting:                s.IsWaiting,
+			IsBusy:                   s.IsBusy,
+			WaitingSinceMilliseconds: s.WaitingSinceMilliseconds,
+			CurrentURI:               s.CurrentURI,
+			CurrentMethod:            s.CurrentMethod,
+			RequestStartedAt:         s.RequestStartedAt,
+			MemoryUsage:              s.MemoryUsage,
+			RequestCount:             s.RequestCount,
+		}
+	}
+	return jsonThreadsResponse{
+		ThreadDebugStates:   states,
+		ReservedThreadCount: t.ReservedThreadCount,
+	}
 }
 
 func sanitizeForJSON(out *jsonOutput) {
