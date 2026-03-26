@@ -87,6 +87,14 @@ curl -s http://localhost:2019/frankenphp/threads | head -c 100
 
 If this returns JSON with thread states, FrankenPHP is detectable.
 
+## Thread metrics are empty (Method, URI, Mem, Reqs)
+
+**Symptom:** The FrankenPHP tab shows threads but the Method, URI, Time, Mem, and Reqs columns are empty.
+
+**Cause:** These metrics require FrankenPHP 1.13 or later. Older versions only expose thread index and state.
+
+**Fix:** Upgrade FrankenPHP to 1.13+.
+
 ## CPU and RSS show 0%
 
 **Symptom:** The process metrics (CPU, RSS) are stuck at zero.

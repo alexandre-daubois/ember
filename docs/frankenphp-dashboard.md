@@ -4,6 +4,10 @@ The FrankenPHP tab appears when Ember detects a FrankenPHP server. It provides p
 
 > **Note:** If the FrankenPHP tab does not appear, Ember could not reach the `/frankenphp/threads` admin API endpoint. Use `--frankenphp-pid` to specify the process manually, or verify that the admin API is accessible. See [Caddy Configuration](caddy-configuration.md).
 
+## Compatibility
+
+Some thread-level metrics require **FrankenPHP 1.13** or later. On older versions, the thread list shows only the thread index and state: the **Method**, **URI**, **Time**, **Mem**, and **Reqs** columns remain empty.
+
 ## Dashboard Header
 
 The top of the FrankenPHP tab displays:

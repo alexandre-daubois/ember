@@ -25,7 +25,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 
 **FrankenPHP Introspection**
 
-- Per-thread state, method, URI, duration, and memory tracking
+- Per-thread state, method, URI, duration, and memory tracking (method, URI, duration, memory, and request count require FrankenPHP 1.13+)
 - Worker management with queue depth and crash monitoring
 - Graphs for queue depth and busy threads
 - Automatic detection and recovery when FrankenPHP starts or stops
