@@ -15,6 +15,14 @@ This guide covers installation, prerequisites, and your first run with Ember.
 brew install alexandre-daubois/tap/ember
 ```
 
+> **macOS:** the first time you run Ember, macOS Gatekeeper may block the binary because it is not notarized. If that happens, remove the quarantine attribute:
+>
+> ```bash
+> xattr -d com.apple.quarantine $(which ember)
+> ```
+>
+> Alternatively, you can allow it manually in **System Settings → Privacy & Security**.
+
 ### Go
 
 ```bash

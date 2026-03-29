@@ -51,6 +51,10 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 brew install alexandre-daubois/tap/ember
 ```
 
+> **macOS:** if Gatekeeper blocks the binary on first run, remove the quarantine attribute:
+> `xattr -d com.apple.quarantine $(which ember)`, or allow it manually in
+> System Settings → Privacy & Security.
+
 Or with Go:
 
 ```bash
