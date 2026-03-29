@@ -3,11 +3,11 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	subtle = lipgloss.AdaptiveColor{Light: "#7A6652", Dark: "#A0896E"}
-	amber  = lipgloss.AdaptiveColor{Light: "#CC8800", Dark: "#FFAA00"}
-	ember  = lipgloss.AdaptiveColor{Light: "#CC4400", Dark: "#FF6B35"}
-	red    = lipgloss.AdaptiveColor{Light: "#CC0000", Dark: "#FF4444"}
-	warn   = lipgloss.AdaptiveColor{Light: "#CC6600", Dark: "#FF8C00"}
+	subtle     = lipgloss.AdaptiveColor{Light: "#7A6652", Dark: "#A0896E"}
+	amber      = lipgloss.AdaptiveColor{Light: "#CC8800", Dark: "#FFAA00"}
+	ember      = lipgloss.AdaptiveColor{Light: "#CC4400", Dark: "#FF6B35"}
+	red        = lipgloss.AdaptiveColor{Light: "#CC0000", Dark: "#FF4444"}
+	warn       = lipgloss.AdaptiveColor{Light: "#CC6600", Dark: "#FF8C00"}
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(ember)
@@ -27,11 +27,11 @@ var (
 	selectedRowStyle = lipgloss.NewStyle().
 				Reverse(true)
 
-	busyStyle   = lipgloss.NewStyle().Foreground(red)
-	idleStyle   = lipgloss.NewStyle().Foreground(amber)
-	greyStyle   = lipgloss.NewStyle().Foreground(subtle)
-	warnStyle   = lipgloss.NewStyle().Foreground(warn)
-	dangerStyle = lipgloss.NewStyle().Bold(true).Foreground(red)
+	busyStyle    = lipgloss.NewStyle().Foreground(red)
+	idleStyle    = lipgloss.NewStyle().Foreground(amber)
+	greyStyle    = lipgloss.NewStyle().Foreground(subtle)
+	warnStyle    = lipgloss.NewStyle().Foreground(warn)
+	dangerStyle  = lipgloss.NewStyle().Bold(true).Foreground(red)
 	helpStyle    = lipgloss.NewStyle().Foreground(subtle)
 	helpKeyStyle = lipgloss.NewStyle().Foreground(ember).Bold(true)
 

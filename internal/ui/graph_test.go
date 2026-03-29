@@ -96,4 +96,3 @@ func TestRenderSingleGraph_SingleValue(t *testing.T) {
 	out := renderSingleGraph(p, 40, graphPanelHeight)
 	assert.Contains(t, out, "42.0 req/s")
 }
-
