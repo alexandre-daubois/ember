@@ -8,11 +8,13 @@
 
 Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking.
 
-![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/ember.gif?raw=true)
+![ember banner](https://github.com/alexandre-daubois/ember/blob/main/assets/banner.webp?raw=true)
 
 ## Why Ember?
 
 Caddy exposes rich metrics through its admin API and Prometheus endpoint, but reading raw Prometheus text or setting up a full Grafana stack just to glance at traffic is heavy. Ember gives you a zero-config, read-only terminal dashboard that connects to Caddy's admin API and works out of the box. No extra infrastructure, no YAML to write: just `ember` and you're monitoring.
+
+![ember screenshot](https://github.com/alexandre-daubois/ember/blob/main/assets/ember.gif?raw=true)
 
 ## Features
 
