@@ -69,6 +69,8 @@ Or with Docker (runs in daemon mode by default, see [Docker docs](docs/docker.md
 docker run --rm --network host ghcr.io/alexandre-daubois/ember
 ```
 
+You can also download the latest binaries from the [release page](https://github.com/alexandre-daubois/ember/releases). If you use this method, don't forget to check for updates regularly!
+
 ## Quick Start
 
 Make sure Caddy is running with the admin API enabled (it is by default). Then:
