@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 )
 
 type StateHolder struct {
-	mu    sync.RWMutex
-	state model.State
+	mu            sync.RWMutex
+	state         model.State
+	pluginExports []plugin.PluginExport
 }
 
 func (h *StateHolder) Store(s model.State) {
@@ -25,10 +27,23 @@ func (h *StateHolder) Store(s model.State) {
 	h.mu.Unlock()
 }
 
+func (h *StateHolder) StoreAll(s model.State, exports []plugin.PluginExport) {
+	h.mu.Lock()
+	h.state = s
+	h.pluginExports = exports
+	h.mu.Unlock()
+}
+
 func (h *StateHolder) Load() model.State {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.state
+}
+
+func (h *StateHolder) loadAll() (model.State, []plugin.PluginExport) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.state, h.pluginExports
 }
 
 const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
@@ -39,7 +54,7 @@ func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
 		p = prefix[0]
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := holder.Load()
+		s, pluginExports := holder.loadAll()
 		if s.Current == nil {
 			http.Error(w, "no data yet", http.StatusServiceUnavailable)
 			return
@@ -55,7 +70,22 @@ func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
 		writePercentiles(w, &s, p)
 		writeProcessMetrics(w, &s, p)
 		writeReloadMetrics(w, &s, p)
+
+		for _, pe := range pluginExports {
+			if pe.Exporter != nil && pe.Data != nil {
+				safeWriteMetrics(w, pe.Exporter, pe.Data, p)
+			}
+		}
 	}
+}
+
+func safeWriteMetrics(w http.ResponseWriter, e plugin.Exporter, data any, prefix string) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(w, "# plugin WriteMetrics panic: %v\n", r)
+		}
+	}()
+	e.WriteMetrics(w, data, prefix)
 }
 
 func prefixed(prefix, name string) string {

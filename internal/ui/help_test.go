@@ -76,7 +76,7 @@ func TestRenderHelp_SeparatorsPresent(t *testing.T) {
 }
 
 func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
-	out := stripANSI(renderHelpOverlay("base", 120, 40, true))
+	out := stripANSI(renderHelpOverlay("base", 120, 40, true, nil))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Actions")
@@ -88,18 +88,17 @@ func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
 	assert.Contains(t, out, "Expand / collapse all")
 	assert.Contains(t, out, "Quit")
 	assert.Contains(t, out, "Toggle this help")
-	assert.Contains(t, out, "1/2/3/4")
+	assert.Contains(t, out, "1-9")
 	assert.Contains(t, out, "Refresh config/certs / restart workers")
 }
 
 func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
-	out := stripANSI(renderHelpOverlay("base", 120, 40, false))
+	out := stripANSI(renderHelpOverlay("base", 120, 40, false, nil))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Toggle graphs")
 	assert.Contains(t, out, "Quit")
-	assert.Contains(t, out, "1/2/3")
-	assert.NotContains(t, out, "1/2/3/4")
+	assert.Contains(t, out, "1-9")
 	assert.Contains(t, out, "Refresh config/certs")
 	assert.NotContains(t, out, "restart workers")
 }

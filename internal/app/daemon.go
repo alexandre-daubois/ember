@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 )
 
 const errorThrottleInterval = 30 * time.Second
@@ -64,12 +66,13 @@ func metricsURL(addr string) string {
 	return "http://" + addr + "/metrics"
 }
 
-func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
+func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config, plugins []plugin.Plugin) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
 	holder := &exporter.StateHolder{}
 	var state model.State
+	dPlugins := newDaemonPlugins(plugins)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix))
@@ -101,7 +104,8 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 		}
 		errThrottle.recover(log)
 		state.Update(snap)
-		holder.Store(state.CopyForExport())
+		fetchDaemonPlugins(ctx, dPlugins, log)
+		holder.StoreAll(state.CopyForExport(), daemonPluginExports(dPlugins))
 	}
 
 	poll()
@@ -130,4 +134,65 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 			reloadTLS(f, cfg, log)
 		}
 	}
+}
+
+type daemonPlugin struct {
+	name     string
+	fetcher  plugin.Fetcher
+	exporter plugin.Exporter
+	data     any
+}
+
+func newDaemonPlugins(plugins []plugin.Plugin) []daemonPlugin {
+	var dps []daemonPlugin
+	for _, p := range plugins {
+		dp := daemonPlugin{name: p.Name()}
+		if f, ok := p.(plugin.Fetcher); ok {
+			dp.fetcher = f
+		}
+		if e, ok := p.(plugin.Exporter); ok {
+			dp.exporter = e
+		}
+		if dp.fetcher != nil || dp.exporter != nil {
+			dps = append(dps, dp)
+		}
+	}
+	return dps
+}
+
+// fetchDaemonPlugins fetches data for all daemon plugins concurrently.
+// Writes to dps[i].data happen inside goroutines, but wg.Wait() ensures
+// all writes complete before this function returns. The caller (poll)
+// only reads dps after this returns, so no additional synchronization is needed.
+func fetchDaemonPlugins(ctx context.Context, dps []daemonPlugin, log *slog.Logger) {
+	var wg sync.WaitGroup
+	for i := range dps {
+		if dps[i].fetcher == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			data, err := plugin.SafeFetch(ctx, dps[i].fetcher)
+			if err != nil {
+				log.Warn("plugin fetch failed", "plugin", dps[i].name, "err", err)
+			} else {
+				dps[i].data = data
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+func daemonPluginExports(dps []daemonPlugin) []plugin.PluginExport {
+	var exports []plugin.PluginExport
+	for _, dp := range dps {
+		if dp.exporter != nil {
+			exports = append(exports, plugin.PluginExport{
+				Exporter: dp.exporter,
+				Data:     dp.data,
+			})
+		}
+	}
+	return exports
 }

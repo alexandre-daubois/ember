@@ -7,6 +7,7 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 )
@@ -353,7 +354,7 @@ func TestOnStateUpdate_CalledOnFetch(t *testing.T) {
 	app := &App{
 		history: newHistoryStore(),
 		config: Config{
-			OnStateUpdate: func(s model.State) {
+			OnStateUpdate: func(s model.State, _ []plugin.PluginExport) {
 				called = true
 			},
 		},
@@ -923,4 +924,316 @@ func TestConfigTab_ThreeKey(t *testing.T) {
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
 	assert.Equal(t, tabFrankenPHP, app.activeTab, "3 should switch to FrankenPHP tab")
+}
+
+func TestClampCursor_PluginTabResetsToZero(t *testing.T) {
+	renderer := &stubPlugin{name: "myplugin"}
+	cfg := Config{
+		Plugins: []plugin.Plugin{renderer},
+	}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+	app.cursor = 42
+
+	app.clampCursor()
+	assert.Equal(t, 0, app.cursor, "plugin tab cursor should be clamped to 0")
+}
+
+func TestPluginTab_PgDownForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+	app.height = 40
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyPgDown})
+	assert.Equal(t, "pgdown", p.lastKey, "pgdown should be forwarded to the plugin")
+}
+
+func TestPluginTab_SlashForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	assert.Equal(t, viewList, app.mode, "filter should not activate on plugin tab")
+	assert.Equal(t, "/", p.lastKey, "/ should be forwarded to the plugin")
+}
+
+func TestPluginTab_FilterWorksOnCaddy(t *testing.T) {
+	app := NewApp(nil, Config{})
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	assert.Equal(t, viewFilter, app.mode, "filter should activate on Caddy tab")
+}
+
+func TestPluginFetchMsg_PreservesDataOnError(t *testing.T) {
+	renderer := &stubPlugin{name: "myplugin"}
+	cfg := Config{
+		Plugins: []plugin.Plugin{renderer},
+	}
+	app := NewApp(nil, cfg)
+	app.pluginTabs[0].data = "good-data"
+
+	app.Update(pluginFetchMsg{index: 0, data: nil, err: assert.AnError})
+
+	assert.Equal(t, "good-data", app.pluginTabs[0].data, "data should be preserved on error")
+	assert.Equal(t, assert.AnError, app.pluginTabs[0].err)
+}
+
+func TestPluginFetchMsg_ClearsErrorOnSuccess(t *testing.T) {
+	renderer := &stubPlugin{name: "myplugin"}
+	cfg := Config{
+		Plugins: []plugin.Plugin{renderer},
+	}
+	app := NewApp(nil, cfg)
+	app.pluginTabs[0].err = assert.AnError
+
+	app.Update(pluginFetchMsg{index: 0, data: "new-data", err: nil})
+
+	assert.Equal(t, "new-data", app.pluginTabs[0].data)
+	assert.NoError(t, app.pluginTabs[0].err, "error should be cleared on successful fetch")
+}
+
+func TestPluginFetchMsg_NilDataNilErrClearsError(t *testing.T) {
+	renderer := &stubPlugin{name: "myplugin"}
+	cfg := Config{
+		Plugins: []plugin.Plugin{renderer},
+	}
+	app := NewApp(nil, cfg)
+	app.pluginTabs[0].data = "old-data"
+	app.pluginTabs[0].err = assert.AnError
+
+	app.Update(pluginFetchMsg{index: 0, data: nil, err: nil})
+
+	assert.Nil(t, app.pluginTabs[0].data, "data should be updated to nil on nil/nil fetch")
+	assert.NoError(t, app.pluginTabs[0].err, "error should be cleared")
+}
+
+func TestAppClose(t *testing.T) {
+	app := NewApp(nil, Config{})
+	assert.NotPanics(t, func() {
+		app.Close()
+	})
+}
+
+type nilUpdatePlugin struct {
+	stubPlugin
+}
+
+func (p *nilUpdatePlugin) Update(_ any, _, _ int) plugin.Renderer {
+	return nil
+}
+
+type keyTrackingPlugin struct {
+	stubPlugin
+	lastKey string
+}
+
+func (p *keyTrackingPlugin) HandleKey(msg tea.KeyMsg) bool {
+	p.lastKey = msg.String()
+	return true
+}
+
+func (p *keyTrackingPlugin) Update(data any, _, _ int) plugin.Renderer {
+	return p
+}
+
+func TestPluginTab_EnterForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, viewList, app.mode, "detail should not activate on plugin tab")
+	assert.Equal(t, "enter", p.lastKey, "enter should be forwarded to the plugin")
+}
+
+func TestPluginTab_SKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	assert.Equal(t, "s", p.lastKey, "s should be forwarded to the plugin")
+}
+
+func TestPluginTab_ShiftSKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	assert.Equal(t, "S", p.lastKey, "S should be forwarded to the plugin")
+}
+
+func TestPluginTab_RKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	assert.Equal(t, "r", p.lastKey, "r should be forwarded to the plugin")
+}
+
+func TestPluginTab_EnterStillOpensDetailOnCaddy(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, viewDetail, app.mode, "enter should open detail on Caddy tab")
+	assert.Empty(t, p.lastKey, "plugin should not receive enter on Caddy tab")
+}
+
+func TestPluginTab_RStillRestartsOnFrankenPHP(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}, HasFrankenPHP: true}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabFrankenPHP)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	assert.Equal(t, viewConfirmRestart, app.mode, "r should trigger restart on FrankenPHP tab")
+	assert.Empty(t, p.lastKey, "plugin should not receive r on FrankenPHP tab")
+}
+
+func TestPluginFetchMsg_OutOfRangeSetsStatus(t *testing.T) {
+	renderer := &stubPlugin{name: "myplugin"}
+	cfg := Config{Plugins: []plugin.Plugin{renderer}}
+	app := NewApp(nil, cfg)
+
+	app.Update(pluginFetchMsg{index: 5, data: "data", err: nil})
+	assert.Contains(t, app.status, "unexpected index 5")
+}
+
+func TestPluginFetchMsg_NegativeIndexSetsStatus(t *testing.T) {
+	app := NewApp(nil, Config{})
+
+	app.Update(pluginFetchMsg{index: -1, data: "data", err: nil})
+	assert.Contains(t, app.status, "unexpected index -1")
+}
+
+func TestPluginFetchMsg_NilUpdateReturnKeepsOldRenderer(t *testing.T) {
+	p := &nilUpdatePlugin{stubPlugin: stubPlugin{name: "nilupdate"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+
+	originalRenderer := app.pluginTabs[0].renderer
+	app.Update(pluginFetchMsg{index: 0, data: "new-data", err: nil})
+
+	assert.Equal(t, originalRenderer, app.pluginTabs[0].renderer, "renderer should not change when Update returns nil")
+	assert.Equal(t, "new-data", app.pluginTabs[0].data, "data should still be updated even when Update returns nil")
+	assert.NoError(t, app.pluginTabs[0].err, "no error should be set when Update returns nil")
+}
+
+func TestPluginFetchMsg_ClearsFetchingFlag(t *testing.T) {
+	p := &stubPlugin{name: "test"}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.pluginTabs[0].fetching = true
+
+	app.Update(pluginFetchMsg{index: 0, data: "data", err: nil})
+	assert.False(t, app.pluginTabs[0].fetching, "fetching flag should be cleared after msg")
+}
+
+func TestPluginFetchMsg_ClearsFetchingFlagOnError(t *testing.T) {
+	p := &stubPlugin{name: "test"}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.pluginTabs[0].fetching = true
+
+	app.Update(pluginFetchMsg{index: 0, data: nil, err: assert.AnError})
+	assert.False(t, app.pluginTabs[0].fetching, "fetching flag should be cleared even on error")
+}
+
+func TestPluginFetchMsg_UpdatePanicStillUpdatesData(t *testing.T) {
+	p := &panicPlugin{stubPlugin: stubPlugin{name: "panicky"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.pluginTabs[0].data = "old-data"
+
+	app.Update(pluginFetchMsg{index: 0, data: "new-data", err: nil})
+
+	assert.Equal(t, "new-data", app.pluginTabs[0].data, "data should be updated even when Update panics")
+	assert.Error(t, app.pluginTabs[0].err, "error should be set from Update panic")
+	assert.Contains(t, app.pluginTabs[0].err.Error(), "plugin panic during Update")
+}
+
+func TestPluginTab_UpKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyUp})
+	assert.Equal(t, "up", p.lastKey, "up should be forwarded to the plugin")
+}
+
+func TestPluginTab_DownKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyDown})
+	assert.Equal(t, "down", p.lastKey, "down should be forwarded to the plugin")
+}
+
+func TestPluginTab_HomeKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyHome})
+	assert.Equal(t, "home", p.lastKey, "home should be forwarded to the plugin")
+}
+
+func TestPluginTab_EndKeyForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnd})
+	assert.Equal(t, "end", p.lastKey, "end should be forwarded to the plugin")
+}
+
+func TestPluginTab_PgUpForwardedToPlugin(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyPgUp})
+	assert.Equal(t, "pgup", p.lastKey, "pgup should be forwarded to the plugin")
+}
+
+func TestPluginTab_NavKeysStillWorkOnCaddy(t *testing.T) {
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.cursor = 1
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyUp})
+	assert.Equal(t, 0, app.cursor, "up should move cursor on Caddy tab")
+	assert.Empty(t, p.lastKey, "plugin should not receive up on Caddy tab")
+}
+
+func TestEnableFrankenPHP_WithPlugins(t *testing.T) {
+	p := &stubPlugin{name: "myplugin"}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+
+	assert.Equal(t, []tab{tabCaddy, tabConfig, tabCertificates, tabPluginBase}, app.tabs)
+
+	app.enableFrankenPHP()
+
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabConfig, tabCertificates, tabPluginBase}, app.tabs,
+		"FrankenPHP should be inserted between Caddy and plugin tabs")
 }

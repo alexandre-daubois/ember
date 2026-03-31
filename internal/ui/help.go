@@ -76,15 +76,10 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 	return helpStyle.Width(width).Render(content)
 }
 
-func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) string {
+func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool, pluginTabs []*pluginTab) string {
 	type binding struct {
 		key  string
 		desc string
-	}
-
-	tabHint := "1/2/3"
-	if hasFrankenPHP {
-		tabHint = "1/2/3/4"
 	}
 
 	nav := []binding{
@@ -93,7 +88,7 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) strin
 		{"← / h", "Collapse node (Caddy Config tab)"},
 		{"Esc", "Close / clear search"},
 		{"Tab/S-Tab", "Switch tab"},
-		{tabHint, "Jump to tab"},
+		{"1-9", "Jump to tab"},
 		{"Home/End", "Jump to first/last"},
 		{"PgUp/PgDn", "Page up/down"},
 	}
@@ -125,6 +120,22 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) strin
 	}
 
 	body := render("Navigation", nav) + "\n\n" + render("Actions", actions)
+
+	for _, pt := range pluginTabs {
+		if pt.renderer == nil {
+			continue
+		}
+		hb, _ := safePluginHelpBindings(pt.renderer)
+		if len(hb) == 0 {
+			continue
+		}
+		var pluginBindings []binding
+		for _, b := range hb {
+			pluginBindings = append(pluginBindings, binding{b.Key, b.Desc})
+		}
+		body += "\n\n" + render(pt.p.Name(), pluginBindings)
+	}
+
 	popup := boxStyle.Render(body)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup)
 }
