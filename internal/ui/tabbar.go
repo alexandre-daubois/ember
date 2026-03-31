@@ -18,6 +18,8 @@ func tabLabel(t tab) string {
 	switch t {
 	case tabCaddy:
 		return "Caddy"
+	case tabConfig:
+		return "Caddy Config"
 	case tabFrankenPHP:
 		return "FrankenPHP"
 	default:

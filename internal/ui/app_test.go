@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -841,4 +842,85 @@ func TestEnableFrankenPHP_NoDoubleAdd(t *testing.T) {
 	app.Update(fetchMsg{snap: snap})
 
 	assert.Len(t, app.tabs, 2, "should not duplicate FrankenPHP tab")
+}
+
+func TestConfigTab_SwitchViaTab(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy, tabConfig},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}},
+	}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, tabConfig, app.activeTab, "Tab should switch to config tab")
+}
+
+func TestConfigTab_SwitchViaNumber(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy, tabConfig},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}},
+	}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	assert.Equal(t, tabConfig, app.activeTab, "2 should switch to config tab")
+}
+
+func TestConfigTab_QQuits(t *testing.T) {
+	app := &App{
+		activeTab: tabConfig,
+		tabs:      []tab{tabCaddy, tabConfig},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}},
+	}
+
+	_, cmd := app.handleConfigListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	assert.NotNil(t, cmd, "q in config tab should return a quit command")
+}
+
+func TestConfigTab_HelpToggle(t *testing.T) {
+	app := &App{
+		activeTab: tabConfig,
+		tabs:      []tab{tabCaddy, tabConfig},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}},
+	}
+
+	app.handleConfigListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	assert.Equal(t, viewHelp, app.mode, "pressing ? from config tab should switch to help")
+}
+
+func TestConfigFetchMsg_Error(t *testing.T) {
+	app := &App{
+		activeTab: tabConfig,
+		tabs:      []tab{tabCaddy, tabConfig},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}},
+	}
+
+	app.Update(configFetchMsg{err: fmt.Errorf("connection refused")})
+	assert.Contains(t, app.status, "connection refused")
+}
+
+func TestConfigFetchMsg_OK(t *testing.T) {
+	app := &App{
+		activeTab: tabConfig,
+		tabs:      []tab{tabCaddy, tabConfig},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}},
+	}
+
+	raw := []byte(`{"apps":{"http":{}}}`)
+	app.Update(configFetchMsg{raw: raw})
+	assert.NotNil(t, app.configRoot, "configRoot should be populated")
+	assert.True(t, app.configRoot.expanded, "root should be auto-expanded")
+	assert.Equal(t, 0, app.configCursor)
+}
+
+func TestConfigTab_ThreeKey(t *testing.T) {
+	app := &App{
+		activeTab:     tabCaddy,
+		tabs:          []tab{tabCaddy, tabConfig, tabFrankenPHP},
+		tabStates:     map[tab]*tabState{tabCaddy: {}, tabConfig: {}, tabFrankenPHP: {}},
+		hasFrankenPHP: true,
+	}
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	assert.Equal(t, tabFrankenPHP, app.activeTab, "3 should switch to FrankenPHP tab")
 }

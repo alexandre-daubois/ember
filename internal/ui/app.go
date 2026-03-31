@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ type tab int
 
 const (
 	tabCaddy tab = iota
+	tabConfig
 	tabFrankenPHP
 )
 
@@ -48,6 +50,10 @@ type tabState struct {
 
 type restarter interface {
 	RestartWorkers(ctx context.Context) error
+}
+
+type configFetcher interface {
+	FetchConfig(ctx context.Context) (json.RawMessage, error)
 }
 
 const sparklineSize = 15
@@ -79,6 +85,11 @@ type App struct {
 	tabStates     map[tab]*tabState
 	hasFrankenPHP bool
 	hostSortBy    model.HostSortField
+
+	configRoot       *jsonNode
+	configCursor     int
+	configFilter     string
+	configFilterMode bool
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -86,7 +97,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 
-	tabs := []tab{tabCaddy}
+	tabs := []tab{tabCaddy, tabConfig}
 	activeTab := tabCaddy
 	if cfg.HasFrankenPHP {
 		tabs = append(tabs, tabFrankenPHP)
@@ -122,6 +133,13 @@ func (a *App) switchTab(target tab) {
 	a.mode = viewList
 }
 
+func (a *App) switchTabCmd() tea.Cmd {
+	if a.activeTab == tabConfig && a.configRoot == nil {
+		return a.doFetchConfig()
+	}
+	return nil
+}
+
 func (a *App) nextTab() {
 	for i, t := range a.tabs {
 		if t == a.activeTab {
@@ -147,6 +165,10 @@ type fetchMsg struct {
 }
 type restartResultMsg struct{ err error }
 type metricsServerErrMsg struct{ err error }
+type configFetchMsg struct {
+	raw json.RawMessage
+	err error
+}
 
 func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{a.doFetch(), a.doTick()}
@@ -260,6 +282,22 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.status = "workers restarted"
 		}
 		return a, nil
+	case configFetchMsg:
+		if msg.err != nil {
+			a.status = "config fetch failed: " + msg.err.Error()
+			return a, nil
+		}
+		root, err := parseJSONTree(msg.raw)
+		if err != nil {
+			a.status = "config parse failed: " + err.Error()
+			return a, nil
+		}
+		root.expanded = true
+		a.configRoot = root
+		a.configCursor = 0
+		a.configFilter = ""
+		a.configFilterMode = false
+		return a, nil
 	}
 	return a, nil
 }
@@ -306,6 +344,17 @@ func (a *App) View() string {
 	var hosts []model.HostDerived
 	var contentList string
 	switch a.activeTab {
+	case tabConfig:
+		dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
+		configAreaHeight := a.height - dashLines - 4
+		if configAreaHeight < 5 {
+			configAreaHeight = 5
+		}
+		if a.configRoot != nil {
+			contentList = renderConfigTree(a.configRoot, a.configCursor, listWidth, configAreaHeight, a.configFilter, a.configFilterMode)
+		} else {
+			contentList = greyStyle.Render(" Loading config...")
+		}
 	case tabFrankenPHP:
 		threads = a.filteredThreads()
 		if len(threads) == 0 && a.filter != "" {
@@ -339,7 +388,8 @@ func (a *App) View() string {
 	}
 
 	parts := []string{dashboard, tabBar}
-	if a.mode == viewGraph {
+	switch a.mode {
+	case viewGraph:
 		dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
 		graphAreaHeight := a.height - dashLines - 2
 		if graphAreaHeight < 5 {
@@ -347,8 +397,8 @@ func (a *App) View() string {
 		}
 		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.history.cpu, a.history.rps, a.history.rss, a.history.queue, a.history.busy, a.hasFrankenPHP))
 		parts = append(parts, helpStyle.Width(listWidth).Render(" "+helpKeyStyle.Render("g/Esc")+" back  "+helpKeyStyle.Render("q")+" quit"))
-	} else {
-		if filterLine != "" {
+	default:
+		if filterLine != "" && a.activeTab != tabConfig {
 			parts = append(parts, filterLine)
 		}
 		parts = append(parts, contentList)
@@ -435,25 +485,34 @@ func (a *App) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if a.activeTab == tabConfig {
+		return a.handleConfigListKey(msg)
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return a, tea.Quit
 	case "tab":
 		a.nextTab()
-		return a, nil
+		return a, a.switchTabCmd()
 	case "shift+tab":
 		a.prevTab()
-		return a, nil
+		return a, a.switchTabCmd()
 	case "1":
 		if len(a.tabs) > 0 {
 			a.switchTab(a.tabs[0])
 		}
-		return a, nil
+		return a, a.switchTabCmd()
 	case "2":
 		if len(a.tabs) > 1 {
 			a.switchTab(a.tabs[1])
 		}
-		return a, nil
+		return a, a.switchTabCmd()
+	case "3":
+		if len(a.tabs) > 2 {
+			a.switchTab(a.tabs[2])
+		}
+		return a, a.switchTabCmd()
 	case "up", "k":
 		if a.cursor > 0 {
 			a.cursor--
@@ -628,6 +687,8 @@ func (a *App) pageSize() int {
 
 func (a *App) listLen() int {
 	switch a.activeTab {
+	case tabConfig:
+		return len(flattenVisible(a.configRoot))
 	case tabCaddy:
 		return len(a.filteredHosts())
 	default:
@@ -636,6 +697,9 @@ func (a *App) listLen() int {
 }
 
 func (a *App) clampCursor() {
+	if a.activeTab == tabConfig {
+		return
+	}
 	var count int
 	switch a.activeTab {
 	case tabCaddy:
@@ -688,6 +752,16 @@ func (a *App) doRestart() tea.Cmd {
 			return restartResultMsg{err: r.RestartWorkers(context.Background())}
 		}
 		return restartResultMsg{}
+	}
+}
+
+func (a *App) doFetchConfig() tea.Cmd {
+	return func() tea.Msg {
+		if cf, ok := a.fetcher.(configFetcher); ok {
+			raw, err := cf.FetchConfig(context.Background())
+			return configFetchMsg{raw: raw, err: err}
+		}
+		return configFetchMsg{err: fmt.Errorf("config inspection not supported")}
 	}
 }
 
