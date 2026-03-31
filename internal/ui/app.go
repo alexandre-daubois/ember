@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -38,7 +40,8 @@ type Config struct {
 	NoColor          bool
 	Version          string
 	HasFrankenPHP    bool
-	OnStateUpdate    func(model.State)
+	Plugins          []plugin.Plugin
+	OnStateUpdate    func(model.State, []plugin.PluginExport)
 	MetricsServerErr <-chan error
 	LogBuffer        *model.LogBuffer
 	RuntimeLogBuffer *model.LogBuffer
@@ -124,7 +127,13 @@ type App struct {
 
 	logSel              logSel
 	logSidepanelFocused bool
+
+	pluginTabs []*pluginTab
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
+
+const tabPluginBase tab = 100
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	if cfg.NoColor {
@@ -138,10 +147,22 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	tabs = append(tabs, tabConfig, tabCertificates, tabLogs)
 	activeTab := tabCaddy
 
+	var pluginTabs []*pluginTab
+	for i, p := range cfg.Plugins {
+		id := tabPluginBase + tab(i)
+		pt := newPluginTab(p, id)
+		pluginTabs = append(pluginTabs, pt)
+		if pt.renderer != nil {
+			tabs = append(tabs, id)
+		}
+	}
+
 	ts := make(map[tab]*tabState)
 	for _, t := range tabs {
 		ts[t] = &tabState{}
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &App{
 		fetcher:          f,
@@ -157,6 +178,16 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		runtimeLogBuffer: cfg.RuntimeLogBuffer,
 		logSource:        cfg.LogSource,
 		logSel:           logSel{kind: logSelAccess},
+		pluginTabs:       pluginTabs,
+		ctx:              ctx,
+		cancel:           cancel,
+	}
+}
+
+// Close cancels the app context, signaling plugin fetches to stop.
+func (a *App) Close() {
+	if a.cancel != nil {
+		a.cancel()
 	}
 }
 
@@ -239,6 +270,7 @@ type logRefreshMsg struct{}
 
 func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{a.doFetch(), a.doTick()}
+	cmds = append(cmds, a.doPluginFetches()...)
 	if a.config.MetricsServerErr != nil {
 		ch := a.config.MetricsServerErr
 		cmds = append(cmds, func() tea.Msg {
@@ -274,12 +306,34 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case metricsServerErrMsg:
 		a.status = "⚠ " + msg.err.Error()
 		return a, nil
+	case pluginFetchMsg:
+		if msg.index >= 0 && msg.index < len(a.pluginTabs) {
+			pt := a.pluginTabs[msg.index]
+			pt.fetching = false
+			pt.err = msg.err
+			if msg.err == nil {
+				pt.data = msg.data
+				if pt.renderer != nil && msg.data != nil {
+					updated, updateErr := safePluginUpdate(pt.renderer, msg.data, a.width, a.height)
+					if updateErr == nil && updated != nil {
+						pt.renderer = updated
+					} else if updateErr != nil {
+						pt.err = updateErr
+					}
+				}
+			}
+		} else {
+			a.status = fmt.Sprintf("⚠ plugin fetch: unexpected index %d", msg.index)
+		}
+		return a, nil
 	case tickMsg:
 		if a.paused || a.fetching {
 			return a, a.doTick()
 		}
 		a.fetching = true
-		return a, tea.Batch(a.doFetch(), a.doTick())
+		cmds := []tea.Cmd{a.doFetch(), a.doTick()}
+		cmds = append(cmds, a.doPluginFetches()...)
+		return a, tea.Batch(cmds...)
 	case fetchMsg:
 		a.fetching = false
 		a.viewTime = time.Now()
@@ -356,7 +410,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.updateDownSince()
 
 			if a.config.OnStateUpdate != nil {
-				a.config.OnStateUpdate(a.state)
+				a.config.OnStateUpdate(a.state, a.pluginExports())
 			}
 		}
 		return a, rpCmd
@@ -461,7 +515,15 @@ func (a *App) View() string {
 			counts[tabLogs] = fmt.Sprintf("%d", total)
 		}
 	}
-	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
+	for _, pt := range a.pluginTabs {
+		if pt.renderer != nil {
+			c, _ := safePluginStatusCount(pt.renderer)
+			if c != "" {
+				counts[pt.tabID] = c
+			}
+		}
+	}
+	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts, a.pluginTabs)
 	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab, a.logFrozen)
 
 	var threads []fetcher.ThreadDebugState
@@ -528,6 +590,13 @@ func (a *App) View() string {
 		}
 	case tabLogs:
 		contentList = a.renderLogsTab(listWidth, contentAreaHeight)
+	default:
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			contentList = safePluginView(pt.renderer, listWidth, a.height-10)
+			if pt.err != nil && contentList == "" {
+				contentList = greyStyle.Render(" " + pt.err.Error())
+			}
+		}
 	}
 
 	var statusLine string
@@ -592,7 +661,7 @@ func (a *App) View() string {
 	}
 
 	if a.mode == viewHelp {
-		return renderHelpOverlay(a.width, a.height, a.hasUpstreams, a.hasFrankenPHP)
+		return renderHelpOverlay(a.width, a.height, a.hasUpstreams, a.hasFrankenPHP, a.pluginTabs)
 	}
 
 	return base
@@ -606,29 +675,10 @@ func (a *App) handleTabSwitch(key string) (tea.Cmd, bool) {
 	case "shift+tab":
 		a.prevTab()
 		return a.switchTabCmd(), true
-	case "1":
-		if len(a.tabs) > 0 {
-			a.switchTab(a.tabs[0])
-		}
-		return a.switchTabCmd(), true
-	case "2":
-		if len(a.tabs) > 1 {
-			a.switchTab(a.tabs[1])
-		}
-		return a.switchTabCmd(), true
-	case "3":
-		if len(a.tabs) > 2 {
-			a.switchTab(a.tabs[2])
-		}
-		return a.switchTabCmd(), true
-	case "4":
-		if len(a.tabs) > 3 {
-			a.switchTab(a.tabs[3])
-		}
-		return a.switchTabCmd(), true
-	case "5":
-		if len(a.tabs) > 4 {
-			a.switchTab(a.tabs[4])
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		idx, _ := strconv.Atoi(key)
+		if idx >= 1 && idx <= len(a.tabs) {
+			a.switchTab(a.tabs[idx-1])
 		}
 		return a.switchTabCmd(), true
 	}
@@ -717,44 +767,109 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleLogsListKey(msg)
 	}
 
-	key := msg.String()
-
-	if cmd, ok := a.handleTabSwitch(key); ok {
-		return a, cmd
-	}
-
-	maxIdx := a.listLen() - 1
-	if maxIdx < 0 {
-		maxIdx = 0
-	}
-	moveCursor(key, &a.cursor, maxIdx, a.pageSize())
-
-	switch key {
+	switch msg.String() {
 	case "q", "ctrl+c":
 		return a, tea.Quit
-	case "s":
-		if a.activeTab == tabCaddy {
-			a.hostSortBy = a.hostSortBy.Next()
+	case "tab":
+		a.nextTab()
+		return a, a.switchTabCmd()
+	case "shift+tab":
+		a.prevTab()
+		return a, a.switchTabCmd()
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		idx, _ := strconv.Atoi(msg.String())
+		if idx >= 1 && idx <= len(a.tabs) {
+			a.switchTab(a.tabs[idx-1])
+		}
+		return a, a.switchTabCmd()
+	case "up", "k":
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		} else if a.cursor > 0 {
+			a.cursor--
+		}
+	case "down", "j":
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
 		} else {
+			a.cursor++
+			a.clampCursor()
+		}
+	case "home":
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		} else {
+			a.cursor = 0
+		}
+	case "end":
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		} else {
+			max := a.listLen() - 1
+			if max < 0 {
+				max = 0
+			}
+			a.cursor = max
+		}
+	case "pgup":
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		} else {
+			a.cursor -= a.pageSize()
+			if a.cursor < 0 {
+				a.cursor = 0
+			}
+		}
+	case "pgdown":
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		} else {
+			a.cursor += a.pageSize()
+			a.clampCursor()
+		}
+	case "s":
+		switch a.activeTab {
+		case tabCaddy:
+			a.hostSortBy = a.hostSortBy.Next()
+		case tabFrankenPHP:
 			a.sortBy = a.sortBy.Next()
+		default:
+			if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+				safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+			}
 		}
 	case "S":
-		if a.activeTab == tabCaddy {
+		switch a.activeTab {
+		case tabCaddy:
 			a.hostSortBy = a.hostSortBy.Prev()
-		} else {
+		case tabFrankenPHP:
 			a.sortBy = a.sortBy.Prev()
+		default:
+			if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+				safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+			}
 		}
 	case "p":
 		a.paused = !a.paused
 	case "enter":
-		a.mode = viewDetail
+		if a.activeTab == tabCaddy || a.activeTab == tabFrankenPHP {
+			a.mode = viewDetail
+		} else if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		}
 	case "r":
 		if a.activeTab == tabFrankenPHP {
 			a.mode = viewConfirmRestart
+		} else if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
 		}
 	case "/":
-		a.mode = viewFilter
-		a.filter = ""
+		if a.activeTab == tabCaddy || a.activeTab == tabFrankenPHP {
+			a.mode = viewFilter
+			a.filter = ""
+		} else if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		}
 	case "g":
 		a.prevMode = a.mode
 		a.mode = viewGraph
@@ -777,6 +892,10 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				a.resumeLogs()
 				a.cursor = 0
 			}
+		}
+	default:
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
 		}
 	}
 	return a, nil
@@ -914,8 +1033,10 @@ func (a *App) listLen() int {
 		return len(a.filteredHosts())
 	case tabUpstreams:
 		return len(a.filteredUpstreams())
-	default:
+	case tabFrankenPHP:
 		return len(a.filteredThreads())
+	default:
+		return 0
 	}
 }
 
@@ -931,8 +1052,11 @@ func (a *App) clampCursor() {
 		count = len(a.filteredHosts())
 	case tabUpstreams:
 		count = len(a.filteredUpstreams())
-	default:
+	case tabFrankenPHP:
 		count = len(a.filteredThreads())
+	default:
+		a.cursor = 0
+		return
 	}
 	maximum := count - 1
 	if maximum < 0 {
@@ -1098,6 +1222,39 @@ func (a *App) updateDownSince() {
 			delete(a.downSince, key)
 		}
 	}
+}
+
+func (a *App) doPluginFetches() []tea.Cmd {
+	var cmds []tea.Cmd
+	for i, pt := range a.pluginTabs {
+		if pt.fetcher != nil && !pt.fetching {
+			pt.fetching = true
+			cmds = append(cmds, doPluginFetch(a.ctx, i, pt.fetcher))
+		}
+	}
+	return cmds
+}
+
+func (a *App) activePluginTab() *pluginTab {
+	for _, pt := range a.pluginTabs {
+		if pt.tabID == a.activeTab {
+			return pt
+		}
+	}
+	return nil
+}
+
+func (a *App) pluginExports() []plugin.PluginExport {
+	var exports []plugin.PluginExport
+	for _, pt := range a.pluginTabs {
+		if pt.exporter != nil {
+			exports = append(exports, plugin.PluginExport{
+				Exporter: pt.exporter,
+				Data:     pt.data,
+			})
+		}
+	}
+	return exports
 }
 
 func renderConfirmOverlay(base string, width, height int) string {

@@ -13,16 +13,25 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 )
 
 type StateHolder struct {
-	mu    sync.RWMutex
-	state model.State
+	mu            sync.RWMutex
+	state         model.State
+	pluginExports []plugin.PluginExport
 }
 
 func (h *StateHolder) Store(s model.State) {
 	h.mu.Lock()
 	h.state = s
+	h.mu.Unlock()
+}
+
+func (h *StateHolder) StoreAll(s model.State, exports []plugin.PluginExport) {
+	h.mu.Lock()
+	h.state = s
+	h.pluginExports = exports
 	h.mu.Unlock()
 }
 
@@ -32,6 +41,12 @@ func (h *StateHolder) Load() model.State {
 	return h.state
 }
 
+func (h *StateHolder) loadAll() (model.State, []plugin.PluginExport) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.state, h.pluginExports
+}
+
 const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 
 // Handler returns an /metrics handler. prefix may be "" for unprefixed names.
@@ -39,7 +54,7 @@ const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 // per-stage counters and timestamps) are appended to the response.
 func Handler(holder *StateHolder, prefix string, recorder *instrumentation.Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := holder.Load()
+		s, pluginExports := holder.loadAll()
 		if s.Current == nil {
 			http.Error(w, "no data yet", http.StatusServiceUnavailable)
 			return
@@ -57,7 +72,22 @@ func Handler(holder *StateHolder, prefix string, recorder *instrumentation.Recor
 		if recorder != nil {
 			writeSelfMetrics(w, recorder.Snapshot(), prefix)
 		}
+
+		for _, pe := range pluginExports {
+			if pe.Exporter != nil && pe.Data != nil {
+				safeWriteMetrics(w, pe.Exporter, pe.Data, prefix)
+			}
+		}
 	}
+}
+
+func safeWriteMetrics(w http.ResponseWriter, e plugin.Exporter, data any, prefix string) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(w, "# plugin WriteMetrics panic: %v\n", r)
+		}
+	}()
+	e.WriteMetrics(w, data, prefix)
 }
 
 func prefixed(prefix, name string) string {

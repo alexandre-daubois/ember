@@ -3,6 +3,7 @@ package exporter
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/prometheus/common/expfmt"
 	prommodel "github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
@@ -609,6 +611,51 @@ func TestBasicAuth_NoCredentials(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+type testExporter struct{}
+
+func (e *testExporter) WriteMetrics(w io.Writer, _ any, _ string) {
+	_, _ = io.WriteString(w, "test_plugin_metric 42\n")
+}
+
+type panicExporter struct{}
+
+func (e *panicExporter) WriteMetrics(_ io.Writer, _ any, _ string) {
+	panic("exporter boom")
+}
+
+func TestHandler_PluginMetrics(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
+		{Exporter: &testExporter{}, Data: "data"},
+	})
+
+	rec := get(holder)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "test_plugin_metric 42")
+}
+
+func TestHandler_PluginWriteMetricsPanic(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
+		{Exporter: &panicExporter{}, Data: "data"},
+	})
+
+	rec := get(holder)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "plugin WriteMetrics panic")
+	assert.Contains(t, rec.Body.String(), "exporter boom")
+}
+
+func TestHandler_PluginPanicDoesNotBreakOtherMetrics(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
+		{Exporter: &panicExporter{}, Data: "data"},
+	})
+
+	rec := get(holder)
+	assert.Contains(t, rec.Body.String(), "process_cpu_percent")
 }
 
 func TestBasicAuth_InvalidUser(t *testing.T) {

@@ -92,7 +92,7 @@ func TestRenderHelp_SeparatorsPresent(t *testing.T) {
 }
 
 func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
-	out := stripANSI(renderHelpOverlay(120, 40, false, true))
+	out := stripANSI(renderHelpOverlay(120, 40, false, true, nil))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Actions")
@@ -111,7 +111,7 @@ func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
 }
 
 func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
-	out := stripANSI(renderHelpOverlay(120, 40, false, false))
+	out := stripANSI(renderHelpOverlay(120, 40, false, false, nil))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Toggle graphs")

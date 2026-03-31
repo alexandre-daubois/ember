@@ -111,6 +111,12 @@ ember status
 
 Ember polls the Caddy admin API and Prometheus metrics endpoint at a regular interval (default: 1s), computes deltas and derived metrics (RPS, percentiles, error rates), and renders them through one of several output modes: an interactive [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI (default), streaming JSONL, a headless daemon with Prometheus export, or a one-shot `status` command.
 
+## Plugins
+
+Ember supports a plugin system that lets third-party developers add custom tabs for visualizing metrics from additional Caddy modules (e.g., rate limiters, WAF modules, custom middleware). Plugins are compiled into the binary using Go's blank import pattern, the same approach used by Caddy itself.
+
+See the [Plugin Development Guide](docs/plugins.md) for details on building and integrating plugins.
+
 ## Documentation
 
 Full documentation is available in the [docs/](docs/index.md) directory:
@@ -125,6 +131,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode
 - [Docker](docs/docker.md): Container usage
 - [Agent Skills](docs/skills.md): Skills for AI coding agents
+- [Plugins](docs/plugins.md): Building custom plugins for Ember
 - [Troubleshooting](docs/troubleshooting.md): Common issues and solutions
 
 ## Contributing
