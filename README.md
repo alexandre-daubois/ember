@@ -109,6 +109,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [JSON Output](docs/json-output.md): Streaming JSONL for scripting
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode
 - [Docker](docs/docker.md): Container usage
+- [AI Agent Skills](docs/skills.md): Skills for AI coding agents
 - [Troubleshooting](docs/troubleshooting.md): Common issues and solutions
 
 ## Contributing
