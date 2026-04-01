@@ -97,6 +97,19 @@ ember status
 
 Ember polls the Caddy admin API and Prometheus metrics endpoint at a regular interval (default: 1s), computes deltas and derived metrics (RPS, percentiles, error rates), and renders them through one of several output modes: an interactive [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI (default), streaming JSONL, a headless daemon with Prometheus export, or a one-shot `status` command.
 
+## AI Agent Skills
+
+Ember provides skills for AI coding agents (Claude Code, Cursor, Copilot, etc.) so they can help you set up, troubleshoot, and deploy Ember directly from your agent.
+
+Install them with [skills.sh](https://skills.sh/):
+
+```bash
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-setup          # Installation & Caddy configuration
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-troubleshoot   # Diagnose common issues
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-production     # Daemon, Prometheus, Docker
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-json           # JSON output, scripting, CI pipelines
+```
+
 ## Documentation
 
 Full documentation is available in the [docs/](docs/index.md) directory:
