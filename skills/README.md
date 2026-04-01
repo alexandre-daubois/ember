@@ -1,0 +1,29 @@
+# Ember AI Agent Skills
+
+These skills help AI coding agents (Claude Code, Cursor, Copilot, etc.) guide you through Ember workflows directly from your agent.
+
+## Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| [ember-setup](ember-setup/SKILL.md) | Installation, Caddy configuration, TLS/mTLS, first launch |
+| [ember-troubleshoot](ember-troubleshoot/SKILL.md) | Diagnose connection issues, missing metrics, FrankenPHP problems |
+| [ember-production](ember-production/SKILL.md) | Daemon mode, Prometheus export, Docker deployment |
+| [ember-json](ember-json/SKILL.md) | JSON output, `jq` scripting, `ember diff`, `ember wait`, CI pipelines |
+
+## Installation
+
+Install with [skills.sh](https://skills.sh/):
+
+```bash
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-setup
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-troubleshoot
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-production
+npx skills add https://github.com/alexandre-daubois/ember --skill ember-json
+```
+
+## What Are Skills?
+
+Skills are markdown files that give AI coding agents specialized knowledge about a tool or workflow. Instead of the agent exploring the codebase to find answers, it gets accurate, curated instructions instantly — resulting in faster, more precise responses.
+
+Learn more at [skills.sh](https://skills.sh/).
