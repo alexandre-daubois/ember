@@ -196,6 +196,9 @@ ember completion zsh > "${fpath[1]}/_ember"
 
 # Fish
 ember completion fish > ~/.config/fish/completions/ember.fish
+
+# PowerShell
+ember completion powershell | Out-String | Invoke-Expression
 ```
 
 ## What's Next
