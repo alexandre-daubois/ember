@@ -240,6 +240,11 @@ func (a *App) handleConfigListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.switchTab(a.tabs[2])
 		}
 		return a, a.switchTabCmd()
+	case "4":
+		if len(a.tabs) > 3 {
+			a.switchTab(a.tabs[3])
+		}
+		return a, a.switchTabCmd()
 	case "up", "k":
 		if a.configCursor > 0 {
 			a.configCursor--

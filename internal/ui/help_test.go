@@ -9,7 +9,7 @@ import (
 )
 
 func TestRenderHelp_ContainsAllBindings(t *testing.T) {
-	out := renderHelp(model.SortByIndex, model.SortByHost, false, 120, tabFrankenPHP)
+	out := renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, false, 120, tabFrankenPHP)
 	plain := stripANSI(out)
 
 	assert.Contains(t, plain, "navigate")
@@ -21,23 +21,23 @@ func TestRenderHelp_ContainsAllBindings(t *testing.T) {
 }
 
 func TestRenderHelp_ShowsCurrentSortField(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByMemory, model.SortByHost, false, 120, tabFrankenPHP))
+	out := stripANSI(renderHelp(model.SortByMemory, model.SortByHost, model.SortByCertDomain, false, 120, tabFrankenPHP))
 	assert.Contains(t, out, "sort(memory)")
 }
 
 func TestRenderHelp_PausedShowsResume(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, true, 120, tabFrankenPHP))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, true, 120, tabFrankenPHP))
 	assert.Contains(t, out, "resume")
 	assert.NotContains(t, out, "pause")
 }
 
 func TestRenderHelp_RespectsWidth(t *testing.T) {
-	out := renderHelp(model.SortByIndex, model.SortByHost, false, 200, tabFrankenPHP)
+	out := renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, false, 200, tabFrankenPHP)
 	assert.Equal(t, 200, lipgloss.Width(out))
 }
 
 func TestRenderHelp_CaddyTab(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, tabCaddy))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, false, 120, tabCaddy))
 	assert.Contains(t, out, "sort(host)")
 	assert.NotContains(t, out, "restart")
 	assert.Contains(t, out, "navigate")
@@ -46,20 +46,32 @@ func TestRenderHelp_CaddyTab(t *testing.T) {
 }
 
 func TestRenderHelp_ConfigTab(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, tabConfig))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, false, 120, tabConfig))
 	assert.Contains(t, out, "navigate")
 	assert.Contains(t, out, "expand")
 	assert.Contains(t, out, "collapse")
+	assert.Contains(t, out, "expand/collapse all")
 	assert.Contains(t, out, "search")
-	assert.Contains(t, out, "next/prev match")
-	assert.Contains(t, out, "refresh")
+	assert.Contains(t, out, "help")
 	assert.NotContains(t, out, "sort")
 	assert.NotContains(t, out, "detail")
+	assert.NotContains(t, out, "next/prev match")
+	assert.NotContains(t, out, "refresh")
 	assert.Contains(t, out, "quit")
 }
 
+func TestRenderHelp_CertificatesTab(t *testing.T) {
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, false, 120, tabCertificates))
+	assert.Contains(t, out, "sort(domain)")
+	assert.Contains(t, out, "refresh")
+	assert.Contains(t, out, "filter")
+	assert.Contains(t, out, "quit")
+	assert.NotContains(t, out, "restart")
+	assert.NotContains(t, out, "detail")
+}
+
 func TestRenderHelp_SeparatorsPresent(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, tabFrankenPHP))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, false, 120, tabFrankenPHP))
 	assert.Contains(t, out, "·")
 }
 
@@ -76,8 +88,8 @@ func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
 	assert.Contains(t, out, "Expand / collapse all")
 	assert.Contains(t, out, "Quit")
 	assert.Contains(t, out, "Toggle this help")
-	assert.Contains(t, out, "1/2/3")
-	assert.Contains(t, out, "Refresh config / restart workers")
+	assert.Contains(t, out, "1/2/3/4")
+	assert.Contains(t, out, "Refresh config/certs / restart workers")
 }
 
 func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
@@ -86,8 +98,8 @@ func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Toggle graphs")
 	assert.Contains(t, out, "Quit")
-	assert.Contains(t, out, "1/2")
-	assert.NotContains(t, out, "1/2/3")
-	assert.Contains(t, out, "Refresh config")
+	assert.Contains(t, out, "1/2/3")
+	assert.NotContains(t, out, "1/2/3/4")
+	assert.Contains(t, out, "Refresh config/certs")
 	assert.NotContains(t, out, "restart workers")
 }
