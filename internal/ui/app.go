@@ -292,7 +292,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.status = "config parse failed: " + err.Error()
 			return a, nil
 		}
-		root.expanded = true
+		expandAll(root)
 		a.configRoot = root
 		a.configCursor = 0
 		a.configFilter = ""
