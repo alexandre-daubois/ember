@@ -401,7 +401,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case viewDetail:
 		return a.handleDetailKey(msg)
 	case viewConfirmRestart:
-		return a.handleConfirmKey(msg)
+		return a.handleConfirmRestartKey(msg)
 	case viewGraph:
 		return a.handleGraphKey(msg)
 	case viewHelp:
@@ -569,7 +569,7 @@ func (a *App) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-func (a *App) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (a *App) handleConfirmRestartKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
 		a.mode = viewList

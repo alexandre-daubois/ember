@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -63,7 +64,20 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 			configParts = []string{fmt.Sprintf("%d hosts", hostCount)}
 		}
 	}
+	sep := greyStyle.Render(" · ")
+	if len(configParts) == 0 {
+		sep = " "
+	}
 	configRight := greyStyle.Render(strings.Join(configParts, " · ") + " ")
+	if snap.Metrics.HasConfigReloadMetrics {
+		if snap.Metrics.ConfigLastReloadSuccessful == 1 && snap.Metrics.ConfigLastReloadSuccessTimestamp > 0 {
+			reloadTime := time.Unix(int64(snap.Metrics.ConfigLastReloadSuccessTimestamp), 0)
+			ago := formatReloadAge(time.Since(reloadTime))
+			configRight = greyStyle.Render("config reload "+ago+" ago") + sep + configRight
+		} else if snap.Metrics.ConfigLastReloadSuccessful == 0 {
+			configRight = dangerStyle.Render("config reload FAILED") + sep + configRight
+		}
+	}
 	if d.TotalCrashes > 0 {
 		crashStr := fmt.Sprintf("%.0f", d.TotalCrashes)
 		configRight = dangerStyle.Render(crashStr+" crashed") + "  " + configRight
@@ -179,6 +193,24 @@ func countWorkerThreads(threads []fetcher.ThreadDebugState) int {
 		}
 	}
 	return count
+}
+
+func formatReloadAge(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	hours := int(d.Hours())
+	if hours < 24 {
+		return fmt.Sprintf("%dh %dm", hours, int(d.Minutes())%60)
+	}
+	days := hours / 24
+	return fmt.Sprintf("%dd %dh", days, hours%24)
 }
 
 func formatMs(ms float64) string {

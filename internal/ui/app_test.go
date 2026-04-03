@@ -680,7 +680,7 @@ func TestHandleKey_DispatchesToDetail(t *testing.T) {
 func TestHandleKey_DispatchesToConfirm(t *testing.T) {
 	app := &App{mode: viewConfirmRestart}
 	app.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
-	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleConfirmKey in confirm mode")
+	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleConfirmRestartKey in confirm mode")
 }
 
 func TestHandleKey_DispatchesToGraph(t *testing.T) {
@@ -741,7 +741,7 @@ func TestHandleFilterKey_TypeCharacter(t *testing.T) {
 
 func TestHandleConfirmKey_YConfirmsRestart(t *testing.T) {
 	app := &App{mode: viewConfirmRestart}
-	_, cmd := app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	_, cmd := app.handleConfirmRestartKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	assert.Equal(t, viewList, app.mode)
 	assert.Contains(t, app.status, "restarting")
 	assert.NotNil(t, cmd, "y should trigger a restart command")
@@ -749,7 +749,7 @@ func TestHandleConfirmKey_YConfirmsRestart(t *testing.T) {
 
 func TestHandleConfirmKey_YUpperConfirmsRestart(t *testing.T) {
 	app := &App{mode: viewConfirmRestart}
-	_, cmd := app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}})
+	_, cmd := app.handleConfirmRestartKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}})
 	assert.Equal(t, viewList, app.mode)
 	assert.Contains(t, app.status, "restarting")
 	assert.NotNil(t, cmd)
@@ -757,14 +757,14 @@ func TestHandleConfirmKey_YUpperConfirmsRestart(t *testing.T) {
 
 func TestHandleConfirmKey_AnyOtherKeyCancels(t *testing.T) {
 	app := &App{mode: viewConfirmRestart, status: "old"}
-	app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	app.handleConfirmRestartKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	assert.Equal(t, viewList, app.mode)
 	assert.Equal(t, "", app.status, "canceling should clear status")
 }
 
 func TestHandleConfirmKey_EscCancels(t *testing.T) {
 	app := &App{mode: viewConfirmRestart}
-	app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyEscape})
+	app.handleConfirmRestartKey(tea.KeyMsg{Type: tea.KeyEscape})
 	assert.Equal(t, viewList, app.mode)
 }
 

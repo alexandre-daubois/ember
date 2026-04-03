@@ -74,6 +74,11 @@ func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
 	snap.ProcessRSSBytes = scalarValue(families, "process_resident_memory_bytes")
 	snap.ProcessStartTimeSeconds = scalarValue(families, "process_start_time_seconds")
 
+	_, hasReload := families["caddy_config_last_reload_successful"]
+	snap.HasConfigReloadMetrics = hasReload
+	snap.ConfigLastReloadSuccessful = scalarValue(families, "caddy_config_last_reload_successful")
+	snap.ConfigLastReloadSuccessTimestamp = scalarValue(families, "caddy_config_last_reload_success_timestamp_seconds")
+
 	snap.Hosts = perHostMetrics(families)
 
 	// Fallback: if HTTP metrics exist but no host labels, aggregate as a single "*" entry
