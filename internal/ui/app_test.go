@@ -557,6 +557,41 @@ func TestTabSwitch_TabKey(t *testing.T) {
 	assert.Equal(t, tabFrankenPHP, app.activeTab)
 }
 
+func TestTabSwitch_ShiftTabKey(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+	assert.Equal(t, tabFrankenPHP, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	assert.Equal(t, tabCaddy, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	assert.Equal(t, tabFrankenPHP, app.activeTab)
+}
+
+func TestTabSwitch_ShiftTabReversesTab(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+	assert.Equal(t, tabFrankenPHP, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
+	assert.Equal(t, tabCaddy, app.activeTab)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	assert.Equal(t, tabFrankenPHP, app.activeTab, "Shift+Tab should reverse Tab direction")
+}
+
+func TestTabSwitch_ShiftTabPreservesCursorPerTab(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0}, {Index: 1}, {Index: 2},
+	})
+	app.cursor = 2
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	assert.Equal(t, 0, app.cursor, "Caddy tab should start at cursor 0")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyShiftTab})
+	assert.Equal(t, 2, app.cursor, "FrankenPHP tab should restore cursor")
+}
+
 func TestTabSwitch_NumberKeys(t *testing.T) {
 	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
 

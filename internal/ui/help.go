@@ -37,7 +37,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 	bindings = append(bindings,
 		binding{"g", "graphs"},
 		binding{"/", "filter"},
-		binding{"Tab", "switch"},
+		binding{"Tab/S-Tab", "switch"},
 		binding{"q", "quit"},
 	)
 
@@ -60,7 +60,7 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) strin
 		{"↑/↓ j/k", "Move cursor"},
 		{"Enter", "Open detail panel"},
 		{"Esc", "Close / go back"},
-		{"Tab", "Switch tab"},
+		{"Tab/S-Tab", "Switch tab"},
 		{"1/2", "Jump to tab"},
 		{"Home/End", "Jump to first/last"},
 		{"PgUp/PgDn", "Page up/down"},

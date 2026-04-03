@@ -131,6 +131,15 @@ func (a *App) nextTab() {
 	}
 }
 
+func (a *App) prevTab() {
+	for i, t := range a.tabs {
+		if t == a.activeTab {
+			a.switchTab(a.tabs[(i-1+len(a.tabs))%len(a.tabs)])
+			return
+		}
+	}
+}
+
 type tickMsg struct{}
 type fetchMsg struct {
 	snap *fetcher.Snapshot
@@ -431,6 +440,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	case "tab":
 		a.nextTab()
+		return a, nil
+	case "shift+tab":
+		a.prevTab()
 		return a, nil
 	case "1":
 		if len(a.tabs) > 0 {
