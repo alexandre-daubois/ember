@@ -782,3 +782,65 @@ func TestHTTPFetcher_ConcurrentAccess(t *testing.T) {
 		<-done
 	}
 }
+
+func TestFetchConfig_OK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/" {
+			w.WriteHeader(200)
+			w.Write([]byte(`{"apps":{"http":{"servers":{}}}}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	raw, err := f.FetchConfig(context.Background())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"apps":{"http":{"servers":{}}}}`, string(raw))
+}
+
+func TestFetchConfig_BadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	_, err := f.FetchConfig(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestFetchConfig_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/" {
+			w.WriteHeader(200)
+			w.Write([]byte("not json"))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	_, err := f.FetchConfig(context.Background())
+	require.Error(t, err)
+}
+
+func TestFetchConfig_EmptyConfig(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/" {
+			w.WriteHeader(200)
+			w.Write([]byte(`{}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	raw, err := f.FetchConfig(context.Background())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{}`, string(raw))
+}

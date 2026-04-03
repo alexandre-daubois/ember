@@ -48,6 +48,23 @@ Press `Enter` on a host to open the detail panel:
 
 Press `Esc` to close the detail panel.
 
+## Config Inspector
+
+The **Caddy Config** tab (accessible via `Tab` or `2`) fetches the live Caddy configuration via the admin API (`GET /config/`) and displays it as an interactive collapsible JSON tree. The config is refreshed by pressing `r`.
+
+Navigation in the Caddy Config tab:
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` / `j` / `k` | Move cursor |
+| `Enter` / `Right` / `l` | Expand node |
+| `Left` / `h` | Collapse node or jump to parent |
+| `/` | Search within config (keys and values) |
+| `n` / `N` | Jump to next / previous search match |
+| `e` | Expand all nodes |
+| `E` | Collapse all nodes |
+| `r` | Refresh config from Caddy |
+
 ## Graphs
 
 Press `g` to toggle full-screen graphs showing:

@@ -419,6 +419,34 @@ func (f *HTTPFetcher) doWithRetry(ctx context.Context, req *http.Request) (*http
 	return nil, lastErr
 }
 
+// FetchConfig returns the full Caddy configuration as raw JSON.
+func (f *HTTPFetcher) FetchConfig(ctx context.Context) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+"/config/", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := f.doWithRetry(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch config: %w", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch config: HTTP %d", resp.StatusCode)
+	}
+
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("fetch config: %w", err)
+	}
+	return raw, nil
+}
+
 // CheckAdminAPI returns nil if the Caddy admin API is reachable.
 func (f *HTTPFetcher) CheckAdminAPI(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)

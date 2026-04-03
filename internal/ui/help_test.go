@@ -45,6 +45,19 @@ func TestRenderHelp_CaddyTab(t *testing.T) {
 	assert.Contains(t, out, "quit")
 }
 
+func TestRenderHelp_ConfigTab(t *testing.T) {
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, tabConfig))
+	assert.Contains(t, out, "navigate")
+	assert.Contains(t, out, "expand")
+	assert.Contains(t, out, "collapse")
+	assert.Contains(t, out, "search")
+	assert.Contains(t, out, "next/prev match")
+	assert.Contains(t, out, "refresh")
+	assert.NotContains(t, out, "sort")
+	assert.NotContains(t, out, "detail")
+	assert.Contains(t, out, "quit")
+}
+
 func TestRenderHelp_SeparatorsPresent(t *testing.T) {
 	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, false, 120, tabFrankenPHP))
 	assert.Contains(t, out, "·")
@@ -56,20 +69,25 @@ func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Actions")
 	assert.Contains(t, out, "Move cursor")
-	assert.Contains(t, out, "Open detail panel")
+	assert.Contains(t, out, "Open detail / expand node")
 	assert.Contains(t, out, "Cycle sort field")
-	assert.Contains(t, out, "Filter list")
+	assert.Contains(t, out, "Filter / search")
 	assert.Contains(t, out, "Toggle graphs")
-	assert.Contains(t, out, "Restart workers")
+	assert.Contains(t, out, "Expand / collapse all")
 	assert.Contains(t, out, "Quit")
 	assert.Contains(t, out, "Toggle this help")
+	assert.Contains(t, out, "1/2/3")
+	assert.Contains(t, out, "Refresh config / restart workers")
 }
 
-func TestRenderHelpOverlay_HidesRestartWithoutFrankenPHP(t *testing.T) {
+func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
 	out := stripANSI(renderHelpOverlay("base", 120, 40, false))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Toggle graphs")
-	assert.NotContains(t, out, "Restart workers")
 	assert.Contains(t, out, "Quit")
+	assert.Contains(t, out, "1/2")
+	assert.NotContains(t, out, "1/2/3")
+	assert.Contains(t, out, "Refresh config")
+	assert.NotContains(t, out, "restart workers")
 }

@@ -23,6 +23,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Per-host traffic table with RPS, average latency, status codes, and sparklines
 - Latency percentiles (P50, P90, P95, P99) and Time-to-First-Byte per host
 - Sorting, filtering, and full-screen ASCII graphs (CPU, RPS, RSS)
+- Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**

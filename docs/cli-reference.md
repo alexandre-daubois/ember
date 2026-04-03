@@ -238,25 +238,28 @@ No regressions detected
 
 ### Navigation
 
-| Key | Action |
-|-----|--------|
-| `Up` / `Down` / `j` / `k` | Move cursor |
-| `Enter` | Open detail panel |
-| `Esc` | Close panel / clear filter / go back |
-| `Tab` | Switch tab |
-| `1` / `2` | Jump to tab |
-| `Home` / `End` | Jump to first / last item |
-| `PgUp` / `PgDn` | Page up / page down |
+| Key | Action                                             |
+|-----|----------------------------------------------------|
+| `Up` / `Down` / `j` / `k` | Move cursor                                        |
+| `Enter` / `Right` / `l` | Open detail panel / expand node (Caddy Config tab) |
+| `Left` / `h` | Collapse node (Caddy Config tab)                   |
+| `Esc` | Close panel / clear search / go back               |
+| `Tab` / `Shift+Tab` | Switch tab                                         |
+| `1` / `2` / `3` | Jump to tab                                        |
+| `Home` / `End` | Jump to first / last item                          |
+| `PgUp` / `PgDn` | Page up / page down                                |
 
 ### Actions
 
 | Key | Action | Context |
 |-----|--------|---------|
-| `s` / `S` | Cycle sort field forward / backward | List view |
+| `s` / `S` | Cycle sort field forward / backward | Caddy / FrankenPHP tabs |
 | `p` | Pause / resume polling | Any view |
-| `/` | Enter filter mode | List view |
+| `/` | Enter filter / search mode | Any tab |
+| `e` / `E` | Expand / collapse all nodes | Config tab |
+| `n` / `N` | Jump to next / previous search match | Config tab |
+| `r` | Refresh config / restart workers | Config tab / FrankenPHP tab |
 | `g` | Toggle full-screen graphs | Any view |
-| `r` | Restart workers | FrankenPHP tab only |
 | `?` | Toggle help overlay | Any view |
 | `q` | Quit | Any view |
 
