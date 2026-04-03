@@ -630,6 +630,160 @@ func TestEnableFrankenPHP_OnFetch(t *testing.T) {
 	assert.NotNil(t, app.tabStates[tabFrankenPHP], "should initialize FrankenPHP tab state")
 }
 
+func TestHandleKey_DispatchesToFilter(t *testing.T) {
+	app := &App{mode: viewFilter}
+	app.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleFilterKey in filter mode")
+}
+
+func TestHandleKey_DispatchesToDetail(t *testing.T) {
+	app := &App{mode: viewDetail}
+	app.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleDetailKey in detail mode")
+}
+
+func TestHandleKey_DispatchesToConfirm(t *testing.T) {
+	app := &App{mode: viewConfirmRestart}
+	app.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleConfirmKey in confirm mode")
+}
+
+func TestHandleKey_DispatchesToGraph(t *testing.T) {
+	app := &App{mode: viewGraph, prevMode: viewList}
+	app.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleGraphKey in graph mode")
+}
+
+func TestHandleKey_DispatchesToHelp(t *testing.T) {
+	app := &App{mode: viewHelp, prevMode: viewList}
+	app.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode, "handleKey should dispatch to handleHelpKey in help mode")
+}
+
+func TestHandleKey_DefaultToList(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{
+		{Index: 0}, {Index: 1},
+	})
+	app.mode = viewList
+	app.cursor = 0
+	app.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	assert.Equal(t, 1, app.cursor, "handleKey should dispatch to handleListKey by default")
+}
+
+func TestHandleFilterKey_EscCancelsFilter(t *testing.T) {
+	app := &App{mode: viewFilter, filter: "test"}
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode)
+	assert.Equal(t, "", app.filter, "esc should clear filter")
+}
+
+func TestHandleFilterKey_EnterConfirmsFilter(t *testing.T) {
+	app := &App{mode: viewFilter, filter: "test", cursor: 5}
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, viewList, app.mode)
+	assert.Equal(t, "test", app.filter, "enter should keep filter")
+	assert.Equal(t, 0, app.cursor, "enter should reset cursor")
+}
+
+func TestHandleFilterKey_BackspaceRemovesLastChar(t *testing.T) {
+	app := &App{mode: viewFilter, filter: "test"}
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, "tes", app.filter)
+}
+
+func TestHandleFilterKey_BackspaceOnEmptyFilter(t *testing.T) {
+	app := &App{mode: viewFilter, filter: ""}
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, "", app.filter)
+}
+
+func TestHandleFilterKey_TypeCharacter(t *testing.T) {
+	app := &App{mode: viewFilter, filter: "te", cursor: 5}
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	assert.Equal(t, "tes", app.filter)
+	assert.Equal(t, 0, app.cursor, "typing should reset cursor")
+}
+
+func TestHandleConfirmKey_YConfirmsRestart(t *testing.T) {
+	app := &App{mode: viewConfirmRestart}
+	_, cmd := app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	assert.Equal(t, viewList, app.mode)
+	assert.Contains(t, app.status, "restarting")
+	assert.NotNil(t, cmd, "y should trigger a restart command")
+}
+
+func TestHandleConfirmKey_YUpperConfirmsRestart(t *testing.T) {
+	app := &App{mode: viewConfirmRestart}
+	_, cmd := app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}})
+	assert.Equal(t, viewList, app.mode)
+	assert.Contains(t, app.status, "restarting")
+	assert.NotNil(t, cmd)
+}
+
+func TestHandleConfirmKey_AnyOtherKeyCancels(t *testing.T) {
+	app := &App{mode: viewConfirmRestart, status: "old"}
+	app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	assert.Equal(t, viewList, app.mode)
+	assert.Equal(t, "", app.status, "canceling should clear status")
+}
+
+func TestHandleConfirmKey_EscCancels(t *testing.T) {
+	app := &App{mode: viewConfirmRestart}
+	app.handleConfirmKey(tea.KeyMsg{Type: tea.KeyEscape})
+	assert.Equal(t, viewList, app.mode)
+}
+
+func TestRenderConfirmOverlay_ContainsPrompt(t *testing.T) {
+	overlay := renderConfirmOverlay("base content", 80, 24)
+	assert.Contains(t, overlay, "Restart all workers?")
+	assert.Contains(t, overlay, "[y]")
+}
+
+func TestHandleListKey_SlashEntersFilterMode(t *testing.T) {
+	app := &App{mode: viewList, filter: "old"}
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	assert.Equal(t, viewFilter, app.mode)
+	assert.Equal(t, "", app.filter, "/ should reset filter")
+}
+
+func TestHandleListKey_PTogglesPause(t *testing.T) {
+	app := &App{mode: viewList}
+	assert.False(t, app.paused)
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	assert.True(t, app.paused)
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	assert.False(t, app.paused)
+}
+
+func TestHandleListKey_RTriggersRestartOnFrankenPHP(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0}})
+	app.mode = viewList
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	assert.Equal(t, viewConfirmRestart, app.mode, "r should trigger confirm restart on FrankenPHP tab")
+}
+
+func TestHandleListKey_RNoOpOnCaddyTab(t *testing.T) {
+	app := &App{
+		mode:      viewList,
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy},
+		tabStates: map[tab]*tabState{tabCaddy: {}},
+	}
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	assert.Equal(t, viewList, app.mode, "r should not trigger restart on Caddy tab")
+}
+
+func TestHandleListKey_SortCycling(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0}})
+	app.sortBy = model.SortByIndex
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	assert.Equal(t, model.SortByState, app.sortBy, "s should advance sort field")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	assert.Equal(t, model.SortByIndex, app.sortBy, "S should reverse sort field")
+}
+
 func TestEnableFrankenPHP_NoDoubleAdd(t *testing.T) {
 	app := &App{
 		activeTab:     tabCaddy,

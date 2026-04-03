@@ -1663,3 +1663,69 @@ func TestDetectCounterReset_ZeroPreviousIgnored(t *testing.T) {
 	}
 	assert.False(t, s.detectCounterReset(snap), "zero-to-zero should not be a reset")
 }
+
+func TestSortField_String(t *testing.T) {
+	tests := []struct {
+		field SortField
+		want  string
+	}{
+		{SortByIndex, "index"},
+		{SortByState, "state"},
+		{SortByMethod, "method"},
+		{SortByURI, "uri"},
+		{SortByTime, "time"},
+		{SortByMemory, "memory"},
+		{SortByRequests, "requests"},
+		{SortField(99), "index"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, tt.field.String())
+	}
+}
+
+func TestResetPercentiles(t *testing.T) {
+	snap1 := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestCount: 10},
+			},
+		},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now().Add(-2 * time.Second),
+	}
+	snap2 := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsWaiting: true, RequestCount: 11},
+			},
+		},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now(),
+	}
+
+	var s State
+	s.Update(snap1)
+	s.Update(snap2)
+
+	s.ResetPercentiles()
+
+	// after reset, the next update should have no percentile data
+	snap3 := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestCount: 12},
+			},
+		},
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		FetchedAt: time.Now().Add(1 * time.Second),
+	}
+	s.Update(snap3)
+	assert.False(t, s.Derived.HasPercentiles, "percentiles should not be available right after reset")
+}
+
+func TestResetPercentiles_NilSafe(t *testing.T) {
+	var s State
+	assert.NotPanics(t, func() {
+		s.ResetPercentiles()
+	}, "ResetPercentiles should not panic on uninitialized state")
+}

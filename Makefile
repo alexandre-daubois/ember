@@ -4,7 +4,7 @@ BINARY    := ember
 CMD       := ./cmd/ember
 LDFLAGS   := -s -w
 
-.PHONY: build test lint coverage bench check snapshot docker clean help
+.PHONY: build test lint coverage bench check integration clean help
 
 build: ## Build the binary
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY) $(CMD)
@@ -17,6 +17,9 @@ lint: ## Run golangci-lint
 
 bench: ## Run benchmarks
 	go test -bench=. -benchmem ./internal/app/
+
+integration: ## Run integration tests (requires running Caddy)
+	go test -tags integration -race -v ./internal/app/
 
 check: lint test ## Run lint + test (same as CI)
 

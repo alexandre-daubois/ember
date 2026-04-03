@@ -371,6 +371,65 @@ func TestPerHostMetrics_FallbackToServerLabel(t *testing.T) {
 	assert.Equal(t, float64(20), api.StatusCodes[404])
 }
 
+func TestAggregateStatusCodes_FallbackWithoutHostLabels(t *testing.T) {
+	metrics := `# HELP caddy_http_requests_total Counter.
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{code="200"} 100
+caddy_http_requests_total{code="404"} 15
+caddy_http_requests_total{code="500"} 3
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{le="+Inf"} 118
+caddy_http_request_duration_seconds_sum 10.0
+caddy_http_request_duration_seconds_count 118
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	require.Contains(t, snap.Hosts, "*", "should fall back to * when no host/server label")
+	star := snap.Hosts["*"]
+	assert.Equal(t, float64(100), star.StatusCodes[200])
+	assert.Equal(t, float64(15), star.StatusCodes[404])
+	assert.Equal(t, float64(3), star.StatusCodes[500])
+}
+
+func TestStatusCodesFromHistogram_FallbackWithoutHostLabels(t *testing.T) {
+	metrics := `# HELP caddy_http_request_duration_seconds Histogram.
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{code="200",le="0.1"} 50
+caddy_http_request_duration_seconds_bucket{code="200",le="+Inf"} 80
+caddy_http_request_duration_seconds_sum{code="200"} 5.0
+caddy_http_request_duration_seconds_count{code="200"} 80
+caddy_http_request_duration_seconds_bucket{code="500",le="0.1"} 5
+caddy_http_request_duration_seconds_bucket{code="500",le="+Inf"} 10
+caddy_http_request_duration_seconds_sum{code="500"} 1.0
+caddy_http_request_duration_seconds_count{code="500"} 10
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	require.Contains(t, snap.Hosts, "*", "should fall back to * when no host/server label")
+	star := snap.Hosts["*"]
+	assert.Equal(t, float64(80), star.StatusCodes[200], "should use histogram sample count for 200")
+	assert.Equal(t, float64(10), star.StatusCodes[500], "should use histogram sample count for 500")
+}
+
+func TestAggregateStatusCodes_NoCodeLabel(t *testing.T) {
+	metrics := `# HELP caddy_http_requests_total Counter.
+# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{handler="subroute"} 100
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{le="+Inf"} 100
+caddy_http_request_duration_seconds_sum 5.0
+caddy_http_request_duration_seconds_count 100
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	require.Contains(t, snap.Hosts, "*")
+	star := snap.Hosts["*"]
+	assert.Nil(t, star.StatusCodes, "no code label should result in nil status codes")
+}
+
 func TestPerHostMetrics_HostLabelTakesPriority(t *testing.T) {
 	// When both host and server labels exist, host should win
 	metrics := `# HELP caddy_http_requests_total Counter.
