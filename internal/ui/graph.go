@@ -70,8 +70,13 @@ func renderSingleGraph(p graphPanel, width, height int) string {
 		data = data[len(data)-chartWidth:]
 	}
 
+	plotData := make([]float64, len(data))
+	for i, v := range data {
+		plotData[i] = math.Round(v*100) / 100
+	}
+
 	maxVal := 0.0
-	for _, v := range data {
+	for _, v := range plotData {
 		if v > maxVal {
 			maxVal = v
 		}
@@ -81,7 +86,7 @@ func renderSingleGraph(p graphPanel, width, height int) string {
 		upperBound = 1
 	}
 
-	chart := asciigraph.Plot(data,
+	chart := asciigraph.Plot(plotData,
 		asciigraph.Height(height),
 		asciigraph.Width(chartWidth),
 		asciigraph.SeriesColors(p.color),

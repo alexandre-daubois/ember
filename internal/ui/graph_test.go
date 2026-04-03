@@ -96,3 +96,29 @@ func TestRenderSingleGraph_SingleValue(t *testing.T) {
 	out := renderSingleGraph(p, 40, graphPanelHeight)
 	assert.Contains(t, out, "42.0 req/s")
 }
+
+func TestRenderSingleGraph_FloatPrecisionStability(t *testing.T) {
+	valuesAbove := []float64{0.5, 0.8, 1.00000095367}
+	valuesExact := []float64{0.5, 0.8, 1.0}
+
+	p1 := graphPanel{title: "RSS", unit: "MB", values: valuesAbove, color: 0}
+	p2 := graphPanel{title: "RSS", unit: "MB", values: valuesExact, color: 0}
+
+	out1 := renderSingleGraph(p1, 60, graphPanelHeight)
+	out2 := renderSingleGraph(p2, 60, graphPanelHeight)
+
+	lines1 := strings.Split(out1, "\n")
+	lines2 := strings.Split(out2, "\n")
+	assert.Equal(t, len(lines1), len(lines2), "same height regardless of float precision noise")
+}
+
+func TestRenderSingleGraph_DoesNotMutateOriginal(t *testing.T) {
+	original := []float64{0.1234567, 0.9999999, 1.00000095}
+	snapshot := make([]float64, len(original))
+	copy(snapshot, original)
+
+	p := graphPanel{title: "Test", unit: "%", values: original}
+	renderSingleGraph(p, 60, graphPanelHeight)
+
+	assert.Equal(t, snapshot, original, "original slice must not be modified")
+}
