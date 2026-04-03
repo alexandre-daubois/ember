@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -175,6 +176,53 @@ func TestFormatMs_Seconds(t *testing.T) {
 
 func TestFormatMs_Negative(t *testing.T) {
 	assert.Equal(t, "-5.0ms", formatMs(-5))
+}
+
+func TestRenderDashboard_ShowsReloadOK(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{
+			Metrics: fetcher.MetricsSnapshot{
+				HasConfigReloadMetrics:           true,
+				ConfigLastReloadSuccessful:       1,
+				ConfigLastReloadSuccessTimestamp: float64(time.Now().Add(-5 * time.Minute).Unix()),
+			},
+		},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	assert.Contains(t, out, "config reload")
+	assert.Contains(t, out, "ago")
+	assert.NotContains(t, out, "FAILED")
+}
+
+func TestRenderDashboard_ShowsReloadFailed(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{
+			Metrics: fetcher.MetricsSnapshot{
+				HasConfigReloadMetrics:           true,
+				ConfigLastReloadSuccessful:       0,
+				ConfigLastReloadSuccessTimestamp: float64(time.Now().Add(-10 * time.Minute).Unix()),
+			},
+		},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	assert.Contains(t, out, "config reload FAILED")
+	assert.NotContains(t, out, "ago")
+}
+
+func TestRenderDashboard_NoReloadWhenNoData(t *testing.T) {
+	s := &model.State{
+		Current: &fetcher.Snapshot{},
+	}
+	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	assert.NotContains(t, out, "config reload")
+}
+
+func TestFormatReloadAge(t *testing.T) {
+	assert.Equal(t, "0s", formatReloadAge(-5*time.Second))
+	assert.Equal(t, "30s", formatReloadAge(30*time.Second))
+	assert.Equal(t, "5m", formatReloadAge(5*time.Minute))
+	assert.Equal(t, "2h 30m", formatReloadAge(2*time.Hour+30*time.Minute))
+	assert.Equal(t, "3d 2h", formatReloadAge(74*time.Hour))
 }
 
 func stripANSI(s string) string {

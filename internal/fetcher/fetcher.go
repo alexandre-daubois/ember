@@ -79,6 +79,11 @@ type MetricsSnapshot struct {
 	ProcessCPUSecondsTotal  float64 `json:"processCpuSecondsTotal,omitempty"`
 	ProcessRSSBytes         float64 `json:"processRssBytes,omitempty"`
 	ProcessStartTimeSeconds float64 `json:"processStartTimeSeconds,omitempty"`
+
+	// Caddy config reload status (built-in Caddy metrics)
+	HasConfigReloadMetrics           bool    `json:"hasConfigReloadMetrics"`
+	ConfigLastReloadSuccessful       float64 `json:"configLastReloadSuccessful"`
+	ConfigLastReloadSuccessTimestamp float64 `json:"configLastReloadSuccessTimestamp"`
 }
 
 type HistogramBucket struct {

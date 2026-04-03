@@ -54,6 +54,7 @@ func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
 		writeErrorMetrics(w, &s, p)
 		writePercentiles(w, &s, p)
 		writeProcessMetrics(w, &s, p)
+		writeReloadMetrics(w, &s, p)
 	}
 }
 
@@ -289,6 +290,22 @@ func writeProcessMetrics(w http.ResponseWriter, s *model.State, prefix string) {
 	fmt.Fprintf(w, "# HELP %s Resident set size of the monitored process\n", rss)
 	fmt.Fprintf(w, "# TYPE %s gauge\n", rss)
 	fmt.Fprintf(w, "%s %d\n", rss, s.Current.Process.RSS)
+}
+
+func writeReloadMetrics(w http.ResponseWriter, s *model.State, prefix string) {
+	if !s.Current.Metrics.HasConfigReloadMetrics {
+		return
+	}
+
+	successful := prefixed(prefix, "caddy_config_last_reload_successful")
+	fmt.Fprintf(w, "# HELP %s Whether the last Caddy config reload succeeded\n", successful)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", successful)
+	fmt.Fprintf(w, "%s %g\n", successful, s.Current.Metrics.ConfigLastReloadSuccessful)
+
+	ts := prefixed(prefix, "caddy_config_last_reload_success_timestamp_seconds")
+	fmt.Fprintf(w, "# HELP %s Timestamp of the last successful Caddy config reload\n", ts)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", ts)
+	fmt.Fprintf(w, "%s %g\n", ts, s.Current.Metrics.ConfigLastReloadSuccessTimestamp)
 }
 
 func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {

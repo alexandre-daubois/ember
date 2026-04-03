@@ -61,6 +61,9 @@ func TestParsePrometheusMetrics_GlobalMetrics(t *testing.T) {
 	assert.Equal(t, float64(20), snap.TotalThreads, "TotalThreads")
 	assert.Equal(t, float64(4), snap.BusyThreads, "BusyThreads")
 	assert.Equal(t, float64(2), snap.QueueDepth, "QueueDepth")
+	assert.False(t, snap.HasConfigReloadMetrics, "HasConfigReloadMetrics should be false for FrankenPHP-only metrics")
+	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessful, "ConfigLastReloadSuccessful default")
+	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessTimestamp, "ConfigLastReloadSuccessTimestamp default")
 }
 
 func TestParsePrometheusMetrics_WorkerMetrics(t *testing.T) {
@@ -120,6 +123,12 @@ caddy_http_request_duration_seconds_count{handler="subroute",server="srv0"} 160
 # HELP caddy_http_requests_in_flight Active HTTP requests
 # TYPE caddy_http_requests_in_flight gauge
 caddy_http_requests_in_flight{handler="subroute",server="srv0"} 42
+# HELP caddy_config_last_reload_successful Whether the last configuration reload was successful
+# TYPE caddy_config_last_reload_successful gauge
+caddy_config_last_reload_successful 1
+# HELP caddy_config_last_reload_success_timestamp_seconds Timestamp of the last successful configuration reload
+# TYPE caddy_config_last_reload_success_timestamp_seconds gauge
+caddy_config_last_reload_success_timestamp_seconds 1.7120736e+09
 `
 
 func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
@@ -132,6 +141,24 @@ func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
 	assert.Equal(t, float64(160), snap.HTTPRequestDurationCount, "HTTPRequestDurationCount")
 	assert.Equal(t, float64(42), snap.HTTPRequestsInFlight, "HTTPRequestsInFlight")
 	assert.True(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be true when Caddy metrics are present")
+	assert.True(t, snap.HasConfigReloadMetrics, "HasConfigReloadMetrics")
+	assert.Equal(t, float64(1), snap.ConfigLastReloadSuccessful, "ConfigLastReloadSuccessful")
+	assert.Equal(t, 1.7120736e+09, snap.ConfigLastReloadSuccessTimestamp, "ConfigLastReloadSuccessTimestamp")
+}
+
+func TestParsePrometheusMetrics_ReloadFailed(t *testing.T) {
+	metrics := `# HELP caddy_config_last_reload_successful Whether the last configuration reload was successful
+# TYPE caddy_config_last_reload_successful gauge
+caddy_config_last_reload_successful 0
+# HELP caddy_config_last_reload_success_timestamp_seconds Timestamp of the last successful configuration reload
+# TYPE caddy_config_last_reload_success_timestamp_seconds gauge
+caddy_config_last_reload_success_timestamp_seconds 1.7120736e+09
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	require.NoError(t, err)
+	assert.True(t, snap.HasConfigReloadMetrics)
+	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessful)
+	assert.Equal(t, 1.7120736e+09, snap.ConfigLastReloadSuccessTimestamp)
 }
 
 func TestParsePrometheusMetrics_CaddyHistogramBuckets(t *testing.T) {
