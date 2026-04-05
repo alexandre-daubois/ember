@@ -693,6 +693,48 @@ func TestHostSortField_String(t *testing.T) {
 	}
 }
 
+func TestCertSortField_String(t *testing.T) {
+	tests := []struct {
+		field CertSortField
+		want  string
+	}{
+		{SortByCertDomain, "domain"},
+		{SortByCertExpiry, "expiry"},
+		{SortByCertSource, "source"},
+		{SortByCertIssuer, "issuer"},
+		{CertSortField(99), "domain"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, tt.field.String())
+	}
+}
+
+func TestCertSortField_NextPrev_Cycle(t *testing.T) {
+	s := SortByCertDomain
+	seen := make(map[CertSortField]bool)
+	for range len(certSortFieldOrder) {
+		seen[s] = true
+		s = s.Next()
+	}
+	assert.Len(t, seen, len(certSortFieldOrder))
+	assert.Equal(t, SortByCertDomain, s, "Next() should cycle back")
+}
+
+func TestCertSortField_PrevNext_Inverse(t *testing.T) {
+	for _, start := range certSortFieldOrder {
+		assert.Equal(t, start, start.Next().Prev(), "Next().Prev() should return to %v", start)
+		assert.Equal(t, start, start.Prev().Next(), "Prev().Next() should return to %v", start)
+	}
+}
+
+func TestCertSortField_Next_InvalidValue(t *testing.T) {
+	assert.Equal(t, SortByCertDomain, CertSortField(999).Next())
+}
+
+func TestCertSortField_Prev_InvalidValue(t *testing.T) {
+	assert.Equal(t, SortByCertDomain, CertSortField(999).Prev())
+}
+
 func TestComputeStatusCodeRates(t *testing.T) {
 	curr := map[int]float64{200: 100, 404: 20, 500: 5}
 	prev := map[int]float64{200: 80, 404: 10}

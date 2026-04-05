@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused bool, width int, activeTab tab) string {
+func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, paused bool, width int, activeTab tab) string {
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
@@ -19,7 +19,8 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 	}
 
 	var bindings []binding
-	if activeTab == tabConfig {
+	switch activeTab {
+	case tabConfig:
 		bindings = []binding{
 			{"↑/↓", "navigate"},
 			{"Enter", "expand"},
@@ -30,7 +31,18 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 			{"Tab/S-Tab", "switch"},
 			{"q", "quit"},
 		}
-	} else {
+	case tabCertificates:
+		bindings = []binding{
+			{"↑/↓", "navigate"},
+			{"s/S", "sort(" + certSortBy.String() + ")"},
+			{"p", pauseLabel},
+			{"r", "refresh"},
+			{"g", "graphs"},
+			{"/", "filter"},
+			{"Tab/S-Tab", "switch"},
+			{"q", "quit"},
+		}
+	default:
 		var sortLabel string
 		if activeTab == tabCaddy {
 			sortLabel = hostSortBy.String()
@@ -70,9 +82,9 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) strin
 		desc string
 	}
 
-	tabHint := "1/2"
+	tabHint := "1/2/3"
 	if hasFrankenPHP {
-		tabHint = "1/2/3"
+		tabHint = "1/2/3/4"
 	}
 
 	nav := []binding{
@@ -94,9 +106,9 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) strin
 		{"g", "Toggle graphs"},
 	}
 	if hasFrankenPHP {
-		actions = append(actions, binding{"r", "Refresh config / restart workers"})
+		actions = append(actions, binding{"r", "Refresh config/certs / restart workers"})
 	} else {
-		actions = append(actions, binding{"r", "Refresh config"})
+		actions = append(actions, binding{"r", "Refresh config/certs"})
 	}
 	actions = append(actions,
 		binding{"?", "Toggle this help"},

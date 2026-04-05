@@ -40,6 +40,7 @@ type tab int
 const (
 	tabCaddy tab = iota
 	tabConfig
+	tabCertificates
 	tabFrankenPHP
 )
 
@@ -54,6 +55,11 @@ type restarter interface {
 
 type configFetcher interface {
 	FetchConfig(ctx context.Context) (json.RawMessage, error)
+}
+
+type certFetcher interface {
+	FetchPKICertificates(ctx context.Context) []fetcher.CertificateInfo
+	DialTLSCertificates(ctx context.Context, hosts []string) []fetcher.CertificateInfo
 }
 
 const sparklineSize = 15
@@ -90,6 +96,9 @@ type App struct {
 	configCursor     int
 	configFilter     string
 	configFilterMode bool
+
+	certificates []fetcher.CertificateInfo
+	certSortBy   model.CertSortField
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -97,7 +106,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 
-	tabs := []tab{tabCaddy, tabConfig}
+	tabs := []tab{tabCaddy, tabConfig, tabCertificates}
 	activeTab := tabCaddy
 	if cfg.HasFrankenPHP {
 		tabs = append(tabs, tabFrankenPHP)
@@ -134,8 +143,11 @@ func (a *App) switchTab(target tab) {
 }
 
 func (a *App) switchTabCmd() tea.Cmd {
-	if a.activeTab == tabConfig && a.configRoot == nil {
+	switch {
+	case a.activeTab == tabConfig && a.configRoot == nil:
 		return a.doFetchConfig()
+	case a.activeTab == tabCertificates && a.certificates == nil:
+		return a.doFetchCertificates()
 	}
 	return nil
 }
@@ -168,6 +180,10 @@ type metricsServerErrMsg struct{ err error }
 type configFetchMsg struct {
 	raw json.RawMessage
 	err error
+}
+type certFetchMsg struct {
+	certs []fetcher.CertificateInfo
+	err   error
 }
 
 func (a *App) Init() tea.Cmd {
@@ -298,6 +314,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.configFilter = ""
 		a.configFilterMode = false
 		return a, nil
+	case certFetchMsg:
+		if msg.err != nil {
+			a.status = "cert fetch failed: " + msg.err.Error()
+			return a, nil
+		}
+		a.certificates = msg.certs
+		a.tabStates[tabCertificates].cursor = 0
+		if a.activeTab == tabCertificates {
+			a.cursor = 0
+		}
+		if warn := certExpiryWarning(msg.certs); warn != "" {
+			a.status = warn
+		}
+		return a, nil
 	}
 	return a, nil
 }
@@ -337,8 +367,11 @@ func (a *App) View() string {
 			}
 		}
 	}
+	if a.certificates != nil {
+		counts[tabCertificates] = fmt.Sprintf("%d certs", len(a.certificates))
+	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.paused, listWidth, a.activeTab)
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.paused, listWidth, a.activeTab)
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
@@ -354,6 +387,17 @@ func (a *App) View() string {
 			contentList = renderConfigTree(a.configRoot, a.configCursor, listWidth, configAreaHeight, a.configFilter, a.configFilterMode)
 		} else {
 			contentList = greyStyle.Render(" Loading config...")
+		}
+	case tabCertificates:
+		if a.certificates != nil {
+			certs := a.filteredCerts()
+			if len(certs) == 0 && a.filter != "" {
+				contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
+			} else {
+				contentList = renderCertificateTable(certs, a.cursor, listWidth, a.certSortBy)
+			}
+		} else {
+			contentList = greyStyle.Render(" Loading certificates...")
 		}
 	case tabFrankenPHP:
 		threads = a.filteredThreads()
@@ -488,6 +532,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if a.activeTab == tabConfig {
 		return a.handleConfigListKey(msg)
 	}
+	if a.activeTab == tabCertificates {
+		return a.handleCertListKey(msg)
+	}
 
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -511,6 +558,11 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "3":
 		if len(a.tabs) > 2 {
 			a.switchTab(a.tabs[2])
+		}
+		return a, a.switchTabCmd()
+	case "4":
+		if len(a.tabs) > 3 {
+			a.switchTab(a.tabs[3])
 		}
 		return a, a.switchTabCmd()
 	case "up", "k":
@@ -689,6 +741,8 @@ func (a *App) listLen() int {
 	switch a.activeTab {
 	case tabConfig:
 		return len(flattenVisible(a.configRoot))
+	case tabCertificates:
+		return len(a.filteredCerts())
 	case tabCaddy:
 		return len(a.filteredHosts())
 	default:
@@ -702,6 +756,8 @@ func (a *App) clampCursor() {
 	}
 	var count int
 	switch a.activeTab {
+	case tabCertificates:
+		count = len(a.filteredCerts())
 	case tabCaddy:
 		count = len(a.filteredHosts())
 	default:
@@ -762,6 +818,33 @@ func (a *App) doFetchConfig() tea.Cmd {
 			return configFetchMsg{raw: raw, err: err}
 		}
 		return configFetchMsg{err: fmt.Errorf("config inspection not supported")}
+	}
+}
+
+func (a *App) doFetchCertificates() tea.Cmd {
+	// capture hosts on the main goroutine to avoid a data race with Update().
+	var hosts []string
+	for _, hd := range a.state.HostDerived {
+		hosts = append(hosts, hd.Host)
+	}
+
+	return func() tea.Msg {
+		cf, ok := a.fetcher.(certFetcher)
+		if !ok {
+			return certFetchMsg{err: fmt.Errorf("certificate inspection not supported")}
+		}
+
+		ctx := context.Background()
+		all := make([]fetcher.CertificateInfo, 0)
+
+		all = append(all, cf.FetchPKICertificates(ctx)...)
+
+		if len(hosts) > 0 {
+			tlsCerts := cf.DialTLSCertificates(ctx, hosts)
+			all = append(all, tlsCerts...)
+		}
+
+		return certFetchMsg{certs: all}
 	}
 }
 

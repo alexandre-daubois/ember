@@ -116,6 +116,50 @@ func (s HostSortField) Prev() HostSortField {
 	return SortByHost
 }
 
+type CertSortField int
+
+const (
+	SortByCertDomain CertSortField = iota
+	SortByCertExpiry
+	SortByCertSource
+	SortByCertIssuer
+)
+
+var certSortFieldOrder = []CertSortField{
+	SortByCertDomain, SortByCertExpiry, SortByCertSource, SortByCertIssuer,
+}
+
+func (s CertSortField) String() string {
+	switch s {
+	case SortByCertExpiry:
+		return "expiry"
+	case SortByCertSource:
+		return "source"
+	case SortByCertIssuer:
+		return "issuer"
+	default:
+		return "domain"
+	}
+}
+
+func (s CertSortField) Next() CertSortField {
+	for i, f := range certSortFieldOrder {
+		if f == s {
+			return certSortFieldOrder[(i+1)%len(certSortFieldOrder)]
+		}
+	}
+	return SortByCertDomain
+}
+
+func (s CertSortField) Prev() CertSortField {
+	for i, f := range certSortFieldOrder {
+		if f == s {
+			return certSortFieldOrder[(i-1+len(certSortFieldOrder))%len(certSortFieldOrder)]
+		}
+	}
+	return SortByCertDomain
+}
+
 type HostDerived struct {
 	Host                               string
 	RPS                                float64
