@@ -12,23 +12,25 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/alexandre-daubois/ember/internal/ui"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string) error {
+func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string, plugins []plugin.Plugin) error {
 	uiCfg := ui.Config{
 		Interval:      cfg.interval,
 		SlowThreshold: time.Duration(cfg.slowThreshold) * time.Millisecond,
 		NoColor:       cfg.noColor,
 		Version:       version,
 		HasFrankenPHP: hasFrankenPHP,
+		Plugins:       plugins,
 	}
 
 	var srv *http.Server
 	if cfg.expose != "" {
 		holder := &exporter.StateHolder{}
-		uiCfg.OnStateUpdate = func(s model.State) {
-			holder.Store(s.CopyForExport())
+		uiCfg.OnStateUpdate = func(s model.State, pluginExports []plugin.PluginExport) {
+			holder.StoreAll(s.CopyForExport(), pluginExports)
 		}
 
 		mux := http.NewServeMux()
@@ -59,6 +61,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string) 
 	}
 
 	app := ui.NewApp(f, uiCfg)
+	defer app.Close()
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		return err

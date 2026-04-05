@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -49,7 +50,7 @@ percentiles, status codes, and more. When FrankenPHP is detected,
 unlock per-thread introspection, worker management, and memory tracking.
 
 Keybindings:
-  Tab / 1 / 2      Switch between Caddy and FrankenPHP tabs
+  Tab / 1-9         Switch tab
   Up / Down / j / k Navigate list
   Home / End        Jump to first / last item
   PgUp / PgDn       Page navigation
@@ -104,13 +105,19 @@ Keybindings:
 			hasFrankenPHP := f.DetectFrankenPHP(ctx)
 			f.FetchServerNames(ctx)
 
+			plugins, err := initPlugins(ctx, &cfg)
+			if err != nil {
+				return err
+			}
+			defer closePlugins(plugins)
+
 			switch {
 			case cfg.jsonMode:
 				runJSON(ctx, f, cfg.interval, cfg.once, cfg.logger)
 			case cfg.daemon:
-				return runDaemon(ctx, f, &cfg)
+				return runDaemon(ctx, f, &cfg, plugins)
 			default:
-				return runTUI(f, &cfg, hasFrankenPHP, version)
+				return runTUI(f, &cfg, hasFrankenPHP, version, plugins)
 			}
 			return nil
 		},
@@ -232,4 +239,48 @@ func validate(cfg *config) error {
 		}
 	}
 	return nil
+}
+
+func initPlugins(ctx context.Context, cfg *config) ([]plugin.Plugin, error) {
+	all := plugin.All()
+	if len(all) == 0 {
+		return nil, nil
+	}
+
+	var initialized []plugin.Plugin
+	for _, p := range all {
+		pcfg := plugin.PluginConfig{
+			CaddyAddr: cfg.addr,
+			Options:   pluginEnvOptions(p.Name()),
+		}
+		if err := p.Init(ctx, pcfg); err != nil {
+			closePlugins(initialized)
+			return nil, fmt.Errorf("plugin %s: %w", p.Name(), err)
+		}
+		initialized = append(initialized, p)
+	}
+	return initialized, nil
+}
+
+func closePlugins(plugins []plugin.Plugin) {
+	for i := len(plugins) - 1; i >= 0; i-- {
+		if c, ok := plugins[i].(plugin.Closer); ok {
+			_ = c.Close()
+		}
+	}
+}
+
+func pluginEnvOptions(name string) map[string]string {
+	prefix := "EMBER_PLUGIN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "")) + "_"
+	opts := make(map[string]string)
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, prefix) {
+			continue
+		}
+		kv := strings.SplitN(env[len(prefix):], "=", 2)
+		if len(kv) == 2 {
+			opts[strings.ToLower(kv[0])] = kv[1]
+		}
+	}
+	return opts
 }

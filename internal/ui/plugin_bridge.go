@@ -1,0 +1,140 @@
+package ui
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+type pluginGroup struct {
+	p        plugin.Plugin
+	fetcher  plugin.Fetcher
+	exporter plugin.Exporter
+	avail    plugin.Availability
+	wasAvail bool
+	data     any
+	err      error
+	fetching bool
+}
+
+type pluginTab struct {
+	group    *pluginGroup
+	renderer plugin.Renderer
+	tabID    tab
+	tabName  string
+}
+
+func newPluginTabs(p plugin.Plugin, startID tab) ([]*pluginTab, *pluginGroup) {
+	g := &pluginGroup{p: p, wasAvail: true}
+	if f, ok := p.(plugin.Fetcher); ok {
+		g.fetcher = f
+	}
+	if e, ok := p.(plugin.Exporter); ok {
+		g.exporter = e
+	}
+	if a, ok := p.(plugin.Availability); ok {
+		g.avail = a
+	}
+
+	var tabs []*pluginTab
+
+	if mr, ok := p.(plugin.MultiRenderer); ok {
+		for i, desc := range mr.Tabs() {
+			r := mr.RendererForTab(desc.Key)
+			if r != nil {
+				tabs = append(tabs, &pluginTab{
+					group:    g,
+					renderer: r,
+					tabID:    startID + tab(i),
+					tabName:  desc.Name,
+				})
+			}
+		}
+	} else if r, ok := p.(plugin.Renderer); ok {
+		tabs = append(tabs, &pluginTab{
+			group:    g,
+			renderer: r,
+			tabID:    startID,
+			tabName:  p.Name(),
+		})
+	}
+
+	return tabs, g
+}
+
+type pluginFetchMsg struct {
+	groupIndex int
+	data       any
+	err        error
+}
+
+func doPluginFetch(ctx context.Context, groupIndex int, f plugin.Fetcher) tea.Cmd {
+	return func() tea.Msg {
+		data, err := plugin.SafeFetch(ctx, f)
+		return pluginFetchMsg{groupIndex: groupIndex, data: data, err: err}
+	}
+}
+
+func safePluginUpdate(r plugin.Renderer, data any, w, h int) (_ plugin.Renderer, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("plugin panic during Update: %v", rec)
+		}
+	}()
+	return r.Update(data, w, h), nil
+}
+
+func safePluginView(r plugin.Renderer, w, h int) (s string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			s = fmt.Sprintf("plugin error: %v", rec)
+		}
+	}()
+	return r.View(w, h)
+}
+
+func safePluginHandleKey(r plugin.Renderer, msg tea.KeyMsg) (consumed bool, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("plugin panic during HandleKey: %v", rec)
+		}
+	}()
+	return r.HandleKey(msg), nil
+}
+
+func safePluginStatusCount(r plugin.Renderer) (_ string, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("plugin panic during StatusCount: %v", rec)
+		}
+	}()
+	return r.StatusCount(), nil
+}
+
+func safePluginHelpBindings(r plugin.Renderer) (_ []plugin.HelpBinding, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("plugin panic during HelpBindings: %v", rec)
+		}
+	}()
+	return r.HelpBindings(), nil
+}
+
+func safeOnMetrics(sub plugin.MetricsSubscriber, snap *fetcher.Snapshot) {
+	defer func() {
+		recover() //nolint:errcheck // fire-and-forget: don't crash Ember if a subscriber panics
+	}()
+	sub.OnMetrics(snap)
+}
+
+func safePluginAvailable(a plugin.Availability) (avail bool) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			avail = true
+		}
+	}()
+	return a.Available()
+}

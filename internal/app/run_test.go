@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidate_DaemonRequiresExpose(t *testing.T) {
@@ -375,4 +377,155 @@ func TestRun_HelpContainsKeybindings(t *testing.T) {
 	assert.Contains(t, out, "--addr")
 	assert.Contains(t, out, "--expose")
 	assert.Contains(t, out, "Examples")
+}
+
+type testPlugin struct {
+	name    string
+	initCfg plugin.PluginConfig
+	initErr error
+}
+
+func (p *testPlugin) Name() string { return p.name }
+func (p *testPlugin) Init(_ context.Context, cfg plugin.PluginConfig) error {
+	p.initCfg = cfg
+	return p.initErr
+}
+
+func TestInitPlugins_Empty(t *testing.T) {
+	plugin.Reset()
+	cfg := &config{addr: "http://localhost:2019"}
+
+	plugins, err := initPlugins(context.Background(), cfg)
+	assert.NoError(t, err)
+	assert.Nil(t, plugins)
+}
+
+func TestInitPlugins_Success(t *testing.T) {
+	plugin.Reset()
+	p := &testPlugin{name: "test"}
+	plugin.Register(p)
+
+	cfg := &config{addr: "http://localhost:2019"}
+	plugins, err := initPlugins(context.Background(), cfg)
+
+	assert.NoError(t, err)
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "http://localhost:2019", p.initCfg.CaddyAddr)
+}
+
+func TestInitPlugins_InitError(t *testing.T) {
+	plugin.Reset()
+	plugin.Register(&testPlugin{name: "broken", initErr: assert.AnError})
+
+	cfg := &config{addr: "http://localhost:2019"}
+	_, err := initPlugins(context.Background(), cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "plugin broken")
+}
+
+func TestPluginEnvOptions(t *testing.T) {
+	t.Setenv("EMBER_PLUGIN_RATELIMIT_API_KEY", "abc123")
+	t.Setenv("EMBER_PLUGIN_RATELIMIT_ENDPOINT", "http://localhost:8080")
+	t.Setenv("EMBER_OTHER_VAR", "ignored")
+
+	opts := pluginEnvOptions("ratelimit")
+
+	assert.Equal(t, "abc123", opts["api_key"])
+	assert.Equal(t, "http://localhost:8080", opts["endpoint"])
+	assert.NotContains(t, opts, "other_var")
+}
+
+func TestPluginEnvOptions_HyphenatedName(t *testing.T) {
+	t.Setenv("EMBER_PLUGIN_MYPLUGIN_FOO", "bar")
+
+	opts := pluginEnvOptions("my-plugin")
+	assert.Equal(t, "bar", opts["foo"])
+}
+
+func TestPluginEnvOptions_Empty(t *testing.T) {
+	opts := pluginEnvOptions("nonexistent")
+	assert.Empty(t, opts)
+}
+
+func TestPluginEnvOptions_ValueWithEquals(t *testing.T) {
+	t.Setenv("EMBER_PLUGIN_TEST_DSN", "postgres://user:pass@host/db?opt=val")
+
+	opts := pluginEnvOptions("test")
+	assert.Equal(t, "postgres://user:pass@host/db?opt=val", opts["dsn"])
+}
+
+func TestInitPlugins_PassesEnvOptions(t *testing.T) {
+	plugin.Reset()
+	t.Setenv("EMBER_PLUGIN_MYPLUGIN_KEY", "val")
+
+	p := &testPlugin{name: "myplugin"}
+	plugin.Register(p)
+
+	cfg := &config{addr: "http://localhost:2019"}
+	_, err := initPlugins(context.Background(), cfg)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "val", p.initCfg.Options["key"])
+}
+
+type closableTestPlugin struct {
+	testPlugin
+	closed bool
+}
+
+type closableOrderPlugin struct {
+	testPlugin
+	closeFn func()
+}
+
+func (p *closableOrderPlugin) Close() error {
+	p.closeFn()
+	return nil
+}
+
+func (p *closableTestPlugin) Close() error {
+	p.closed = true
+	return nil
+}
+
+func TestInitPlugins_CleansUpOnFailure(t *testing.T) {
+	plugin.Reset()
+
+	good := &closableTestPlugin{testPlugin: testPlugin{name: "good"}}
+	bad := &testPlugin{name: "bad", initErr: assert.AnError}
+
+	plugin.Register(good)
+	plugin.Register(bad)
+
+	cfg := &config{addr: "http://localhost:2019"}
+	_, err := initPlugins(context.Background(), cfg)
+
+	require.Error(t, err)
+	assert.True(t, good.closed, "successfully initialized plugin should be closed on failure")
+}
+
+func TestClosePlugins_SkipsNonCloser(t *testing.T) {
+	p1 := &testPlugin{name: "first"}
+	p2 := &testPlugin{name: "second"}
+
+	assert.NotPanics(t, func() {
+		closePlugins([]plugin.Plugin{p1, p2})
+	})
+}
+
+func TestClosePlugins_ReverseOrder(t *testing.T) {
+	var order []string
+
+	p1 := &closableOrderPlugin{testPlugin: testPlugin{name: "first"}, closeFn: func() { order = append(order, "first") }}
+	p2 := &closableOrderPlugin{testPlugin: testPlugin{name: "second"}, closeFn: func() { order = append(order, "second") }}
+
+	closePlugins([]plugin.Plugin{p1, p2})
+	assert.Equal(t, []string{"second", "first"}, order)
+}
+
+func TestClosePlugins_Empty(t *testing.T) {
+	assert.NotPanics(t, func() {
+		closePlugins(nil)
+	})
 }

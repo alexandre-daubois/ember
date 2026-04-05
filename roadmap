@@ -1,0 +1,44 @@
+/btw il y a d'autres features auquelles tu penserais que nous permettrai de faire l'API admin de Caddy ?
+
+    Bonne question ! En explorant l'admin API de Caddy, voici ce qui est dispo et qu'Ember pourrait exploiter :
+
+    Deja dispo, zero effort cote Caddy
+
+    1. Config Hot-Reload depuis Ember
+    - POST /load permet de recharger la config Caddy
+    - POST /config/... permet de modifier n'importe quel champ a chaud
+    - Ember pourrait offrir un bouton pour activer/desactiver des routes, changer des upstreams, modifier des rate limits, directement depuis le TUI
+
+    2. Reverse Proxy Upstream Status
+    - GET /reverse_proxy/upstreams retourne la sante, les requetes actives et les failures par backend
+    - Un onglet "Upstreams" avec health indicators vert/rouge, distribution de charge, failure trends
+
+    3. Config Inspector
+    - GET /config/ retourne toute la config JSON en temps reel
+    - Ember pourrait avoir un mode "browse config" pour naviguer l'arbre de config Caddy (comme un jq interactif)
+    - Utile pour debug : "est-ce que ma route est bien configuree ?"
+
+    4. PKI / Certificats TLS
+    - GET /pki/ca/<id>/certificates retourne les certs
+    - Afficher l'etat des certificats TLS : expiration, domaines couverts, renouvellement auto
+    - Alerter quand un cert approche de l'expiration
+
+    5. Profiling a la demande
+    - GET /debug/pprof/profile, /debug/pprof/heap, etc.
+    - Declencher un CPU/memory profile depuis Ember et telecharger le resultat
+    - "Ton P99 est a 2s ? Appuie sur P pour capturer un profile CPU de 30s"
+
+    6. Reload Tracking
+    - caddy_config_last_reload_successful (gauge 0/1) et caddy_config_last_reload_success_timestamp_seconds
+    - Afficher dans le dashboard : dernier reload, succes/echec, timestamp
+    - Alerter sur un reload echoue
+
+    7. Go Runtime Metrics
+    - GET /debug/vars expose goroutines, GC stats, memstats
+    - Enrichir le dashboard avec : nombre de goroutines, pression GC, heap usage
+    - Utile pour diagnostiquer des fuites memoire cote Caddy
+
+    Le plus game-changer a mon avis
+
+    Le Config Inspector interactif et le Profiling a la demande sont les plus differenciants. Personne ne propose ca dans un TUI. Imagine : tu vois un spike de latence, tu appuies
+    sur une touche, et 30s plus tard t'as un flame graph. Ca c'est du DX.
