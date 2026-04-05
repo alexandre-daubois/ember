@@ -26,10 +26,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, paused b
 			{"←", "collapse"},
 			{"e/E", "expand/collapse all"},
 			{"/", "search"},
-			{"n/N", "next/prev match"},
-			{"r", "refresh"},
-			{"p", pauseLabel},
-			{"g", "graphs"},
+			{"?", "help"},
 			{"Tab/S-Tab", "switch"},
 			{"q", "quit"},
 		}
