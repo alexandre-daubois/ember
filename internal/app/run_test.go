@@ -559,7 +559,7 @@ func TestPluginEnvOptions(t *testing.T) {
 }
 
 func TestPluginEnvOptions_HyphenatedName(t *testing.T) {
-	t.Setenv("EMBER_PLUGIN_MY_PLUGIN_FOO", "bar")
+	t.Setenv("EMBER_PLUGIN_MYPLUGIN_FOO", "bar")
 
 	opts := pluginEnvOptions("my-plugin")
 	assert.Equal(t, "bar", opts["foo"])

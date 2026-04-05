@@ -113,6 +113,7 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config, plugins []pl
 		}
 		errThrottle.recover(log)
 		state.Update(snap)
+		notifyDaemonSubscribers(dPlugins, snap)
 		fetchDaemonPlugins(ctx, dPlugins, log)
 		holder.StoreAll(state.CopyForExport(), daemonPluginExports(dPlugins))
 	}
@@ -146,6 +147,7 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config, plugins []pl
 }
 
 type daemonPlugin struct {
+	p        plugin.Plugin
 	name     string
 	fetcher  plugin.Fetcher
 	exporter plugin.Exporter
@@ -155,7 +157,7 @@ type daemonPlugin struct {
 func newDaemonPlugins(plugins []plugin.Plugin) []daemonPlugin {
 	var dps []daemonPlugin
 	for _, p := range plugins {
-		dp := daemonPlugin{name: p.Name()}
+		dp := daemonPlugin{p: p, name: p.Name()}
 		if f, ok := p.(plugin.Fetcher); ok {
 			dp.fetcher = f
 		}
@@ -191,6 +193,21 @@ func fetchDaemonPlugins(ctx context.Context, dps []daemonPlugin, log *slog.Logge
 		}(i)
 	}
 	wg.Wait()
+}
+
+func notifyDaemonSubscribers(dps []daemonPlugin, snap *fetcher.Snapshot) {
+	for _, dp := range dps {
+		if sub, ok := dp.p.(plugin.MetricsSubscriber); ok {
+			safeOnMetrics(sub, snap)
+		}
+	}
+}
+
+func safeOnMetrics(sub plugin.MetricsSubscriber, snap *fetcher.Snapshot) {
+	defer func() {
+		recover() //nolint:errcheck // fire-and-forget: don't crash Ember if a subscriber panics
+	}()
+	sub.OnMetrics(snap)
 }
 
 func daemonPluginExports(dps []daemonPlugin) []plugin.PluginExport {

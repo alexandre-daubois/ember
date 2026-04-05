@@ -1177,12 +1177,12 @@ func TestPluginFetchMsg_PreservesDataOnError(t *testing.T) {
 		Plugins: []plugin.Plugin{renderer},
 	}
 	app := NewApp(nil, cfg)
-	app.pluginTabs[0].data = "good-data"
+	app.pluginGroups[0].data = "good-data"
 
-	app.Update(pluginFetchMsg{index: 0, data: nil, err: assert.AnError})
+	app.Update(pluginFetchMsg{groupIndex: 0, data: nil, err: assert.AnError})
 
-	assert.Equal(t, "good-data", app.pluginTabs[0].data, "data should be preserved on error")
-	assert.Equal(t, assert.AnError, app.pluginTabs[0].err)
+	assert.Equal(t, "good-data", app.pluginGroups[0].data, "data should be preserved on error")
+	assert.Equal(t, assert.AnError, app.pluginGroups[0].err)
 }
 
 func TestPluginFetchMsg_ClearsErrorOnSuccess(t *testing.T) {
@@ -1191,12 +1191,12 @@ func TestPluginFetchMsg_ClearsErrorOnSuccess(t *testing.T) {
 		Plugins: []plugin.Plugin{renderer},
 	}
 	app := NewApp(nil, cfg)
-	app.pluginTabs[0].err = assert.AnError
+	app.pluginGroups[0].err = assert.AnError
 
-	app.Update(pluginFetchMsg{index: 0, data: "new-data", err: nil})
+	app.Update(pluginFetchMsg{groupIndex: 0, data: "new-data", err: nil})
 
-	assert.Equal(t, "new-data", app.pluginTabs[0].data)
-	assert.NoError(t, app.pluginTabs[0].err, "error should be cleared on successful fetch")
+	assert.Equal(t, "new-data", app.pluginGroups[0].data)
+	assert.NoError(t, app.pluginGroups[0].err, "error should be cleared on successful fetch")
 }
 
 func TestPluginFetchMsg_NilDataNilErrClearsError(t *testing.T) {
@@ -1205,13 +1205,13 @@ func TestPluginFetchMsg_NilDataNilErrClearsError(t *testing.T) {
 		Plugins: []plugin.Plugin{renderer},
 	}
 	app := NewApp(nil, cfg)
-	app.pluginTabs[0].data = "old-data"
-	app.pluginTabs[0].err = assert.AnError
+	app.pluginGroups[0].data = "old-data"
+	app.pluginGroups[0].err = assert.AnError
 
-	app.Update(pluginFetchMsg{index: 0, data: nil, err: nil})
+	app.Update(pluginFetchMsg{groupIndex: 0, data: nil, err: nil})
 
-	assert.Nil(t, app.pluginTabs[0].data, "data should be updated to nil on nil/nil fetch")
-	assert.NoError(t, app.pluginTabs[0].err, "error should be cleared")
+	assert.Nil(t, app.pluginGroups[0].data, "data should be updated to nil on nil/nil fetch")
+	assert.NoError(t, app.pluginGroups[0].err, "error should be cleared")
 }
 
 func TestAppClose(t *testing.T) {
@@ -1310,14 +1310,14 @@ func TestPluginFetchMsg_OutOfRangeSetsStatus(t *testing.T) {
 	cfg := Config{Plugins: []plugin.Plugin{renderer}}
 	app := NewApp(nil, cfg)
 
-	app.Update(pluginFetchMsg{index: 5, data: "data", err: nil})
+	app.Update(pluginFetchMsg{groupIndex: 5, data: "data", err: nil})
 	assert.Contains(t, app.status, "unexpected index 5")
 }
 
 func TestPluginFetchMsg_NegativeIndexSetsStatus(t *testing.T) {
 	app := NewApp(nil, Config{})
 
-	app.Update(pluginFetchMsg{index: -1, data: "data", err: nil})
+	app.Update(pluginFetchMsg{groupIndex: -1, data: "data", err: nil})
 	assert.Contains(t, app.status, "unexpected index -1")
 }
 
@@ -1327,44 +1327,44 @@ func TestPluginFetchMsg_NilUpdateReturnKeepsOldRenderer(t *testing.T) {
 	app := NewApp(nil, cfg)
 
 	originalRenderer := app.pluginTabs[0].renderer
-	app.Update(pluginFetchMsg{index: 0, data: "new-data", err: nil})
+	app.Update(pluginFetchMsg{groupIndex: 0, data: "new-data", err: nil})
 
 	assert.Equal(t, originalRenderer, app.pluginTabs[0].renderer, "renderer should not change when Update returns nil")
-	assert.Equal(t, "new-data", app.pluginTabs[0].data, "data should still be updated even when Update returns nil")
-	assert.NoError(t, app.pluginTabs[0].err, "no error should be set when Update returns nil")
+	assert.Equal(t, "new-data", app.pluginGroups[0].data, "data should still be updated even when Update returns nil")
+	assert.NoError(t, app.pluginGroups[0].err, "no error should be set when Update returns nil")
 }
 
 func TestPluginFetchMsg_ClearsFetchingFlag(t *testing.T) {
 	p := &stubPlugin{name: "test"}
 	cfg := Config{Plugins: []plugin.Plugin{p}}
 	app := NewApp(nil, cfg)
-	app.pluginTabs[0].fetching = true
+	app.pluginGroups[0].fetching = true
 
-	app.Update(pluginFetchMsg{index: 0, data: "data", err: nil})
-	assert.False(t, app.pluginTabs[0].fetching, "fetching flag should be cleared after msg")
+	app.Update(pluginFetchMsg{groupIndex: 0, data: "data", err: nil})
+	assert.False(t, app.pluginGroups[0].fetching, "fetching flag should be cleared after msg")
 }
 
 func TestPluginFetchMsg_ClearsFetchingFlagOnError(t *testing.T) {
 	p := &stubPlugin{name: "test"}
 	cfg := Config{Plugins: []plugin.Plugin{p}}
 	app := NewApp(nil, cfg)
-	app.pluginTabs[0].fetching = true
+	app.pluginGroups[0].fetching = true
 
-	app.Update(pluginFetchMsg{index: 0, data: nil, err: assert.AnError})
-	assert.False(t, app.pluginTabs[0].fetching, "fetching flag should be cleared even on error")
+	app.Update(pluginFetchMsg{groupIndex: 0, data: nil, err: assert.AnError})
+	assert.False(t, app.pluginGroups[0].fetching, "fetching flag should be cleared even on error")
 }
 
 func TestPluginFetchMsg_UpdatePanicStillUpdatesData(t *testing.T) {
 	p := &panicPlugin{stubPlugin: stubPlugin{name: "panicky"}}
 	cfg := Config{Plugins: []plugin.Plugin{p}}
 	app := NewApp(nil, cfg)
-	app.pluginTabs[0].data = "old-data"
+	app.pluginGroups[0].data = "old-data"
 
-	app.Update(pluginFetchMsg{index: 0, data: "new-data", err: nil})
+	app.Update(pluginFetchMsg{groupIndex: 0, data: "new-data", err: nil})
 
-	assert.Equal(t, "new-data", app.pluginTabs[0].data, "data should be updated even when Update panics")
-	assert.Error(t, app.pluginTabs[0].err, "error should be set from Update panic")
-	assert.Contains(t, app.pluginTabs[0].err.Error(), "plugin panic during Update")
+	assert.Equal(t, "new-data", app.pluginGroups[0].data, "data should be updated even when Update panics")
+	assert.Error(t, app.pluginGroups[0].err, "error should be set from Update panic")
+	assert.Contains(t, app.pluginGroups[0].err.Error(), "plugin panic during Update")
 }
 
 func TestPluginTab_UpKeyForwardedToPlugin(t *testing.T) {
