@@ -27,7 +27,7 @@ func tabLabel(t tab, pluginTabs []*pluginTab) string {
 	default:
 		for _, pt := range pluginTabs {
 			if pt.tabID == t {
-				return pt.p.Name()
+				return pt.tabName
 			}
 		}
 		return "?"

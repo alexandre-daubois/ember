@@ -104,9 +104,10 @@ type App struct {
 	certificates []fetcher.CertificateInfo
 	certSortBy   model.CertSortField
 
-	pluginTabs []*pluginTab
-	ctx        context.Context
-	cancel     context.CancelFunc
+	pluginTabs   []*pluginTab
+	pluginGroups []*pluginGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 const tabPluginBase tab = 100
@@ -123,13 +124,20 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	}
 
 	var pluginTabs []*pluginTab
-	for i, p := range cfg.Plugins {
-		id := tabPluginBase + tab(i)
-		pt := newPluginTab(p, id)
-		pluginTabs = append(pluginTabs, pt)
-		if pt.renderer != nil {
-			tabs = append(tabs, id)
+	var pluginGroups []*pluginGroup
+	nextID := tabPluginBase
+	for _, p := range cfg.Plugins {
+		pts, g := newPluginTabs(p, nextID)
+		pluginGroups = append(pluginGroups, g)
+		for _, pt := range pts {
+			pluginTabs = append(pluginTabs, pt)
+			tabs = append(tabs, pt.tabID)
 		}
+		advance := len(pts)
+		if advance < 1 {
+			advance = 1
+		}
+		nextID += tab(advance)
 	}
 
 	ts := make(map[tab]*tabState)
@@ -149,6 +157,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		history:       newHistoryStore(),
 		viewTime:      time.Now(),
 		pluginTabs:    pluginTabs,
+		pluginGroups:  pluginGroups,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -246,23 +255,34 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.status = "⚠ " + msg.err.Error()
 		return a, nil
 	case pluginFetchMsg:
-		if msg.index >= 0 && msg.index < len(a.pluginTabs) {
-			pt := a.pluginTabs[msg.index]
-			pt.fetching = false
-			pt.err = msg.err
+		if msg.groupIndex >= 0 && msg.groupIndex < len(a.pluginGroups) {
+			g := a.pluginGroups[msg.groupIndex]
+			g.fetching = false
+			g.err = msg.err
 			if msg.err == nil {
-				pt.data = msg.data
-				if pt.renderer != nil && msg.data != nil {
-					updated, updateErr := safePluginUpdate(pt.renderer, msg.data, a.width, a.height)
-					if updateErr == nil && updated != nil {
-						pt.renderer = updated
-					} else if updateErr != nil {
-						pt.err = updateErr
+				g.data = msg.data
+
+				if g.avail != nil {
+					nowAvail := safePluginAvailable(g.avail)
+					if nowAvail != g.wasAvail {
+						g.wasAvail = nowAvail
+						a.updatePluginTabVisibility(g, nowAvail)
+					}
+				}
+
+				for _, pt := range a.pluginTabs {
+					if pt.group == g && pt.renderer != nil && msg.data != nil {
+						updated, updateErr := safePluginUpdate(pt.renderer, msg.data, a.width, a.height)
+						if updateErr == nil && updated != nil {
+							pt.renderer = updated
+						} else if updateErr != nil {
+							g.err = updateErr
+						}
 					}
 				}
 			}
 		} else {
-			a.status = fmt.Sprintf("⚠ plugin fetch: unexpected index %d", msg.index)
+			a.status = fmt.Sprintf("⚠ plugin fetch: unexpected index %d", msg.groupIndex)
 		}
 		return a, nil
 	case tickMsg:
@@ -340,6 +360,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				activeThreads[t.Index] = struct{}{}
 			}
 			a.history.pruneMem(activeThreads)
+
+			a.notifyMetricsSubscribers(msg.snap)
 
 			if a.config.OnStateUpdate != nil {
 				a.config.OnStateUpdate(a.state, a.pluginExports())
@@ -483,8 +505,8 @@ func (a *App) View() string {
 	default:
 		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
 			contentList = safePluginView(pt.renderer, listWidth, a.height-10)
-			if pt.err != nil && contentList == "" {
-				contentList = greyStyle.Render(" " + pt.err.Error())
+			if pt.group.err != nil && contentList == "" {
+				contentList = greyStyle.Render(" " + pt.group.err.Error())
 			}
 		}
 	}
@@ -552,7 +574,7 @@ func (a *App) View() string {
 	}
 
 	if a.mode == viewHelp {
-		return renderHelpOverlay(base, a.width, a.height, a.hasFrankenPHP, a.pluginTabs)
+		return renderHelpOverlay(base, a.width, a.height, a.hasFrankenPHP, a.pluginTabs, a.tabs)
 	}
 
 	return base
@@ -957,10 +979,10 @@ func (a *App) doFetchCertificates() tea.Cmd {
 
 func (a *App) doPluginFetches() []tea.Cmd {
 	var cmds []tea.Cmd
-	for i, pt := range a.pluginTabs {
-		if pt.fetcher != nil && !pt.fetching {
-			pt.fetching = true
-			cmds = append(cmds, doPluginFetch(a.ctx, i, pt.fetcher))
+	for i, g := range a.pluginGroups {
+		if g.fetcher != nil && !g.fetching {
+			g.fetching = true
+			cmds = append(cmds, doPluginFetch(a.ctx, i, g.fetcher))
 		}
 	}
 	return cmds
@@ -977,15 +999,56 @@ func (a *App) activePluginTab() *pluginTab {
 
 func (a *App) pluginExports() []plugin.PluginExport {
 	var exports []plugin.PluginExport
-	for _, pt := range a.pluginTabs {
-		if pt.exporter != nil {
+	for _, g := range a.pluginGroups {
+		if g.exporter != nil {
 			exports = append(exports, plugin.PluginExport{
-				Exporter: pt.exporter,
-				Data:     pt.data,
+				Exporter: g.exporter,
+				Data:     g.data,
 			})
 		}
 	}
 	return exports
+}
+
+func (a *App) notifyMetricsSubscribers(snap *fetcher.Snapshot) {
+	for _, g := range a.pluginGroups {
+		if sub, ok := g.p.(plugin.MetricsSubscriber); ok {
+			safeOnMetrics(sub, snap)
+		}
+	}
+}
+
+func (a *App) updatePluginTabVisibility(g *pluginGroup, visible bool) {
+	for _, pt := range a.pluginTabs {
+		if pt.group != g {
+			continue
+		}
+		if visible {
+			if !slices.Contains(a.tabs, pt.tabID) {
+				inserted := false
+				for i, t := range a.tabs {
+					if t > pt.tabID {
+						a.tabs = slices.Insert(a.tabs, i, pt.tabID)
+						inserted = true
+						break
+					}
+				}
+				if !inserted {
+					a.tabs = append(a.tabs, pt.tabID)
+				}
+				a.tabStates[pt.tabID] = &tabState{}
+			}
+		} else {
+			idx := slices.Index(a.tabs, pt.tabID)
+			if idx >= 0 {
+				if a.activeTab == pt.tabID {
+					a.switchTab(a.tabs[0])
+				}
+				a.tabs = slices.Delete(a.tabs, idx, idx+1)
+				delete(a.tabStates, pt.tabID)
+			}
+		}
+	}
 }
 
 func renderConfirmOverlay(base string, width, height int) string {

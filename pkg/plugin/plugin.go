@@ -5,9 +5,10 @@
 // approach used by Caddy). There is no runtime plugin loading.
 //
 // A plugin must implement [Plugin] (Name + Init). It can optionally implement
-// any combination of [Fetcher], [Renderer], and [Exporter]:
+// any combination of [Fetcher], [Renderer]/[MultiRenderer], and [Exporter]:
 //
 //   - Fetcher + Renderer: custom TUI tab (data collection + visualization)
+//   - Fetcher + MultiRenderer: multiple custom TUI tabs sharing one data source
 //   - Fetcher + Exporter: headless metrics export on /metrics
 //   - Fetcher + Renderer + Exporter: TUI tab + metrics export
 //
@@ -26,6 +27,8 @@ import (
 	"io"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 )
 
 // Plugin is the minimal interface every plugin must implement.
@@ -119,6 +122,51 @@ type Exporter interface {
 // implementing Closer are closed automatically.
 type Closer interface {
 	Close() error
+}
+
+// MetricsSubscriber is optionally implemented by plugins that want to receive
+// the core metrics snapshot on every successful poll cycle. This avoids the
+// need for plugins to make their own /metrics requests to Caddy.
+//
+// OnMetrics is called synchronously after each successful core fetch, before
+// plugin Fetch calls begin. The snapshot must not be modified.
+type MetricsSubscriber interface {
+	OnMetrics(snap *metrics.Snapshot)
+}
+
+// TabDescriptor describes a single tab provided by a [MultiRenderer] plugin.
+// Name is displayed in the tab bar. Key is a stable identifier used
+// internally (e.g., "bouncer", "appsec"). Key must be unique within the plugin.
+type TabDescriptor struct {
+	Key  string
+	Name string
+}
+
+// MultiRenderer is implemented by plugins that provide multiple TUI tabs.
+// Each tab gets its own [Renderer], but all tabs share the same [Fetcher] data.
+//
+// Tabs returns the list of tabs this plugin provides. It is called once
+// after Init. The order determines the tab order in the tab bar.
+//
+// RendererForTab returns the initial Renderer for the given tab key.
+// It is called once per tab after Init.
+//
+// A plugin should implement either [Renderer] or MultiRenderer, not both.
+// If both are present, MultiRenderer takes priority.
+type MultiRenderer interface {
+	Tabs() []TabDescriptor
+	RendererForTab(key string) Renderer
+}
+
+// Availability is optionally implemented by plugins whose tab(s) should
+// be shown or hidden based on runtime conditions. Ember calls Available
+// after each successful Fetch. When Available returns false, the plugin's
+// tab(s) are removed from the tab bar. When it returns true, they are
+// re-added.
+//
+// Plugins that do not implement Availability are always visible.
+type Availability interface {
+	Available() bool
 }
 
 // PluginExport holds the data needed to export metrics for a single plugin.

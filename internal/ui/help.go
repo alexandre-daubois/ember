@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -76,7 +77,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 	return helpStyle.Width(width).Render(content)
 }
 
-func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool, pluginTabs []*pluginTab) string {
+func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool, pluginTabs []*pluginTab, visibleTabs []tab) string {
 	type binding struct {
 		key  string
 		desc string
@@ -122,7 +123,7 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool, plugi
 	body := render("Navigation", nav) + "\n\n" + render("Actions", actions)
 
 	for _, pt := range pluginTabs {
-		if pt.renderer == nil {
+		if pt.renderer == nil || !slices.Contains(visibleTabs, pt.tabID) {
 			continue
 		}
 		hb, _ := safePluginHelpBindings(pt.renderer)
@@ -133,7 +134,7 @@ func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool, plugi
 		for _, b := range hb {
 			pluginBindings = append(pluginBindings, binding{b.Key, b.Desc})
 		}
-		body += "\n\n" + render(pt.p.Name(), pluginBindings)
+		body += "\n\n" + render(pt.tabName, pluginBindings)
 	}
 
 	popup := boxStyle.Render(body)

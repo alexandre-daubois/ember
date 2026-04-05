@@ -103,6 +103,19 @@ Ember polls the Caddy admin API and Prometheus metrics endpoint at a regular int
 
 Ember supports a plugin system that lets third-party developers add custom tabs for visualizing metrics from additional Caddy modules (e.g., rate limiters, WAF modules, custom middleware). Plugins are compiled into the binary using Go's blank import pattern, the same approach used by Caddy itself.
 
+Building a custom Ember binary with plugins is simple:
+
+```go
+import (
+    "github.com/alexandre-daubois/ember"
+    _ "github.com/myorg/ember-myplugin"
+)
+
+func main() { ember.Run() }
+```
+
+Plugins can provide multiple tabs, subscribe to core metrics, conditionally hide their tabs, and reuse Ember's Prometheus parser via the `pkg/metrics` package.
+
 See the [Plugin Development Guide](docs/plugins.md) for details on building and integrating plugins.
 
 ## Documentation

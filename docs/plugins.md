@@ -76,13 +76,13 @@ import (
     "fmt"
     "os"
 
-    "github.com/alexandre-daubois/ember/internal/app"
+    "github.com/alexandre-daubois/ember"
 
     _ "github.com/example/ember-stats" // your plugin
 )
 
 func main() {
-    if err := app.Run(os.Args[1:], "custom"); err != nil {
+    if err := ember.Run(); err != nil {
         fmt.Fprintln(os.Stderr, err)
         os.Exit(1)
     }
@@ -362,6 +362,62 @@ type Closer interface {
     Close() error
 }
 ```
+
+### MetricsSubscriber (optional)
+
+```go
+type MetricsSubscriber interface {
+    OnMetrics(snap *metrics.Snapshot)
+}
+```
+
+Called synchronously after each successful core fetch, before plugin `Fetch` calls. The snapshot contains Caddy and FrankenPHP metrics already parsed by Ember. The snapshot must not be modified.
+
+Import `"github.com/alexandre-daubois/ember/pkg/metrics"` to access the `Snapshot` and `MetricsSnapshot` types.
+
+This avoids the need for plugins to make their own `/metrics` requests to Caddy when they need access to the same core metrics Ember already collects.
+
+### MultiRenderer (optional)
+
+```go
+type TabDescriptor struct {
+    Key  string
+    Name string
+}
+
+type MultiRenderer interface {
+    Tabs() []TabDescriptor
+    RendererForTab(key string) Renderer
+}
+```
+
+Implement `MultiRenderer` instead of `Renderer` when your plugin needs multiple TUI tabs. Each tab gets its own `Renderer`, but all tabs share a single `Fetch` call. `Tabs()` is called once after `Init()` to determine the number and order of tabs. `RendererForTab` is called once per tab to create its initial `Renderer`.
+
+If a plugin implements both `Renderer` and `MultiRenderer`, `MultiRenderer` takes priority.
+
+### Availability (optional)
+
+```go
+type Availability interface {
+    Available() bool
+}
+```
+
+Implement `Availability` when your plugin's tab(s) should be shown or hidden based on runtime conditions. For example, a plugin compiled into a custom build but talking to a Caddy instance that does not have the corresponding module enabled.
+
+`Available()` is checked after each successful `Fetch`. When it returns `false`, the plugin's tab(s) are removed from the tab bar. When it returns `true`, they are re-added. If `Available()` panics, the tab stays visible (fail-open).
+
+## Reusing Prometheus Parsing
+
+The `pkg/metrics` package exposes the same Prometheus text parser that Ember uses internally:
+
+```go
+import "github.com/alexandre-daubois/ember/pkg/metrics"
+
+snap, err := metrics.ParsePrometheus(reader)
+```
+
+This returns a `MetricsSnapshot` with all Caddy and FrankenPHP metrics parsed. The package also exposes all the data types (`Snapshot`, `MetricsSnapshot`, `HostMetrics`, `WorkerMetrics`, etc.) for plugins that need to work with core metrics.
 
 ## Reserved Keybindings
 

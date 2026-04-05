@@ -271,7 +271,7 @@ func closePlugins(plugins []plugin.Plugin) {
 }
 
 func pluginEnvOptions(name string) map[string]string {
-	prefix := "EMBER_PLUGIN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_"
+	prefix := "EMBER_PLUGIN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "")) + "_"
 	opts := make(map[string]string)
 	for _, env := range os.Environ() {
 		if !strings.HasPrefix(env, prefix) {

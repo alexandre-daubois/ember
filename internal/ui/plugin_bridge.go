@@ -4,45 +4,77 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type pluginTab struct {
+type pluginGroup struct {
 	p        plugin.Plugin
 	fetcher  plugin.Fetcher
-	renderer plugin.Renderer
 	exporter plugin.Exporter
+	avail    plugin.Availability
+	wasAvail bool
 	data     any
 	err      error
-	tabID    tab
 	fetching bool
 }
 
-func newPluginTab(p plugin.Plugin, id tab) *pluginTab {
-	pt := &pluginTab{p: p, tabID: id}
+type pluginTab struct {
+	group    *pluginGroup
+	renderer plugin.Renderer
+	tabID    tab
+	tabName  string
+}
+
+func newPluginTabs(p plugin.Plugin, startID tab) ([]*pluginTab, *pluginGroup) {
+	g := &pluginGroup{p: p, wasAvail: true}
 	if f, ok := p.(plugin.Fetcher); ok {
-		pt.fetcher = f
-	}
-	if r, ok := p.(plugin.Renderer); ok {
-		pt.renderer = r
+		g.fetcher = f
 	}
 	if e, ok := p.(plugin.Exporter); ok {
-		pt.exporter = e
+		g.exporter = e
 	}
-	return pt
+	if a, ok := p.(plugin.Availability); ok {
+		g.avail = a
+	}
+
+	var tabs []*pluginTab
+
+	if mr, ok := p.(plugin.MultiRenderer); ok {
+		for i, desc := range mr.Tabs() {
+			r := mr.RendererForTab(desc.Key)
+			if r != nil {
+				tabs = append(tabs, &pluginTab{
+					group:    g,
+					renderer: r,
+					tabID:    startID + tab(i),
+					tabName:  desc.Name,
+				})
+			}
+		}
+	} else if r, ok := p.(plugin.Renderer); ok {
+		tabs = append(tabs, &pluginTab{
+			group:    g,
+			renderer: r,
+			tabID:    startID,
+			tabName:  p.Name(),
+		})
+	}
+
+	return tabs, g
 }
 
 type pluginFetchMsg struct {
-	index int
-	data  any
-	err   error
+	groupIndex int
+	data       any
+	err        error
 }
 
-func doPluginFetch(ctx context.Context, index int, f plugin.Fetcher) tea.Cmd {
+func doPluginFetch(ctx context.Context, groupIndex int, f plugin.Fetcher) tea.Cmd {
 	return func() tea.Msg {
 		data, err := plugin.SafeFetch(ctx, f)
-		return pluginFetchMsg{index: index, data: data, err: err}
+		return pluginFetchMsg{groupIndex: groupIndex, data: data, err: err}
 	}
 }
 
@@ -89,4 +121,20 @@ func safePluginHelpBindings(r plugin.Renderer) (_ []plugin.HelpBinding, err erro
 		}
 	}()
 	return r.HelpBindings(), nil
+}
+
+func safeOnMetrics(sub plugin.MetricsSubscriber, snap *fetcher.Snapshot) {
+	defer func() {
+		recover() //nolint:errcheck // fire-and-forget: don't crash Ember if a subscriber panics
+	}()
+	sub.OnMetrics(snap)
+}
+
+func safePluginAvailable(a plugin.Availability) (avail bool) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			avail = true
+		}
+	}()
+	return a.Available()
 }

@@ -245,3 +245,38 @@ func TestDaemonPluginExports_Empty(t *testing.T) {
 	exports := daemonPluginExports(nil)
 	assert.Nil(t, exports)
 }
+
+type daemonMetricsSubPlugin struct {
+	testPlugin
+	called bool
+}
+
+func (p *daemonMetricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { p.called = true }
+
+type daemonPanicMetricsSubPlugin struct {
+	testPlugin
+}
+
+func (p *daemonPanicMetricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { panic("onmetrics boom") }
+
+func TestNotifyDaemonSubscribers_CallsOnMetrics(t *testing.T) {
+	sub := &daemonMetricsSubPlugin{testPlugin: testPlugin{name: "sub"}}
+	dps := []daemonPlugin{{p: sub, name: "sub"}}
+
+	notifyDaemonSubscribers(dps, &fetcher.Snapshot{})
+	assert.True(t, sub.called)
+}
+
+func TestNotifyDaemonSubscribers_PanicDoesNotCrash(t *testing.T) {
+	panicSub := &daemonPanicMetricsSubPlugin{testPlugin: testPlugin{name: "panic-sub"}}
+	normalSub := &daemonMetricsSubPlugin{testPlugin: testPlugin{name: "normal-sub"}}
+	dps := []daemonPlugin{
+		{p: panicSub, name: "panic-sub"},
+		{p: normalSub, name: "normal-sub"},
+	}
+
+	assert.NotPanics(t, func() {
+		notifyDaemonSubscribers(dps, &fetcher.Snapshot{})
+	})
+	assert.True(t, normalSub.called, "subscriber after panicking one should still be called")
+}
