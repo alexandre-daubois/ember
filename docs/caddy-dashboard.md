@@ -42,6 +42,7 @@ Press `Enter` on a host to open the detail panel:
 - **Traffic**: RPS, in-flight requests, total request count, error rate (when > 0, displayed in red)
 - **Latency**: P50, P90, P95, P99 (when available), average response time
 - **TTFB**: Time-to-First-Byte percentiles (P50, P90, P95, P99), computed from `caddy_http_response_duration_seconds`
+- **Waterfall (P50)**: stacked bar showing TTFB and transfer time breakdown. Requires latency P50 percentiles and TTFB P50.
 - **Status Codes**: Individual status codes with their rates
 - **HTTP Methods**: Request rates and percentage of total per method (GET, POST, etc.)
 - **Transfer Size**: Average request body size and average response body size
