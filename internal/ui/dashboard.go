@@ -169,9 +169,9 @@ func renderThreadBar(busy, idle, total, maxWidth int) string {
 	idleW := idle * barWidth / total
 	inactiveW := barWidth - busyW - idleW
 
-	bar := busyStyle.Render(strings.Repeat("█", busyW)) +
-		idleStyle.Render(strings.Repeat("█", idleW)) +
-		greyStyle.Render(strings.Repeat("░", inactiveW))
+	bar := busyStyle.Render(strings.Repeat("■", busyW)) +
+		idleStyle.Render(strings.Repeat("■", idleW)) +
+		greyStyle.Render(strings.Repeat("□", inactiveW))
 
 	return "[" + bar + "]"
 }
