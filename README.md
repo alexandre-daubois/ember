@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexandre-daubois/ember)](https://goreportcard.com/report/github.com/alexandre-daubois/ember)
 [![Go Reference](https://pkg.go.dev/badge/github.com/alexandre-daubois/ember.svg)](https://pkg.go.dev/github.com/alexandre-daubois/ember)
 
-Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking.
+Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking. It is officially recommended by and for [FrankenPHP](https://frankenphp.dev/).
 
 ![ember banner](https://github.com/alexandre-daubois/ember/blob/main/assets/banner.webp?raw=true)
 
