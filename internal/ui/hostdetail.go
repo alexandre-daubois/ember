@@ -63,6 +63,12 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 		lines = append(lines, detailKV("P99", formatMs(h.TTFBP99)))
 	}
 
+	if waterfallLines := renderWaterfall(h, inner-4); len(waterfallLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, sectionHeader("Waterfall (P50)", inner))
+		lines = append(lines, waterfallLines...)
+	}
+
 	if len(h.StatusCodes) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, sectionHeader("Status Codes", inner))
@@ -160,4 +166,39 @@ func sortedMethods(methods map[string]float64) []methodEntry {
 		return cmp.Compare(b.rate, a.rate)
 	})
 	return entries
+}
+
+func renderWaterfall(h model.HostDerived, barWidth int) []string {
+	if !h.HasPercentiles || !h.HasTTFB {
+		return nil
+	}
+
+	totalDuration := h.P50
+	ttfb := h.TTFBP50
+	if totalDuration <= 0 || ttfb <= 0 {
+		return nil
+	}
+
+	ttfb = min(ttfb, totalDuration)
+	transferMs := totalDuration - ttfb
+
+	if barWidth < 1 {
+		return nil
+	}
+
+	ttfbW := min(max(int(ttfb/totalDuration*float64(barWidth)), 0), barWidth)
+	transferW := barWidth - ttfbW
+
+	bar := lipgloss.NewStyle().Foreground(ember).Render(strings.Repeat("■", ttfbW)) +
+		lipgloss.NewStyle().Foreground(amber).Render(strings.Repeat("■", transferW))
+
+	var lines []string
+	lines = append(lines, "  ["+bar+"]")
+
+	legend := lipgloss.NewStyle().Foreground(ember).Render("■") + " TTFB " + formatMs(ttfb) + "  " +
+		lipgloss.NewStyle().Foreground(amber).Render("■") + " Xfer " + formatMs(transferMs)
+
+	lines = append(lines, "  "+legend)
+
+	return lines
 }

@@ -498,6 +498,105 @@ func TestSectionHeader_NarrowWidth(t *testing.T) {
 	assert.LessOrEqual(t, len([]rune(plain)), 14, "should not exceed prefix + label length")
 }
 
+func TestRenderWaterfall_TwoPhases(t *testing.T) {
+	h := model.HostDerived{
+		HasPercentiles: true,
+		HasTTFB:        true,
+		P50:            100,
+		TTFBP50:        60,
+	}
+	lines := renderWaterfall(h, 40)
+
+	require.NotNil(t, lines)
+	joined := strings.Join(lines, "\n")
+	assert.Contains(t, joined, "TTFB")
+	assert.Contains(t, joined, "Xfer")
+	assert.Contains(t, joined, "■")
+}
+
+func TestRenderWaterfall_BarNeverExceedsWidth(t *testing.T) {
+	h := model.HostDerived{
+		HasPercentiles: true,
+		HasTTFB:        true,
+		P50:            50,
+		TTFBP50:        80,
+	}
+	lines := renderWaterfall(h, 40)
+	require.NotNil(t, lines)
+	barLine := stripANSI(lines[0])
+	runeCount := len([]rune(barLine))
+	assert.LessOrEqual(t, runeCount, 40+4, "bar with brackets and padding should not exceed barWidth + chrome")
+}
+
+func TestRenderWaterfall_NilWhenTooNarrow(t *testing.T) {
+	h := model.HostDerived{
+		HasPercentiles: true,
+		HasTTFB:        true,
+		P50:            100,
+		TTFBP50:        60,
+	}
+	assert.Nil(t, renderWaterfall(h, 0))
+	assert.Nil(t, renderWaterfall(h, -5))
+}
+
+func TestRenderWaterfall_NilWhenNoTTFB(t *testing.T) {
+	h := model.HostDerived{
+		HasPercentiles: true,
+		HasTTFB:        false,
+		P50:            100,
+	}
+	assert.Nil(t, renderWaterfall(h, 40))
+}
+
+func TestRenderWaterfall_NilWhenNoPercentiles(t *testing.T) {
+	h := model.HostDerived{
+		HasPercentiles: false,
+		HasTTFB:        true,
+		TTFBP50:        60,
+	}
+	assert.Nil(t, renderWaterfall(h, 40))
+}
+
+func TestRenderWaterfall_TTFBClampedToTotal(t *testing.T) {
+	h := model.HostDerived{
+		HasPercentiles: true,
+		HasTTFB:        true,
+		P50:            50,
+		TTFBP50:        80,
+	}
+	lines := renderWaterfall(h, 40)
+
+	require.NotNil(t, lines)
+	legend := lines[1]
+	assert.Contains(t, legend, "TTFB 50.0ms")
+	assert.Contains(t, legend, "Xfer 0.0ms")
+}
+
+func TestRenderHostDetailPanel_IncludesWaterfall(t *testing.T) {
+	h := model.HostDerived{
+		Host:           "test.com",
+		HasPercentiles: true,
+		HasTTFB:        true,
+		P50:            100,
+		TTFBP50:        60,
+	}
+	panel := renderHostDetailPanel(h, 60, 40)
+
+	assert.Contains(t, panel, "Waterfall")
+}
+
+func TestRenderHostDetailPanel_NoWaterfallWithoutTTFB(t *testing.T) {
+	h := model.HostDerived{
+		Host:           "test.com",
+		HasPercentiles: true,
+		HasTTFB:        false,
+		P50:            100,
+	}
+	panel := renderHostDetailPanel(h, 60, 40)
+
+	assert.NotContains(t, panel, "Waterfall")
+}
+
 func newAppWithHosts(hosts []model.HostDerived) *App {
 	hostMetrics := make(map[string]*fetcher.HostMetrics)
 	for _, h := range hosts {
