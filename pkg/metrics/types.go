@@ -3,7 +3,11 @@
 // to reuse Ember's metric structures and Prometheus parser.
 package metrics
 
-import "time"
+import (
+	"time"
+
+	dto "github.com/prometheus/client_model/go"
+)
 
 type ThreadDebugState struct {
 	Index                    int    `json:"Index"`
@@ -100,6 +104,11 @@ type MetricsSnapshot struct {
 	HasConfigReloadMetrics           bool    `json:"hasConfigReloadMetrics"`
 	ConfigLastReloadSuccessful       float64 `json:"configLastReloadSuccessful"`
 	ConfigLastReloadSuccessTimestamp float64 `json:"configLastReloadSuccessTimestamp"`
+
+	// Extra contains metric families not consumed by Ember's core parser.
+	// Plugin authors can use this to access custom metrics registered with
+	// Caddy's Prometheus collector without making a separate /metrics request.
+	Extra map[string]*dto.MetricFamily `json:"-"`
 }
 
 type HistogramBucket struct {

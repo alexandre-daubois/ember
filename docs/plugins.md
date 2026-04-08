@@ -377,6 +377,24 @@ Import `"github.com/alexandre-daubois/ember/pkg/metrics"` to access the `Snapsho
 
 This avoids the need for plugins to make their own `/metrics` requests to Caddy when they need access to the same core metrics Ember already collects.
 
+#### Accessing custom metrics
+
+`MetricsSnapshot.Extra` contains all Prometheus metric families from the `/metrics` endpoint that Ember's core parser did not consume. If your Caddy module registers custom metrics with Caddy's Prometheus collector, they will be available here as `*dto.MetricFamily` values (from `github.com/prometheus/client_model/go`):
+
+```go
+func (p *myPlugin) OnMetrics(snap *metrics.Snapshot) {
+    fam, ok := snap.Metrics.Extra["mymodule_requests_total"]
+    if !ok {
+        return
+    }
+    for _, m := range fam.GetMetric() {
+        // extract label values and counters as needed
+    }
+}
+```
+
+When there are no extra metrics, `Extra` is nil.
+
 ### MultiRenderer (optional)
 
 ```go

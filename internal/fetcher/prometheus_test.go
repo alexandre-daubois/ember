@@ -805,3 +805,49 @@ caddy_reverse_proxy_upstreams_healthy{handler="rp",upstream="valid:8080"} 1
 	require.Len(t, snap.Upstreams, 1)
 	assert.Contains(t, snap.Upstreams, "valid:8080/rp")
 }
+
+func TestParsePrometheusMetrics_ExtraFamilies(t *testing.T) {
+	input := `# TYPE frankenphp_busy_threads gauge
+frankenphp_busy_threads 5
+# HELP crowdsec_decisions_total Total decisions
+# TYPE crowdsec_decisions_total counter
+crowdsec_decisions_total{action="ban"} 42
+crowdsec_decisions_total{action="captcha"} 7
+# HELP mymodule_cache_hits Cache hit count
+# TYPE mymodule_cache_hits counter
+mymodule_cache_hits 1234
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+
+	require.NotNil(t, snap.Extra)
+	assert.Len(t, snap.Extra, 2)
+	assert.Contains(t, snap.Extra, "crowdsec_decisions_total")
+	assert.Contains(t, snap.Extra, "mymodule_cache_hits")
+	assert.NotContains(t, snap.Extra, "frankenphp_busy_threads")
+
+	fam := snap.Extra["crowdsec_decisions_total"]
+	assert.Len(t, fam.GetMetric(), 2)
+}
+
+func TestParsePrometheusMetrics_NoExtraWhenAllKnown(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+	require.NoError(t, err)
+
+	assert.Nil(t, snap.Extra)
+}
+
+func TestParsePrometheusMetrics_ExtraWithCoreMetrics(t *testing.T) {
+	input := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="example.com",code="200"} 100
+# TYPE custom_plugin_metric gauge
+custom_plugin_metric{instance="a"} 42
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.True(t, snap.HasHTTPMetrics)
+	require.NotNil(t, snap.Extra)
+	assert.Len(t, snap.Extra, 1)
+	assert.Contains(t, snap.Extra, "custom_plugin_metric")
+}

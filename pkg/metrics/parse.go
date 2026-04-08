@@ -102,7 +102,51 @@ func ParsePrometheus(r io.Reader) (snap MetricsSnapshot, err error) {
 		}
 	}
 
+	snap.Extra = extraFamilies(families)
+
 	return snap, nil
+}
+
+var coreMetricNames = map[string]struct{}{
+	"frankenphp_total_threads":        {},
+	"frankenphp_busy_threads":         {},
+	"frankenphp_queue_depth":          {},
+	"frankenphp_total_workers":        {},
+	"frankenphp_busy_workers":         {},
+	"frankenphp_ready_workers":        {},
+	"frankenphp_worker_request_time":  {},
+	"frankenphp_worker_request_count": {},
+	"frankenphp_worker_crashes":       {},
+	"frankenphp_worker_restarts":      {},
+	"frankenphp_worker_queue_depth":   {},
+
+	"caddy_http_request_errors_total":      {},
+	"caddy_http_requests_total":            {},
+	"caddy_http_request_duration_seconds":  {},
+	"caddy_http_requests_in_flight":        {},
+	"caddy_http_response_duration_seconds": {},
+	"caddy_http_response_size_bytes":       {},
+	"caddy_http_request_size_bytes":        {},
+
+	"process_cpu_seconds_total":     {},
+	"process_resident_memory_bytes": {},
+	"process_start_time_seconds":    {},
+
+	"caddy_config_last_reload_successful":                {},
+	"caddy_config_last_reload_success_timestamp_seconds": {},
+}
+
+func extraFamilies(families map[string]*dto.MetricFamily) map[string]*dto.MetricFamily {
+	var extra map[string]*dto.MetricFamily
+	for name, fam := range families {
+		if _, ok := coreMetricNames[name]; !ok {
+			if extra == nil {
+				extra = make(map[string]*dto.MetricFamily)
+			}
+			extra[name] = fam
+		}
+	}
+	return extra
 }
 
 func (s *MetricsSnapshot) getOrCreateWorker(name string) *WorkerMetrics {
