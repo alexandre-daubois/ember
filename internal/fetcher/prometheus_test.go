@@ -809,10 +809,10 @@ caddy_reverse_proxy_upstreams_healthy{handler="rp",upstream="valid:8080"} 1
 func TestParsePrometheusMetrics_ExtraFamilies(t *testing.T) {
 	input := `# TYPE frankenphp_busy_threads gauge
 frankenphp_busy_threads 5
-# HELP crowdsec_decisions_total Total decisions
-# TYPE crowdsec_decisions_total counter
-crowdsec_decisions_total{action="ban"} 42
-crowdsec_decisions_total{action="captcha"} 7
+# HELP acmeguard_decisions_total Total decisions
+# TYPE acmeguard_decisions_total counter
+acmeguard_decisions_total{action="ban"} 42
+acmeguard_decisions_total{action="captcha"} 7
 # HELP mymodule_cache_hits Cache hit count
 # TYPE mymodule_cache_hits counter
 mymodule_cache_hits 1234
@@ -822,11 +822,11 @@ mymodule_cache_hits 1234
 
 	require.NotNil(t, snap.Extra)
 	assert.Len(t, snap.Extra, 2)
-	assert.Contains(t, snap.Extra, "crowdsec_decisions_total")
+	assert.Contains(t, snap.Extra, "acmeguard_decisions_total")
 	assert.Contains(t, snap.Extra, "mymodule_cache_hits")
 	assert.NotContains(t, snap.Extra, "frankenphp_busy_threads")
 
-	fam := snap.Extra["crowdsec_decisions_total"]
+	fam := snap.Extra["acmeguard_decisions_total"]
 	assert.Len(t, fam.GetMetric(), 2)
 }
 
