@@ -52,6 +52,12 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 ## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/alexandre-daubois/ember/main/install.sh | sh
+```
+
+Or with Homebrew:
+
+```bash
 brew install alexandre-daubois/tap/ember
 ```
 

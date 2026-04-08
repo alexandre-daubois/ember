@@ -9,6 +9,18 @@ This guide covers installation, prerequisites, and your first run with Ember.
 
 ## Installation
 
+### One-liner
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alexandre-daubois/ember/main/install.sh | sh
+```
+
+This detects your platform (Linux/macOS, amd64/arm64), downloads the latest release from GitHub, and installs the binary to `/usr/local/bin`. You can override the install directory with `EMBER_INSTALL_DIR`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alexandre-daubois/ember/main/install.sh | EMBER_INSTALL_DIR=~/.local/bin sh
+```
+
 ### Homebrew
 
 ```bash
