@@ -14,6 +14,39 @@ Ember connects to the Caddy admin API (default: `localhost:2019`). Make sure it'
 
 > **Caution:** The admin API is unauthenticated by default. Do not expose it on a public interface. See [Caddy's admin API documentation](https://caddyserver.com/docs/caddyfile/options#admin) for authentication options.
 
+## Unix Socket
+
+For improved security, Caddy can listen on a Unix socket instead of a TCP port. This avoids network exposure entirely and restricts access through filesystem permissions:
+
+```
+{
+    admin unix//run/caddy/admin.sock
+}
+```
+
+You can also set file permissions on the socket:
+
+```
+{
+    admin unix//run/caddy/admin.sock|0660
+}
+```
+
+To connect Ember to a Unix socket:
+
+```bash
+ember --addr unix//run/caddy/admin.sock
+```
+
+Or via environment variable:
+
+```bash
+export EMBER_ADDR=unix//run/caddy/admin.sock
+ember
+```
+
+> **Note:** TLS options (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`) cannot be used with Unix socket addresses, as the connection is local and does not traverse the network.
+
 ## Metrics Directive
 
 The `metrics` directive enables Prometheus-format metrics on the admin API. Without it, Ember cannot display HTTP traffic data.

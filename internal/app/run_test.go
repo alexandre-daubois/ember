@@ -146,7 +146,7 @@ func TestValidate_AddrMissingScheme(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addr: "localhost:2019"}
 	err := validate(cfg)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
+	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestValidate_AddrHTTPSOK(t *testing.T) {
@@ -157,6 +157,51 @@ func TestValidate_AddrHTTPSOK(t *testing.T) {
 func TestValidate_AddrHTTPOK(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
 	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_AddrUnixSocket(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_AddrUnixSocketTripleSlash(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix:///run/caddy/admin.sock"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_AddrUnixSocketEmptyPath(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix//"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty Unix socket path")
+}
+
+func TestValidate_AddrUnixSocketEmptyPathTripleSlash(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix:///"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty Unix socket path")
+}
+
+func TestValidate_AddrUnixSocketWithTLS(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock", caCert: "ca.pem"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
+}
+
+func TestValidate_AddrUnixSocketWithClientCert(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock", clientCert: "cert.pem", clientKey: "key.pem"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
+}
+
+func TestValidate_AddrUnixSocketWithInsecure(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock", insecure: true}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_MetricsAuthBadFormat(t *testing.T) {
@@ -192,13 +237,13 @@ func TestRun_IntervalTooLow(t *testing.T) {
 func TestRun_AddrMissingScheme(t *testing.T) {
 	err := Run([]string{"--addr", "localhost:2019"}, "0.0.0")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
+	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestRun_SubcommandValidatesAddr(t *testing.T) {
 	err := Run([]string{"wait", "--addr", "localhost:2019"}, "0.0.0")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
+	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestRun_SubcommandValidatesInterval(t *testing.T) {

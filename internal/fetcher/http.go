@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"slices"
@@ -26,6 +27,7 @@ const (
 
 type HTTPFetcher struct {
 	baseURL    string
+	socketPath string
 	httpClient *http.Client
 	procHandle *processHandle
 
@@ -40,21 +42,41 @@ type HTTPFetcher struct {
 
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 	ph := newProcessHandle(pid)
+
+	var socketPath string
+	transport := &http.Transport{
+		MaxIdleConns:        2,
+		MaxIdleConnsPerHost: 2,
+		IdleConnTimeout:     30 * time.Second,
+	}
+
+	if sp, ok := ParseUnixAddr(baseURL); ok {
+		socketPath = sp
+		baseURL = "http://localhost"
+		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sp)
+		}
+	}
+
 	return &HTTPFetcher{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:        2,
-				MaxIdleConnsPerHost: 2,
-				IdleConnTimeout:     30 * time.Second,
-			},
-		},
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		socketPath: socketPath,
+		httpClient: &http.Client{Transport: transport},
 		procHandle: ph,
 	}
 }
 
+// IsUnixSocket reports whether this fetcher communicates over a Unix socket.
+func (f *HTTPFetcher) IsUnixSocket() bool {
+	return f.socketPath != ""
+}
+
 // SetTLSConfig replaces the HTTP transport with one using the given TLS configuration.
+// It is a no-op when the fetcher uses a Unix socket.
 func (f *HTTPFetcher) SetTLSConfig(tlsConfig *tls.Config) {
+	if f.socketPath != "" {
+		return
+	}
 	f.httpClient.Transport = &http.Transport{
 		TLSClientConfig:     tlsConfig,
 		MaxIdleConns:        2,

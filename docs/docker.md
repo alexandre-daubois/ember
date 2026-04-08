@@ -70,6 +70,40 @@ With this setup, Ember runs in the same network namespace as Caddy and can reach
 
 > **Caution:** The image is built from `scratch`: there is no shell, no `exec`, and no debugging tools inside the container. Use `docker logs` to read Ember's stderr output.
 
+## Unix Socket
+
+If Caddy's admin API is configured to listen on a Unix socket, mount the socket into the Ember container:
+
+```bash
+docker run --rm \
+  -v /run/caddy/admin.sock:/run/caddy/admin.sock \
+  ghcr.io/alexandre-daubois/ember \
+  --daemon --expose :9191 --addr unix//run/caddy/admin.sock
+```
+
+Or with Docker Compose:
+
+```yaml
+services:
+  caddy:
+    image: caddy:latest
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-admin:/run/caddy
+
+  ember:
+    image: ghcr.io/alexandre-daubois/ember
+    environment:
+      EMBER_ADDR: unix//run/caddy/admin.sock
+    volumes:
+      - caddy-admin:/run/caddy
+    depends_on:
+      - caddy
+
+volumes:
+  caddy-admin:
+```
+
 ## See Also
 
 - [Getting Started](getting-started.md)

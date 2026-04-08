@@ -63,6 +63,7 @@ Keybindings:
   q                  Quit`,
 		Example: `  ember                                  # default: localhost:2019
   ember --addr http://prod:2019           # custom address
+  ember --addr unix//run/caddy/admin.sock # Unix socket
   ember --json                            # pipe-friendly JSON output
   ember --json --once                     # single JSON snapshot and exit
   ember --expose :9191                    # TUI + Prometheus endpoint
@@ -117,7 +118,7 @@ Keybindings:
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address")
+	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address (http://, https://, or unix//path)")
 	pf.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set)")
@@ -161,6 +162,9 @@ func contextWithTimeout(parent context.Context, timeout time.Duration) (context.
 }
 
 func configureTLS(f *fetcher.HTTPFetcher, cfg *config) error {
+	if f.IsUnixSocket() {
+		return nil
+	}
 	tlsCfg, err := fetcher.BuildTLSConfig(fetcher.TLSOptions{
 		CACert:     cfg.caCert,
 		ClientCert: cfg.clientCert,
@@ -220,8 +224,16 @@ func validate(cfg *config) error {
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)
 	}
-	if !strings.HasPrefix(cfg.addr, "http://") && !strings.HasPrefix(cfg.addr, "https://") {
-		return fmt.Errorf("--addr must start with http:// or https://")
+	if !strings.HasPrefix(cfg.addr, "http://") && !strings.HasPrefix(cfg.addr, "https://") && !fetcher.IsUnixAddr(cfg.addr) {
+		return fmt.Errorf("--addr must start with http://, https://, or unix//")
+	}
+	if fetcher.IsUnixAddr(cfg.addr) {
+		if _, ok := fetcher.ParseUnixAddr(cfg.addr); !ok {
+			return fmt.Errorf("--addr must include a non-empty Unix socket path")
+		}
+		if cfg.caCert != "" || cfg.clientCert != "" || cfg.clientKey != "" || cfg.insecure {
+			return fmt.Errorf("TLS options cannot be used with Unix socket addresses")
+		}
 	}
 	if cfg.metricsAuth != "" {
 		if !strings.Contains(cfg.metricsAuth, ":") {
