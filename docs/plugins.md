@@ -407,6 +407,22 @@ Implement `Availability` when your plugin's tab(s) should be shown or hidden bas
 
 `Available()` is checked after each successful `Fetch`. When it returns `false`, the plugin's tab(s) are removed from the tab bar. When it returns `true`, they are re-added. If `Available()` panics, the tab stays visible (fail-open).
 
+### TabAvailability (optional)
+
+```go
+type TabAvailability interface {
+    TabAvailable(key string) bool
+}
+```
+
+Implement `TabAvailability` in a `MultiRenderer` plugin when individual tabs should be shown or hidden independently. For example, a WAF plugin with "Rules" and "Analytics" tabs can hide the "Analytics" tab when the analytics module is not active on the Caddy instance.
+
+`TabAvailable(key)` is checked after each successful `Fetch` for every tab key returned by `Tabs()`. When it returns `false` for a key, that tab is removed from the tab bar. When it returns `true`, the tab is re-added. If `TabAvailable` panics, the tab stays visible (fail-open).
+
+If a plugin also implements `Availability`, it acts as a master switch: when `Available()` returns `false`, all tabs are hidden regardless of `TabAvailable` results. When `Available()` returns `true`, `TabAvailable` controls each tab individually.
+
+`TabAvailability` is ignored for single-Renderer plugins (there is only one tab, so `Availability` is sufficient).
+
 ## Reusing Prometheus Parsing
 
 The `pkg/metrics` package exposes the same Prometheus text parser that Ember uses internally:

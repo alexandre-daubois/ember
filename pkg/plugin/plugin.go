@@ -169,6 +169,23 @@ type Availability interface {
 	Available() bool
 }
 
+// TabAvailability is optionally implemented by [MultiRenderer] plugins that
+// need per-tab visibility control. Ember calls TabAvailable for each tab key
+// after every successful Fetch. When TabAvailable returns false for a key,
+// that specific tab is removed from the tab bar. When it returns true, the
+// tab is re-added.
+//
+// If a plugin also implements [Availability], it acts as a master switch:
+// when Available returns false, all tabs are hidden regardless of
+// TabAvailable results. When Available returns true, TabAvailable controls
+// each tab individually.
+//
+// TabAvailability is ignored for single-Renderer plugins.
+// If TabAvailable panics, the tab stays visible (fail-open).
+type TabAvailability interface {
+	TabAvailable(key string) bool
+}
+
 // PluginExport holds the data needed to export metrics for a single plugin.
 // Used internally by Ember to pass plugin data to the /metrics handler.
 type PluginExport struct {

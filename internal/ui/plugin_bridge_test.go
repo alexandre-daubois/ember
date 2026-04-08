@@ -337,8 +337,10 @@ func TestNewPluginTabs_MultiRenderer(t *testing.T) {
 	require.Len(t, pts, 2)
 	assert.Equal(t, tab(100), pts[0].tabID)
 	assert.Equal(t, "My Module Overview", pts[0].tabName)
+	assert.Equal(t, "overview", pts[0].tabKey)
 	assert.Equal(t, tab(101), pts[1].tabID)
 	assert.Equal(t, "My Module Details", pts[1].tabName)
+	assert.Equal(t, "details", pts[1].tabKey)
 	assert.Same(t, g, pts[0].group)
 	assert.Same(t, g, pts[1].group)
 }
@@ -399,6 +401,79 @@ type panicMetricsSubPlugin struct{}
 
 func (p *panicMetricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { panic("onmetrics boom") }
 
+func TestNewPluginTabs_SingleRenderer_EmptyTabKey(t *testing.T) {
+	p := &stubPlugin{name: "single"}
+	pts, _ := newPluginTabs(p, 100)
+
+	require.Len(t, pts, 1)
+	assert.Equal(t, "", pts[0].tabKey)
+}
+
+func TestNewPluginTabs_TabAvailabilityDetected(t *testing.T) {
+	p := &tabAvailMultiPlugin{
+		multiRendererPlugin: multiRendererPlugin{
+			stubPlugin: stubPlugin{name: "ta"},
+			tabs:       []plugin.TabDescriptor{{Key: "a", Name: "A"}, {Key: "b", Name: "B"}},
+		},
+		tabAvail: map[string]bool{"a": true, "b": true},
+	}
+	_, g := newPluginTabs(p, 100)
+
+	assert.NotNil(t, g.tabAvail)
+	assert.True(t, g.wasTabAvail["a"])
+	assert.True(t, g.wasTabAvail["b"])
+}
+
+func TestNewPluginTabs_TabAvailabilityIgnoredForSingleRenderer(t *testing.T) {
+	p := &tabAvailSinglePlugin{
+		stubPlugin: stubPlugin{name: "single-ta"},
+		tabAvail:   map[string]bool{"x": true},
+	}
+	_, g := newPluginTabs(p, 100)
+
+	assert.Nil(t, g.tabAvail, "TabAvailability should be ignored for single-Renderer plugins")
+}
+
+type tabAvailMultiPlugin struct {
+	multiRendererPlugin
+	tabAvail map[string]bool
+}
+
+func (p *tabAvailMultiPlugin) TabAvailable(key string) bool { return p.tabAvail[key] }
+
+type tabAvailSinglePlugin struct {
+	stubPlugin
+	tabAvail map[string]bool
+}
+
+func (p *tabAvailSinglePlugin) TabAvailable(key string) bool { return p.tabAvail[key] }
+
+type panicTabAvailPlugin struct{}
+
+func (p *panicTabAvailPlugin) TabAvailable(_ string) bool { panic("tab avail boom") }
+
+func TestSafePluginTabAvailable(t *testing.T) {
+	t.Run("returns true", func(t *testing.T) {
+		ta := &tabAvailMultiPlugin{tabAvail: map[string]bool{"a": true}}
+		assert.True(t, safePluginTabAvailable(ta, "a"))
+	})
+
+	t.Run("returns false", func(t *testing.T) {
+		ta := &tabAvailMultiPlugin{tabAvail: map[string]bool{"a": false}}
+		assert.False(t, safePluginTabAvailable(ta, "a"))
+	})
+
+	t.Run("missing key returns false", func(t *testing.T) {
+		ta := &tabAvailMultiPlugin{tabAvail: map[string]bool{}}
+		assert.False(t, safePluginTabAvailable(ta, "unknown"))
+	})
+
+	t.Run("panic returns true (fail-open)", func(t *testing.T) {
+		ta := &panicTabAvailPlugin{}
+		assert.True(t, safePluginTabAvailable(ta, "any"))
+	})
+}
+
 func TestUpdatePluginTabVisibility(t *testing.T) {
 	p := &stubPlugin{name: "vis"}
 	cfg := Config{Plugins: []plugin.Plugin{p}}
@@ -425,4 +500,157 @@ func TestUpdatePluginTabVisibility_SwitchesActiveTab(t *testing.T) {
 
 	app.updatePluginTabVisibility(app.pluginGroups[0], false)
 	assert.Equal(t, tabCaddy, app.activeTab, "should switch to Caddy when active tab is hidden")
+}
+
+func TestPerTabAvailability_HidesOneTab(t *testing.T) {
+	p := &tabAvailMultiPlugin{
+		multiRendererPlugin: multiRendererPlugin{
+			stubPlugin: stubPlugin{name: "waf"},
+			tabs: []plugin.TabDescriptor{
+				{Key: "rules", Name: "Rules"},
+				{Key: "analytics", Name: "Analytics"},
+			},
+		},
+		tabAvail: map[string]bool{"rules": true, "analytics": true},
+	}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+
+	require.Len(t, app.pluginTabs, 2)
+	assert.Contains(t, app.tabs, app.pluginTabs[0].tabID)
+	assert.Contains(t, app.tabs, app.pluginTabs[1].tabID)
+
+	p.tabAvail["analytics"] = false
+	g := app.pluginGroups[0]
+	for _, pt := range app.pluginTabs {
+		if pt.group != g || pt.tabKey == "" {
+			continue
+		}
+		nowAvail := safePluginTabAvailable(g.tabAvail, pt.tabKey)
+		if nowAvail != g.wasTabAvail[pt.tabKey] {
+			g.wasTabAvail[pt.tabKey] = nowAvail
+			app.updateSingleTabVisibility(pt, nowAvail)
+		}
+	}
+
+	assert.Contains(t, app.tabs, app.pluginTabs[0].tabID, "rules tab should still be visible")
+	assert.NotContains(t, app.tabs, app.pluginTabs[1].tabID, "analytics tab should be hidden")
+}
+
+func TestPerTabAvailability_MasterSwitchOverrides(t *testing.T) {
+	p := &tabAvailMasterPlugin{
+		tabAvailMultiPlugin: tabAvailMultiPlugin{
+			multiRendererPlugin: multiRendererPlugin{
+				stubPlugin: stubPlugin{name: "waf"},
+				tabs: []plugin.TabDescriptor{
+					{Key: "rules", Name: "Rules"},
+					{Key: "analytics", Name: "Analytics"},
+				},
+			},
+			tabAvail: map[string]bool{"rules": true, "analytics": true},
+		},
+		available: true,
+	}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+
+	require.Len(t, app.pluginTabs, 2)
+
+	p.available = false
+	app.updatePluginTabVisibility(app.pluginGroups[0], false)
+
+	assert.NotContains(t, app.tabs, app.pluginTabs[0].tabID, "master switch off hides all")
+	assert.NotContains(t, app.tabs, app.pluginTabs[1].tabID, "master switch off hides all")
+}
+
+func TestPerTabAvailability_ActiveTabSwitchesOnHide(t *testing.T) {
+	p := &tabAvailMultiPlugin{
+		multiRendererPlugin: multiRendererPlugin{
+			stubPlugin: stubPlugin{name: "waf"},
+			tabs: []plugin.TabDescriptor{
+				{Key: "rules", Name: "Rules"},
+				{Key: "analytics", Name: "Analytics"},
+			},
+		},
+		tabAvail: map[string]bool{"rules": true, "analytics": true},
+	}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+
+	app.switchTab(app.pluginTabs[1].tabID)
+	assert.Equal(t, app.pluginTabs[1].tabID, app.activeTab)
+
+	app.updateSingleTabVisibility(app.pluginTabs[1], false)
+	assert.Equal(t, tabCaddy, app.activeTab, "should switch away when active tab is hidden")
+}
+
+type tabAvailMasterPlugin struct {
+	tabAvailMultiPlugin
+	available bool
+}
+
+func (p *tabAvailMasterPlugin) Available() bool { return p.available }
+
+func TestPerTabAvailability_MasterSwitchRestoresWithPerTab(t *testing.T) {
+	p := &tabAvailMasterPlugin{
+		tabAvailMultiPlugin: tabAvailMultiPlugin{
+			multiRendererPlugin: multiRendererPlugin{
+				stubPlugin: stubPlugin{name: "waf"},
+				tabs: []plugin.TabDescriptor{
+					{Key: "rules", Name: "Rules"},
+					{Key: "analytics", Name: "Analytics"},
+				},
+			},
+			tabAvail: map[string]bool{"rules": true, "analytics": false},
+		},
+		available: true,
+	}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	g := app.pluginGroups[0]
+
+	// per-tab: hide analytics
+	for _, pt := range app.pluginTabs {
+		if pt.group != g || pt.tabKey == "" {
+			continue
+		}
+		nowAvail := safePluginTabAvailable(g.tabAvail, pt.tabKey)
+		if nowAvail != g.wasTabAvail[pt.tabKey] {
+			g.wasTabAvail[pt.tabKey] = nowAvail
+			app.updateSingleTabVisibility(pt, nowAvail)
+		}
+	}
+	assert.NotContains(t, app.tabs, app.pluginTabs[1].tabID, "analytics initially hidden")
+
+	// master switch off
+	p.available = false
+	g.wasAvail = false
+	app.updatePluginTabVisibility(g, false)
+	assert.NotContains(t, app.tabs, app.pluginTabs[0].tabID)
+
+	// master switch back on: simulates what pluginFetchMsg handler does
+	p.available = true
+	nowAvail := safePluginAvailable(g.avail)
+	g.wasAvail = nowAvail
+	app.updatePluginTabVisibility(g, nowAvail)
+	if g.wasTabAvail != nil {
+		for k := range g.wasTabAvail {
+			g.wasTabAvail[k] = true
+		}
+	}
+
+	// per-tab re-evaluation
+	for _, pt := range app.pluginTabs {
+		if pt.group != g || pt.tabKey == "" {
+			continue
+		}
+		tabNowAvail := safePluginTabAvailable(g.tabAvail, pt.tabKey)
+		if tabNowAvail != g.wasTabAvail[pt.tabKey] {
+			g.wasTabAvail[pt.tabKey] = tabNowAvail
+			app.updateSingleTabVisibility(pt, tabNowAvail)
+		}
+	}
+
+	assert.Contains(t, app.tabs, app.pluginTabs[0].tabID, "rules should be visible after master re-enable")
+	assert.NotContains(t, app.tabs, app.pluginTabs[1].tabID, "analytics should stay hidden after master re-enable")
 }

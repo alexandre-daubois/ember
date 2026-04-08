@@ -329,6 +329,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if nowAvail != g.wasAvail {
 						g.wasAvail = nowAvail
 						a.updatePluginTabVisibility(g, nowAvail)
+						if nowAvail && g.wasTabAvail != nil {
+							for k := range g.wasTabAvail {
+								g.wasTabAvail[k] = true
+							}
+						}
+					}
+				}
+
+				if g.wasAvail && g.tabAvail != nil {
+					for _, pt := range a.pluginTabs {
+						if pt.group != g || pt.tabKey == "" {
+							continue
+						}
+						nowAvail := safePluginTabAvailable(g.tabAvail, pt.tabKey)
+						if nowAvail != g.wasTabAvail[pt.tabKey] {
+							g.wasTabAvail[pt.tabKey] = nowAvail
+							a.updateSingleTabVisibility(pt, nowAvail)
+						}
 					}
 				}
 
@@ -1289,33 +1307,36 @@ func (a *App) notifyMetricsSubscribers(snap *fetcher.Snapshot) {
 
 func (a *App) updatePluginTabVisibility(g *pluginGroup, visible bool) {
 	for _, pt := range a.pluginTabs {
-		if pt.group != g {
-			continue
+		if pt.group == g {
+			a.updateSingleTabVisibility(pt, visible)
 		}
-		if visible {
-			if !slices.Contains(a.tabs, pt.tabID) {
-				inserted := false
-				for i, t := range a.tabs {
-					if t > pt.tabID {
-						a.tabs = slices.Insert(a.tabs, i, pt.tabID)
-						inserted = true
-						break
-					}
+	}
+}
+
+func (a *App) updateSingleTabVisibility(pt *pluginTab, visible bool) {
+	if visible {
+		if !slices.Contains(a.tabs, pt.tabID) {
+			inserted := false
+			for i, t := range a.tabs {
+				if t > pt.tabID {
+					a.tabs = slices.Insert(a.tabs, i, pt.tabID)
+					inserted = true
+					break
 				}
-				if !inserted {
-					a.tabs = append(a.tabs, pt.tabID)
-				}
-				a.tabStates[pt.tabID] = &tabState{}
 			}
-		} else {
-			idx := slices.Index(a.tabs, pt.tabID)
-			if idx >= 0 {
-				if a.activeTab == pt.tabID {
-					a.switchTab(a.tabs[0])
-				}
-				a.tabs = slices.Delete(a.tabs, idx, idx+1)
-				delete(a.tabStates, pt.tabID)
+			if !inserted {
+				a.tabs = append(a.tabs, pt.tabID)
 			}
+			a.tabStates[pt.tabID] = &tabState{}
+		}
+	} else {
+		idx := slices.Index(a.tabs, pt.tabID)
+		if idx >= 0 {
+			if a.activeTab == pt.tabID {
+				a.switchTab(a.tabs[0])
+			}
+			a.tabs = slices.Delete(a.tabs, idx, idx+1)
+			delete(a.tabStates, pt.tabID)
 		}
 	}
 }

@@ -10,20 +10,23 @@ import (
 )
 
 type pluginGroup struct {
-	p        plugin.Plugin
-	fetcher  plugin.Fetcher
-	exporter plugin.Exporter
-	avail    plugin.Availability
-	wasAvail bool
-	data     any
-	err      error
-	fetching bool
+	p           plugin.Plugin
+	fetcher     plugin.Fetcher
+	exporter    plugin.Exporter
+	avail       plugin.Availability
+	tabAvail    plugin.TabAvailability
+	wasAvail    bool
+	wasTabAvail map[string]bool
+	data        any
+	err         error
+	fetching    bool
 }
 
 type pluginTab struct {
 	group    *pluginGroup
 	renderer plugin.Renderer
 	tabID    tab
+	tabKey   string
 	tabName  string
 }
 
@@ -42,6 +45,10 @@ func newPluginTabs(p plugin.Plugin, startID tab) ([]*pluginTab, *pluginGroup) {
 	var tabs []*pluginTab
 
 	if mr, ok := p.(plugin.MultiRenderer); ok {
+		if ta, ok := p.(plugin.TabAvailability); ok {
+			g.tabAvail = ta
+			g.wasTabAvail = make(map[string]bool)
+		}
 		for i, desc := range mr.Tabs() {
 			r := mr.RendererForTab(desc.Key)
 			if r != nil {
@@ -49,8 +56,12 @@ func newPluginTabs(p plugin.Plugin, startID tab) ([]*pluginTab, *pluginGroup) {
 					group:    g,
 					renderer: r,
 					tabID:    startID + tab(i),
+					tabKey:   desc.Key,
 					tabName:  desc.Name,
 				})
+				if g.wasTabAvail != nil {
+					g.wasTabAvail[desc.Key] = true
+				}
 			}
 		}
 	} else if r, ok := p.(plugin.Renderer); ok {
@@ -137,4 +148,13 @@ func safePluginAvailable(a plugin.Availability) (avail bool) {
 		}
 	}()
 	return a.Available()
+}
+
+func safePluginTabAvailable(ta plugin.TabAvailability, key string) (avail bool) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			avail = true
+		}
+	}()
+	return ta.TabAvailable(key)
 }
