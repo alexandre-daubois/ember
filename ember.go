@@ -1,6 +1,9 @@
 // Package ember provides the public entry point for running Ember,
 // a real-time monitoring tool for Caddy and FrankenPHP.
 //
+// EXPERIMENTAL: the plugin API (pkg/plugin, pkg/metrics) is not yet
+// stable and may change in any future release.
+//
 // Plugin authors use this package to build custom Ember binaries:
 //
 //	import (

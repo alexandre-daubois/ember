@@ -1,5 +1,7 @@
 # Plugin Development Guide
 
+> **EXPERIMENTAL**: the plugin API is not yet stable. Interfaces, method signatures, and behavior may change in any future release.
+
 Ember supports compile-time plugins that let you:
 
 - Add **custom tabs** to the TUI for visualizing metrics from additional Caddy modules (rate limiters, WAF, cache, custom middleware)

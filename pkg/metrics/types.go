@@ -1,6 +1,9 @@
 // Package metrics exposes the data types used by Ember to represent
 // Caddy and FrankenPHP metrics. Plugin authors can import this package
 // to reuse Ember's metric structures and Prometheus parser.
+//
+// EXPERIMENTAL: this package is part of the plugin API and is not yet
+// stable. Types and fields may change in any future release.
 package metrics
 
 import (
