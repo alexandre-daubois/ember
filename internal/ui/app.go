@@ -25,6 +25,13 @@ const (
 	viewHelp
 )
 
+const (
+	sparklineSize      = 15
+	graphHistorySize   = 300
+	memHistorySize     = 60
+	globalFetchTimeout = 10 * time.Second
+)
+
 type Config struct {
 	Interval         time.Duration
 	SlowThreshold    time.Duration
@@ -61,10 +68,6 @@ type certFetcher interface {
 	FetchPKICertificates(ctx context.Context) []fetcher.CertificateInfo
 	DialTLSCertificates(ctx context.Context, hosts []string) []fetcher.CertificateInfo
 }
-
-const sparklineSize = 15
-const graphHistorySize = 300
-const memHistorySize = 60
 
 type App struct {
 	fetcher   fetcher.Fetcher
@@ -797,15 +800,19 @@ func (a *App) doTick() tea.Cmd {
 
 func (a *App) doFetch() tea.Cmd {
 	return func() tea.Msg {
-		snap, err := a.fetcher.Fetch(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), globalFetchTimeout)
+		defer cancel()
+		snap, err := a.fetcher.Fetch(ctx)
 		return fetchMsg{snap: snap, err: err}
 	}
 }
 
 func (a *App) doRestart() tea.Cmd {
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), globalFetchTimeout)
+		defer cancel()
 		if r, ok := a.fetcher.(restarter); ok {
-			return restartResultMsg{err: r.RestartWorkers(context.Background())}
+			return restartResultMsg{err: r.RestartWorkers(ctx)}
 		}
 		return restartResultMsg{}
 	}
@@ -813,8 +820,10 @@ func (a *App) doRestart() tea.Cmd {
 
 func (a *App) doFetchConfig() tea.Cmd {
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), globalFetchTimeout)
+		defer cancel()
 		if cf, ok := a.fetcher.(configFetcher); ok {
-			raw, err := cf.FetchConfig(context.Background())
+			raw, err := cf.FetchConfig(ctx)
 			return configFetchMsg{raw: raw, err: err}
 		}
 		return configFetchMsg{err: fmt.Errorf("config inspection not supported")}
@@ -834,7 +843,8 @@ func (a *App) doFetchCertificates() tea.Cmd {
 			return certFetchMsg{err: fmt.Errorf("certificate inspection not supported")}
 		}
 
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), globalFetchTimeout)
+		defer cancel()
 		all := make([]fetcher.CertificateInfo, 0)
 
 		all = append(all, cf.FetchPKICertificates(ctx)...)
