@@ -30,7 +30,7 @@ func TestRun_InvalidFlag(t *testing.T) {
 func TestRun_InvalidAddr(t *testing.T) {
 	err := app.Run([]string{"--addr", "localhost:2019"}, version)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "--addr must start with http:// or https://")
+	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestRun_InvalidInterval(t *testing.T) {

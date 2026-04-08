@@ -10,7 +10,7 @@ ember [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--addr` | string | `http://localhost:2019` | Caddy admin API address |
+| `--addr` | string | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`) |
 | `--interval` | duration | `1s` | Polling interval |
 | `--timeout` | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
@@ -35,7 +35,7 @@ Some flags can be set via environment variables. Explicit flags always take prec
 
 | Variable | Flag | Example |
 |----------|------|---------|
-| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019` |
+| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019` or `EMBER_ADDR=unix//run/caddy/admin.sock` |
 | `EMBER_INTERVAL` | `--interval` | `EMBER_INTERVAL=5s` |
 | `EMBER_EXPOSE` | `--expose` | `EMBER_EXPOSE=:9191` |
 | `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
@@ -51,6 +51,9 @@ ember
 
 # Connect to a remote Caddy instance
 ember --addr http://prod:2019
+
+# Connect via Unix socket
+ember --addr unix//run/caddy/admin.sock
 
 # Pipe-friendly JSON output
 ember --json

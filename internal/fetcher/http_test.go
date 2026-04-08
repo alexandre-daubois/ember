@@ -3,8 +3,11 @@ package fetcher
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -840,6 +843,92 @@ func TestFetchConfig_EmptyConfig(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
+	raw, err := f.FetchConfig(context.Background())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{}`, string(raw))
+}
+
+func TestNewHTTPFetcher_TCPAddr(t *testing.T) {
+	f := NewHTTPFetcher("http://localhost:2019", 0)
+	assert.False(t, f.IsUnixSocket())
+}
+
+func TestNewHTTPFetcher_UnixSocket(t *testing.T) {
+	f := NewHTTPFetcher("unix//tmp/test.sock", 0)
+	assert.True(t, f.IsUnixSocket())
+}
+
+func TestNewHTTPFetcher_UnixSocketTripleSlash(t *testing.T) {
+	f := NewHTTPFetcher("unix:///tmp/test.sock", 0)
+	assert.True(t, f.IsUnixSocket())
+}
+
+func unixSocketPath(t *testing.T) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "ember-test-*.sock")
+	require.NoError(t, err)
+	path := f.Name()
+	f.Close()
+	os.Remove(path)
+	t.Cleanup(func() { os.Remove(path) })
+	return path
+}
+
+func TestHTTPFetcher_UnixSocket_Integration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix sockets are not supported on Windows")
+	}
+	sockPath := unixSocketPath(t)
+	l, err := net.Listen("unix", sockPath)
+	require.NoError(t, err)
+	defer l.Close()
+
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/config/":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{}`))
+		case "/metrics":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("# no metrics\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})}
+	go srv.Serve(l)
+	defer srv.Close()
+
+	f := NewHTTPFetcher("unix/"+sockPath, 0)
+	assert.True(t, f.IsUnixSocket())
+
+	raw, err := f.FetchConfig(context.Background())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{}`, string(raw))
+}
+
+func TestHTTPFetcher_UnixSocket_TripleSlash_Integration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix sockets are not supported on Windows")
+	}
+	sockPath := unixSocketPath(t)
+	l, err := net.Listen("unix", sockPath)
+	require.NoError(t, err)
+	defer l.Close()
+
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})}
+	go srv.Serve(l)
+	defer srv.Close()
+
+	f := NewHTTPFetcher("unix://"+sockPath, 0) // sockPath starts with /, producing unix:///...
+	assert.True(t, f.IsUnixSocket())
+
 	raw, err := f.FetchConfig(context.Background())
 	require.NoError(t, err)
 	assert.JSONEq(t, `{}`, string(raw))

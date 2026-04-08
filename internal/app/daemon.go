@@ -50,6 +50,10 @@ func reloadTLS(f fetcher.Fetcher, cfg *config, log *slog.Logger) {
 		log.Warn("TLS reload not supported for this fetcher")
 		return
 	}
+	if hf.IsUnixSocket() {
+		log.Info("TLS reload skipped (Unix socket connection)")
+		return
+	}
 	if err := configureTLS(hf, cfg); err != nil {
 		log.Error("TLS reload failed", "err", err)
 		return

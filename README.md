@@ -43,6 +43,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Readiness gate: `ember wait` blocks until Caddy is up (`-q` for silent scripting)
 - Deployment validation: `ember diff before.json after.json` compares snapshots
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
+- Unix socket support for Caddy admin APIs configured with `admin unix//path`
 - TLS and mTLS support for secured Caddy admin APIs
 - Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, ...) for container deployments
 - `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
