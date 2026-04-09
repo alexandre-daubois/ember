@@ -223,6 +223,27 @@ func TestValidate_MetricsAuthOK(t *testing.T) {
 	assert.NoError(t, validate(cfg))
 }
 
+func TestValidate_MetricsAuthColonOnly(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: ":"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "both parts required")
+}
+
+func TestValidate_MetricsAuthEmptyUser(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: ":password"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "both parts required")
+}
+
+func TestValidate_MetricsAuthEmptyPassword(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: "user:"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "both parts required")
+}
+
 func TestValidate_MetricsAuthEmptyOK(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191"}
 	assert.NoError(t, validate(cfg))

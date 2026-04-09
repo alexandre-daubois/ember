@@ -216,57 +216,17 @@ func (a *App) handleConfigListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		maxIdx = 0
 	}
 
-	switch msg.String() {
+	key := msg.String()
+
+	if cmd, ok := a.handleTabSwitch(key); ok {
+		return a, cmd
+	}
+
+	moveCursor(key, &a.configCursor, maxIdx, a.configPageSize())
+
+	switch key {
 	case "q", "ctrl+c":
 		return a, tea.Quit
-	case "tab":
-		a.nextTab()
-		return a, a.switchTabCmd()
-	case "shift+tab":
-		a.prevTab()
-		return a, a.switchTabCmd()
-	case "1":
-		if len(a.tabs) > 0 {
-			a.switchTab(a.tabs[0])
-		}
-		return a, a.switchTabCmd()
-	case "2":
-		if len(a.tabs) > 1 {
-			a.switchTab(a.tabs[1])
-		}
-		return a, a.switchTabCmd()
-	case "3":
-		if len(a.tabs) > 2 {
-			a.switchTab(a.tabs[2])
-		}
-		return a, a.switchTabCmd()
-	case "4":
-		if len(a.tabs) > 3 {
-			a.switchTab(a.tabs[3])
-		}
-		return a, a.switchTabCmd()
-	case "up", "k":
-		if a.configCursor > 0 {
-			a.configCursor--
-		}
-	case "down", "j":
-		if a.configCursor < maxIdx {
-			a.configCursor++
-		}
-	case "home":
-		a.configCursor = 0
-	case "end":
-		a.configCursor = maxIdx
-	case "pgup":
-		a.configCursor -= a.configPageSize()
-		if a.configCursor < 0 {
-			a.configCursor = 0
-		}
-	case "pgdown":
-		a.configCursor += a.configPageSize()
-		if a.configCursor > maxIdx {
-			a.configCursor = maxIdx
-		}
 	case "enter", "right", "l":
 		if a.configCursor < len(visible) {
 			n := visible[a.configCursor]

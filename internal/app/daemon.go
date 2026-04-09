@@ -68,13 +68,7 @@ func metricsURL(addr string) string {
 	return "http://" + addr + "/metrics"
 }
 
-func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-
-	holder := &exporter.StateHolder{}
-	var state model.State
-
+func newMetricsHandler(holder *exporter.StateHolder, cfg *config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval))
@@ -84,7 +78,18 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
 		user, pass, _ := strings.Cut(cfg.metricsAuth, ":")
 		handler = exporter.BasicAuth(mux, user, pass)
 	}
-	srv := &http.Server{Addr: cfg.expose, Handler: handler}
+
+	return handler
+}
+
+func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	holder := &exporter.StateHolder{}
+	var state model.State
+
+	srv := &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg)}
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

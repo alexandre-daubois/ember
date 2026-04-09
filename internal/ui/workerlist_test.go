@@ -281,7 +281,7 @@ func TestCompactDuration(t *testing.T) {
 		{49 * time.Hour, "2.0d"},
 	}
 	for _, tt := range tests {
-		assert.Equal(t, tt.want, compactDuration(tt.d), "compactDuration(%v)", tt.d)
+		assert.Equal(t, tt.want, formatDuration(tt.d), "formatDuration(%v)", tt.d)
 	}
 }
 

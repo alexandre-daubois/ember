@@ -491,6 +491,66 @@ func (a *App) View() string {
 	return base
 }
 
+func (a *App) handleTabSwitch(key string) (tea.Cmd, bool) {
+	switch key {
+	case "tab":
+		a.nextTab()
+		return a.switchTabCmd(), true
+	case "shift+tab":
+		a.prevTab()
+		return a.switchTabCmd(), true
+	case "1":
+		if len(a.tabs) > 0 {
+			a.switchTab(a.tabs[0])
+		}
+		return a.switchTabCmd(), true
+	case "2":
+		if len(a.tabs) > 1 {
+			a.switchTab(a.tabs[1])
+		}
+		return a.switchTabCmd(), true
+	case "3":
+		if len(a.tabs) > 2 {
+			a.switchTab(a.tabs[2])
+		}
+		return a.switchTabCmd(), true
+	case "4":
+		if len(a.tabs) > 3 {
+			a.switchTab(a.tabs[3])
+		}
+		return a.switchTabCmd(), true
+	}
+	return nil, false
+}
+
+func moveCursor(key string, cursor *int, maxIdx, pgSize int) {
+	switch key {
+	case "up", "k":
+		if *cursor > 0 {
+			*cursor--
+		}
+	case "down", "j":
+		(*cursor)++
+		if *cursor > maxIdx {
+			*cursor = maxIdx
+		}
+	case "home":
+		*cursor = 0
+	case "end":
+		*cursor = maxIdx
+	case "pgup":
+		*cursor -= pgSize
+		if *cursor < 0 {
+			*cursor = 0
+		}
+	case "pgdown":
+		*cursor += pgSize
+		if *cursor > maxIdx {
+			*cursor = maxIdx
+		}
+	}
+}
+
 func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch a.mode {
 	case viewFilter:
@@ -539,58 +599,21 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleCertListKey(msg)
 	}
 
-	switch msg.String() {
+	key := msg.String()
+
+	if cmd, ok := a.handleTabSwitch(key); ok {
+		return a, cmd
+	}
+
+	maxIdx := a.listLen() - 1
+	if maxIdx < 0 {
+		maxIdx = 0
+	}
+	moveCursor(key, &a.cursor, maxIdx, a.pageSize())
+
+	switch key {
 	case "q", "ctrl+c":
 		return a, tea.Quit
-	case "tab":
-		a.nextTab()
-		return a, a.switchTabCmd()
-	case "shift+tab":
-		a.prevTab()
-		return a, a.switchTabCmd()
-	case "1":
-		if len(a.tabs) > 0 {
-			a.switchTab(a.tabs[0])
-		}
-		return a, a.switchTabCmd()
-	case "2":
-		if len(a.tabs) > 1 {
-			a.switchTab(a.tabs[1])
-		}
-		return a, a.switchTabCmd()
-	case "3":
-		if len(a.tabs) > 2 {
-			a.switchTab(a.tabs[2])
-		}
-		return a, a.switchTabCmd()
-	case "4":
-		if len(a.tabs) > 3 {
-			a.switchTab(a.tabs[3])
-		}
-		return a, a.switchTabCmd()
-	case "up", "k":
-		if a.cursor > 0 {
-			a.cursor--
-		}
-	case "down", "j":
-		a.cursor++
-		a.clampCursor()
-	case "home":
-		a.cursor = 0
-	case "end":
-		max := a.listLen() - 1
-		if max < 0 {
-			max = 0
-		}
-		a.cursor = max
-	case "pgup":
-		a.cursor -= a.pageSize()
-		if a.cursor < 0 {
-			a.cursor = 0
-		}
-	case "pgdown":
-		a.cursor += a.pageSize()
-		a.clampCursor()
 	case "s":
 		if a.activeTab == tabCaddy {
 			a.hostSortBy = a.hostSortBy.Next()
@@ -625,32 +648,17 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	maxIdx := a.listLen() - 1
+	if maxIdx < 0 {
+		maxIdx = 0
+	}
+	moveCursor(key, &a.cursor, maxIdx, a.pageSize())
+
+	switch key {
 	case "esc", "q":
 		a.mode = viewList
-	case "up", "k":
-		if a.cursor > 0 {
-			a.cursor--
-		}
-	case "down", "j":
-		a.cursor++
-		a.clampCursor()
-	case "home":
-		a.cursor = 0
-	case "end":
-		max := a.listLen() - 1
-		if max < 0 {
-			max = 0
-		}
-		a.cursor = max
-	case "pgup":
-		a.cursor -= a.pageSize()
-		if a.cursor < 0 {
-			a.cursor = 0
-		}
-	case "pgdown":
-		a.cursor += a.pageSize()
-		a.clampCursor()
 	case "r":
 		if a.activeTab == tabFrankenPHP {
 			a.mode = viewConfirmRestart

@@ -236,8 +236,9 @@ func validate(cfg *config) error {
 		}
 	}
 	if cfg.metricsAuth != "" {
-		if !strings.Contains(cfg.metricsAuth, ":") {
-			return fmt.Errorf("--metrics-auth must be in user:password format")
+		user, pass, ok := strings.Cut(cfg.metricsAuth, ":")
+		if !ok || user == "" || pass == "" {
+			return fmt.Errorf("--metrics-auth must be in user:password format (both parts required)")
 		}
 		if cfg.expose == "" {
 			return fmt.Errorf("--metrics-auth requires --expose")

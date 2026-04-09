@@ -76,13 +76,7 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 		for _, sc := range codes {
 			label := fmt.Sprintf("%d", sc.code)
 			value := fmt.Sprintf("%s/s", formatRate(sc.rate))
-			style := lipgloss.NewStyle()
-			if sc.code >= 400 && sc.code < 500 {
-				style = warnStyle
-			} else if sc.code >= 500 {
-				style = dangerStyle
-			}
-			lines = append(lines, "  "+detailLabelStyle.Render(label)+style.Render(value))
+			lines = append(lines, "  "+detailLabelStyle.Render(label)+statusCodeStyle(sc.code).Render(value))
 		}
 	}
 
@@ -134,6 +128,17 @@ func formatDetailRate(v float64) string {
 		return "—"
 	}
 	return fmt.Sprintf("%s/s", formatRate(v))
+}
+
+func statusCodeStyle(code int) lipgloss.Style {
+	switch {
+	case code >= 500:
+		return dangerStyle
+	case code >= 400:
+		return warnStyle
+	default:
+		return lipgloss.NewStyle()
+	}
 }
 
 type statusCodeEntry struct {
