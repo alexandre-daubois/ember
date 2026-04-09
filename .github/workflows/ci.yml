@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  GOTESTSUM_FORMAT: pkgname-and-test-fails
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -41,11 +44,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       - name: Build
         run: go build ./cmd/ember/
 
       - name: Test
-        run: go test ./... -race -v -coverprofile=coverage.txt
+        run: gotestsum -- ./... -race -coverprofile=coverage.txt
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
@@ -95,8 +101,11 @@ jobs:
           echo "::error::Caddy failed to start within 30s"
           exit 1
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       - name: Integration tests
-        run: go test -tags integration -race -v -coverprofile=integration-coverage.txt ./internal/app/
+        run: gotestsum -- -tags integration -race -coverprofile=integration-coverage.txt ./internal/app/
         env:
           EMBER_TEST_CADDY_ADDR: http://localhost:2099
 
