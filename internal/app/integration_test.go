@@ -535,6 +535,108 @@ func TestIntegration_Status_Unreachable_JSON(t *testing.T) {
 	assert.Equal(t, "unreachable", parsed["status"])
 }
 
+func TestIntegration_FetchConfig(t *testing.T) {
+	addr := caddyAddr()
+	f := fetcher.NewHTTPFetcher(addr, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	raw, err := f.FetchConfig(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+	assert.Contains(t, parsed, "apps", "Caddy config should contain an apps key")
+}
+
+func TestIntegration_HostMetrics(t *testing.T) {
+	addr := caddyAddr()
+
+	// generate traffic against the :8080 vhost so Caddy records per-host metrics
+	for range 20 {
+		resp, err := http.Get("http://localhost:8080/")
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	f := fetcher.NewHTTPFetcher(addr, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	f.FetchServerNames(ctx)
+
+	var state model.State
+	snap, err := f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+
+	time.Sleep(300 * time.Millisecond)
+
+	snap, err = f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+
+	assert.NotEmpty(t, state.HostDerived, "should have per-host metrics after traffic")
+}
+
+func TestIntegration_PrometheusRoundTrip_WithHosts(t *testing.T) {
+	addr := caddyAddr()
+
+	for range 10 {
+		resp, err := http.Get("http://localhost:8080/")
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	f := fetcher.NewHTTPFetcher(addr, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	f.FetchServerNames(ctx)
+
+	var state model.State
+	snap, err := f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+
+	time.Sleep(300 * time.Millisecond)
+
+	snap, err = f.Fetch(ctx)
+	require.NoError(t, err)
+	state.Update(snap)
+
+	expose := freePort(t)
+	holder := &exporter.StateHolder{}
+	holder.Store(state.CopyForExport())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	srv := &http.Server{Addr: expose, Handler: mux}
+
+	go func() { _ = srv.ListenAndServe() }()
+	defer srv.Close()
+
+	waitForServer(t, fmt.Sprintf("http://%s/metrics", expose), 2*time.Second)
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/metrics", expose))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	metricsBody := string(body)
+
+	assert.Contains(t, metricsBody, "ember_host_rps")
+	assert.Contains(t, metricsBody, "ember_host_latency_avg_milliseconds")
+	assert.Contains(t, metricsBody, "process_cpu_percent")
+}
+
 func TestIntegration_Diff_FileNotFound(t *testing.T) {
 	var buf bytes.Buffer
 	err := runDiff(&buf, "/tmp/does-not-exist-ember-test.json", "/tmp/also-missing.json")
