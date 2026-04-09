@@ -40,6 +40,8 @@ type HTTPFetcher struct {
 	lastFrankenPHPCheck    time.Time
 }
 
+// NewHTTPFetcher creates a fetcher targeting the given Caddy admin API address.
+// When pid is non-zero, OS-level process metrics are collected for that PID.
 func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 	ph := newProcessHandle(pid)
 
@@ -130,6 +132,8 @@ func BuildTLSConfig(opts TLSOptions) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
+// DetectFrankenPHP probes the /frankenphp/threads endpoint and updates the
+// internal flag. It returns true when FrankenPHP is available.
 func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -151,12 +155,15 @@ func (f *HTTPFetcher) DetectFrankenPHP(ctx context.Context) bool {
 	return result
 }
 
+// HasFrankenPHP reports whether FrankenPHP was detected on the last check.
 func (f *HTTPFetcher) HasFrankenPHP() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.hasFrankenPHP
 }
 
+// FetchServerNames queries the Caddy config API for HTTP server names
+// and caches them. Returns nil on failure.
 func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -193,12 +200,16 @@ func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 	return names
 }
 
+// ServerNames returns the cached Caddy server names from the last successful fetch.
 func (f *HTTPFetcher) ServerNames() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.serverNames
 }
 
+// Fetch collects a full snapshot from the Caddy admin API: thread states,
+// Prometheus metrics, and OS-level process stats. Partial results are returned
+// when individual sub-fetches fail.
 func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	var (
 		threads   ThreadsResponse
@@ -348,6 +359,7 @@ func (f *HTTPFetcher) onConnected(ctx context.Context) {
 	}
 }
 
+// RestartWorkers sends a POST to the FrankenPHP worker restart endpoint.
 func (f *HTTPFetcher) RestartWorkers(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()

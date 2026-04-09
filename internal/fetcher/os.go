@@ -10,6 +10,8 @@ import (
 	"github.com/shirou/gopsutil/v4/process"
 )
 
+// FindFrankenPHPProcess scans running processes for one whose name or command
+// line contains "frankenphp" and returns its PID.
 func FindFrankenPHPProcess(ctx context.Context) (int32, error) {
 	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
@@ -34,6 +36,8 @@ func FindFrankenPHPProcess(ctx context.Context) (int32, error) {
 	return 0, fmt.Errorf("frankenphp process not found")
 }
 
+// FindCaddyProcess scans running processes for one whose name or command line
+// contains "caddy" and returns its PID.
 func FindCaddyProcess(ctx context.Context) (int32, error) {
 	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
