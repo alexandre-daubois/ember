@@ -132,6 +132,7 @@ func TestHandler_Percentiles(t *testing.T) {
 	s := stateWithThreads(nil, nil)
 	s.Derived.HasPercentiles = true
 	s.Derived.P50 = 12.5
+	s.Derived.P90 = 30.0
 	s.Derived.P95 = 45.0
 	s.Derived.P99 = 120.3
 
@@ -140,6 +141,7 @@ func TestHandler_Percentiles(t *testing.T) {
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, `frankenphp_request_duration_milliseconds{quantile="0.5"} 12.50`)
+	assert.Contains(t, body, `frankenphp_request_duration_milliseconds{quantile="0.9"} 30.00`)
 	assert.Contains(t, body, `frankenphp_request_duration_milliseconds{quantile="0.95"} 45.00`)
 	assert.Contains(t, body, `frankenphp_request_duration_milliseconds{quantile="0.99"} 120.30`)
 }

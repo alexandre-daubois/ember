@@ -276,6 +276,7 @@ func writePercentiles(w http.ResponseWriter, s *model.State, prefix string) {
 	fmt.Fprintf(w, "# HELP %s Request duration percentiles\n", name)
 	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
 	fmt.Fprintf(w, "%s{quantile=\"0.5\"} %.2f\n", name, s.Derived.P50)
+	fmt.Fprintf(w, "%s{quantile=\"0.9\"} %.2f\n", name, s.Derived.P90)
 	fmt.Fprintf(w, "%s{quantile=\"0.95\"} %.2f\n", name, s.Derived.P95)
 	fmt.Fprintf(w, "%s{quantile=\"0.99\"} %.2f\n", name, s.Derived.P99)
 }

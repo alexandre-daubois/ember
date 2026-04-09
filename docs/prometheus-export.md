@@ -77,7 +77,7 @@ This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `frankenphp_request_duration_milliseconds` | gauge | `quantile` (`0.5`, `0.95`, `0.99`) | Request duration percentiles |
+| `frankenphp_request_duration_milliseconds` | gauge | `quantile` (`0.5`, `0.9`, `0.95`, `0.99`) | Request duration percentiles |
 
 ### Caddy Host Metrics
 
