@@ -127,9 +127,9 @@ After changing the Caddyfile, reload Caddy (`caddy reload`). Historical metrics 
 
 **Symptoms:** FrankenPHP tab shows threads but the Method, URI, Time, Mem, and Reqs columns are blank.
 
-**Cause:** These per-thread metrics require **FrankenPHP 1.13 or later**. Older versions only expose thread index and state.
+**Cause:** These per-thread metrics require **FrankenPHP 1.12.1 or later**. Older versions only expose thread index and state.
 
-**Fix:** Upgrade FrankenPHP to 1.13+.
+**Fix:** Upgrade FrankenPHP to 1.12.1+.
 
 ---
 

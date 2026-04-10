@@ -10,7 +10,7 @@ Ember is a zero-config, read-only terminal dashboard that connects to Caddy's ad
 ## Prerequisites
 
 - A running **Caddy** server (any recent version)
-- For FrankenPHP thread-level metrics (method, URI, duration, memory): **FrankenPHP 1.13+**. Older versions only show thread index and state.
+- For FrankenPHP thread-level metrics (method, URI, duration, memory): **FrankenPHP 1.12.1+**. Older versions only show thread index and state.
 
 ## Step 1: Install Ember
 

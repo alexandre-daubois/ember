@@ -91,9 +91,9 @@ If this returns JSON with thread states, FrankenPHP is detectable.
 
 **Symptom:** The FrankenPHP tab shows threads but the Method, URI, Time, Mem, and Reqs columns are empty.
 
-**Cause:** These metrics require FrankenPHP 1.13 or later. Older versions only expose thread index and state.
+**Cause:** These metrics require FrankenPHP 1.12.1 or later. Older versions only expose thread index and state.
 
-**Fix:** Upgrade FrankenPHP to 1.13+.
+**Fix:** Upgrade FrankenPHP to 1.12.1+.
 
 ## CPU and RSS show 0%
 
