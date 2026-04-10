@@ -33,6 +33,7 @@ changelog:
 
 homebrew_casks:
   - name: ember
+    skip_upload: auto
     repository:
       owner: alexandre-daubois
       name: homebrew-tap
