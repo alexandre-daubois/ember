@@ -16,8 +16,8 @@ ember --expose :9191 --daemon
 ```
 
 This starts an HTTP server with:
-- `/metrics` — Prometheus text format (v0.0.4)
-- `/healthz` — JSON health check
+- `/metrics`: Prometheus text format (v0.0.4)
+- `/healthz`: JSON health check
 
 ### Combined with the TUI
 
@@ -138,9 +138,9 @@ scrape_configs:
 
 `GET /healthz` returns JSON:
 
-- **200 OK**: `{"status": "ok", "last_fetch": "...", "age_seconds": 1.2}` — data is fresh
-- **503**: `{"status": "stale", ...}` — data older than 3x the polling interval (minimum 5s)
-- **503**: `{"status": "no data yet"}` — no data collected yet
+- **200 OK**: `{"status": "ok", "last_fetch": "...", "age_seconds": 1.2}`, data is fresh
+- **503**: `{"status": "stale", ...}`, data older than 3x the polling interval (minimum 5s)
+- **503**: `{"status": "no data yet"}`, no data collected yet
 
 Use `/healthz` as a Kubernetes liveness probe to detect when Ember loses contact with Caddy.
 
@@ -193,11 +193,11 @@ docker run --rm --network host ghcr.io/alexandre-daubois/ember \
   --daemon --expose :9191 --interval 2s --metrics-prefix myapp
 ```
 
-The image has no shell — use `docker logs` to read Ember's stderr output.
+The image has no shell: use `docker logs` to read Ember's stderr output.
 
 ## Environment Variables
 
-All main flags have environment variable equivalents — convenient for containers where flags are less practical:
+All main flags have environment variable equivalents, convenient for containers where flags are less practical:
 
 | Variable | Flag |
 |----------|------|

@@ -95,9 +95,9 @@ What it does:
 5. Confirms metrics are actually flowing
 
 Useful flags:
-- `ember init -y` — skip confirmation prompts
-- `ember init -yq` — skip prompts and suppress output (for scripting)
-- `ember init --addr https://prod:2019 --ca-cert ca.pem` — remote/TLS setup
+- `ember init -y`: skip confirmation prompts
+- `ember init -yq`: skip prompts and suppress output (for scripting)
+- `ember init --addr https://prod:2019 --ca-cert ca.pem`: remote/TLS setup
 
 ## Step 4: Launch Ember
 
@@ -153,7 +153,7 @@ ember --addr https://caddy.internal:2019 \
 ember --addr https://localhost:2019 --insecure
 ```
 
-This disables all certificate verification — never use in production.
+This disables all certificate verification, never use in production.
 
 ## Basic Navigation
 
@@ -173,7 +173,7 @@ Once Ember is running:
 
 ## Environment Variables
 
-All main flags have environment variable equivalents — useful for containers and scripts:
+All main flags have environment variable equivalents, useful for containers and scripts:
 
 | Variable | Flag | Example |
 |----------|------|---------|

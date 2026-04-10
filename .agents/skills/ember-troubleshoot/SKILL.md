@@ -31,18 +31,18 @@ This gives a one-line summary that reveals whether Caddy is reachable, metrics a
    ```
 
 2. If no response, the issue is one of:
-   - **Admin API disabled** — Add `admin localhost:2019` to the Caddyfile global block:
+   - **Admin API disabled**, add `admin localhost:2019` to the Caddyfile global block:
      ```
      {
          admin localhost:2019
          metrics
      }
      ```
-   - **Different address** — Caddy might be on a non-default port. Check with `caddy environ` or inspect the Caddyfile, then use `--addr`:
+   - **Different address**, Caddy might be on a non-default port. Check with `caddy environ` or inspect the Caddyfile, then use `--addr`:
      ```bash
      ember --addr http://your-host:2019
      ```
-   - **Docker networking** — Ember and Caddy are on different networks. Fix with either:
+   - **Docker networking**, Ember and Caddy are on different networks. Fix with either:
      ```yaml
      # Option A: share network namespace
      network_mode: "service:caddy"
@@ -50,7 +50,7 @@ This gives a one-line summary that reveals whether Caddy is reachable, metrics a
      # Option B: use service name
      # ember --addr http://caddy:2019
      ```
-   - **Firewall** — Port 2019 is blocked. Check with `nc -z localhost 2019`.
+   - **Firewall**, port 2019 is blocked. Check with `nc -z localhost 2019`.
 
 ---
 
@@ -66,7 +66,7 @@ This gives a one-line summary that reveals whether Caddy is reachable, metrics a
    ```
 
 2. If no output, the `metrics` directive is missing. Two ways to fix it:
-   - **Quick fix** (no restart): run `ember init` — it enables metrics via the admin API automatically
+   - **Quick fix** (no restart): run `ember init`, it enables metrics via the admin API automatically
    - **Permanent fix**: add `metrics` to the Caddyfile global block:
      ```
      {
@@ -88,12 +88,12 @@ This gives a one-line summary that reveals whether Caddy is reachable, metrics a
 **Fix:** Replace port-only site blocks with hostname-based blocks:
 
 ```
-# Bad — no host label in metrics
+# Bad: no host label in metrics
 :80 {
     respond "Hello"
 }
 
-# Good — per-host metrics
+# Good: per-host metrics
 example.com {
     respond "Hello"
 }
@@ -115,8 +115,8 @@ After changing the Caddyfile, reload Caddy (`caddy reload`). Historical metrics 
    ```
 
 2. If no response:
-   - **Old version** — The `/frankenphp/threads` endpoint was added in FrankenPHP 1.4. Upgrade if needed.
-   - **Not ready yet** — Ember re-checks every 30 seconds. Wait a moment, or restart ember.
+   - **Old version**: the `/frankenphp/threads` endpoint was added in FrankenPHP 1.4. Upgrade if needed.
+   - **Not ready yet**: Ember re-checks every 30 seconds. Wait a moment, or restart ember.
    - **Admin API disabled** in the FrankenPHP configuration.
 
 3. If the endpoint returns JSON with thread states, FrankenPHP is detectable. Ember should show the tab within 30 seconds.
@@ -146,7 +146,7 @@ After changing the Caddyfile, reload Caddy (`caddy reload`). Historical metrics 
    ```
    These are part of Go's default Prometheus collector and should be present unless explicitly disabled.
 
-2. **Manual PID** — If process scanning fails, pass the PID directly:
+2. **Manual PID**, if process scanning fails, pass the PID directly:
    ```bash
    ember --frankenphp-pid $(pgrep frankenphp)
    ```
@@ -159,11 +159,11 @@ After changing the Caddyfile, reload Caddy (`caddy reload`). Historical metrics 
 
 **Causes and fixes:**
 
-1. **Missing metrics directive** — Percentiles come from `caddy_http_request_duration_seconds` histogram buckets, which require the `metrics` directive. Run `ember init` to enable it.
+1. **Missing metrics directive**: percentiles come from `caddy_http_request_duration_seconds` histogram buckets, which require the `metrics` directive. Run `ember init` to enable it.
 
-2. **First poll** — Percentiles need two consecutive polls to compute a delta. Wait a couple of seconds.
+2. **First poll**: percentiles need two consecutive polls to compute a delta. Wait a couple of seconds.
 
-3. **Single snapshot mode** — `ember --json --once` always shows empty percentiles because there's no previous poll. Use `ember --json` (streaming) for percentiles.
+3. **Single snapshot mode**: `ember --json --once` always shows empty percentiles because there's no previous poll. Use `ember --json` (streaming) for percentiles.
 
 ---
 
@@ -193,7 +193,7 @@ Make sure the `username:password` matches what was passed to `--metrics-auth`.
 
 **Diagnostic steps:**
 
-1. Check the number of unique hosts — each host maintains its own metrics history.
+1. Check the number of unique hosts: each host maintains its own metrics history.
 2. In graph mode, Ember stores 300 samples per metric. This is normal.
 3. Measure a snapshot size:
    ```bash
@@ -207,9 +207,9 @@ Make sure the `username:password` matches what was passed to `--metrics-auth`.
 
 When none of the above fits, walk through this checklist:
 
-1. `ember version --check` — Is Ember up to date?
-2. `ember status` — Can Ember reach Caddy at all?
-3. `ember init` — Does the validation pass all checks?
-4. `curl http://localhost:2019/config/` — Is the admin API responding?
-5. `curl http://localhost:2019/metrics | head -20` — Are metrics being generated?
+1. `ember version --check`: Is Ember up to date?
+2. `ember status`: Can Ember reach Caddy at all?
+3. `ember init`: Does the validation pass all checks?
+4. `curl http://localhost:2019/config/`: Is the admin API responding?
+5. `curl http://localhost:2019/metrics | head -20`: Are metrics being generated?
 6. Check the Caddyfile for `admin` and `metrics` directives in the global block.

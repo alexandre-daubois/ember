@@ -1,4 +1,4 @@
-# Ember - Real-time monitoring for Caddy & FrankenPHP
+# Ember - Real-time monitoring for Caddy
 
 [![CI](https://github.com/alexandre-daubois/ember/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandre-daubois/ember/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/alexandre-daubois/ember/graph/badge.svg?token=3BG1TUO91L)](https://codecov.io/github/alexandre-daubois/ember)
@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexandre-daubois/ember)](https://goreportcard.com/report/github.com/alexandre-daubois/ember)
 [![Go Reference](https://pkg.go.dev/badge/github.com/alexandre-daubois/ember.svg)](https://pkg.go.dev/github.com/alexandre-daubois/ember)
 
-Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking. It is officially recommended by and for [FrankenPHP](https://frankenphp.dev/).
+Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking. It is officially recommended by [FrankenPHP](https://frankenphp.dev/).
 
 ![ember banner](https://github.com/alexandre-daubois/ember/blob/main/assets/banner.webp?raw=true)
 
@@ -118,7 +118,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [JSON Output](docs/json-output.md): Streaming JSONL for scripting
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode
 - [Docker](docs/docker.md): Container usage
-- [AI Agent Skills](docs/skills.md): Skills for AI coding agents
+- [Agent Skills](docs/skills.md): Skills for AI coding agents
 - [Troubleshooting](docs/troubleshooting.md): Common issues and solutions
 
 ## Contributing

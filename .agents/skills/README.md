@@ -24,6 +24,6 @@ npx skills add https://github.com/alexandre-daubois/ember --skill ember-json
 
 ## What Are Skills?
 
-Skills are markdown files that give AI coding agents specialized knowledge about a tool or workflow. Instead of the agent exploring the codebase to find answers, it gets accurate, curated instructions instantly — resulting in faster, more precise responses.
+Skills are Markdown files that give AI coding agents specialized knowledge about a tool or workflow. Instead of the agent exploring the codebase to find answers, it gets accurate, curated instructions instantly resulting in faster, more precise responses.
 
 Learn more at [skills.sh](https://skills.sh/).

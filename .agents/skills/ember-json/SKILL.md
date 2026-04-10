@@ -1,11 +1,11 @@
 ---
 name: ember-json
-description: "Use Ember's JSON output to programmatically inspect Caddy and FrankenPHP state from scripts, CI pipelines, or AI coding agents. Use this skill whenever someone wants to query Caddy metrics from the command line, parse ember output with jq, write a script that checks server health, detect 5xx errors programmatically, compare metrics before and after a deployment, use ember in a CI/CD pipeline, automate Caddy monitoring, or wait for Caddy readiness in a script. Also trigger when an AI agent needs to inspect the current state of a Caddy server — ember's JSON mode is the tool for that."
+description: "Use Ember's JSON output to programmatically inspect Caddy and FrankenPHP state from scripts, CI pipelines, or AI coding agents. Use this skill whenever someone wants to query Caddy metrics from the command line, parse ember output with jq, write a script that checks server health, detect 5xx errors programmatically, compare metrics before and after a deployment, use ember in a CI/CD pipeline, automate Caddy monitoring, or wait for Caddy readiness in a script. Also trigger when an AI agent needs to inspect the current state of a Caddy server: ember's JSON mode is the tool for that."
 ---
 
 # Ember JSON & Scripting
 
-Ember's `--json` flag turns the dashboard into a machine-readable data source. Instead of the interactive TUI, it outputs one JSON object per polling interval to stdout — perfect for scripts, CI pipelines, and AI agents that need to inspect Caddy/FrankenPHP state programmatically.
+Ember's `--json` flag turns the dashboard into a machine-readable data source. Instead of the interactive TUI, it outputs one JSON object per polling interval to stdout (perfect for scripts), CI pipelines, and AI agents that need to inspect Caddy/FrankenPHP state programmatically.
 
 ## Getting a snapshot
 
@@ -231,8 +231,8 @@ No regressions detected
 ```
 
 **Exit codes:**
-- **0** — No regressions detected
-- **1** — Regressions found (>10% degradation on latency, error rate, or CPU; >10% drop on RPS)
+- **0**: No regressions detected
+- **1**: Regressions found (>10% degradation on latency, error rate, or CPU; >10% drop on RPS)
 
 This makes `ember diff` a natural CI gate:
 
