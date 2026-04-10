@@ -6,7 +6,7 @@ The FrankenPHP tab appears when Ember detects a FrankenPHP server. It provides p
 
 ## Compatibility
 
-Some thread-level metrics require **FrankenPHP 1.12.1** or later. On older versions, the thread list shows only the thread index and state: the **Method**, **URI**, **Time**, **Mem**, and **Reqs** columns remain empty.
+Some thread-level metrics require **FrankenPHP 1.12.2** or later. On older versions, the thread list shows only the thread index and state: the **Method**, **URI**, **Time**, **Mem**, and **Reqs** columns remain empty.
 
 ## Dashboard Header
 

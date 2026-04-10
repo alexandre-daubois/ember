@@ -5,7 +5,7 @@ This guide covers installation, prerequisites, and your first run with Ember.
 ## Requirements
 
 - A running [Caddy](https://caddyserver.com/) server with the **admin API** and **metrics** enabled. See [Caddy Configuration](caddy-configuration.md) for details.
-- For FrankenPHP thread-level metrics (method, URI, duration, memory, request count): **FrankenPHP 1.12.1** or later. Older versions only expose thread index and state.
+- For FrankenPHP thread-level metrics (method, URI, duration, memory, request count): **FrankenPHP 1.12.2** or later. Older versions only expose thread index and state.
 
 ## Installation
 
