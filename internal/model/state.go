@@ -160,6 +160,51 @@ func (s CertSortField) Prev() CertSortField {
 	return SortByCertDomain
 }
 
+type UpstreamSortField int
+
+const (
+	SortByUpstreamAddress UpstreamSortField = iota
+	SortByUpstreamHealth
+)
+
+var upstreamSortFieldOrder = []UpstreamSortField{
+	SortByUpstreamAddress, SortByUpstreamHealth,
+}
+
+func (s UpstreamSortField) String() string {
+	switch s {
+	case SortByUpstreamHealth:
+		return "health"
+	default:
+		return "address"
+	}
+}
+
+func (s UpstreamSortField) Next() UpstreamSortField {
+	for i, f := range upstreamSortFieldOrder {
+		if f == s {
+			return upstreamSortFieldOrder[(i+1)%len(upstreamSortFieldOrder)]
+		}
+	}
+	return SortByUpstreamAddress
+}
+
+func (s UpstreamSortField) Prev() UpstreamSortField {
+	for i, f := range upstreamSortFieldOrder {
+		if f == s {
+			return upstreamSortFieldOrder[(i-1+len(upstreamSortFieldOrder))%len(upstreamSortFieldOrder)]
+		}
+	}
+	return SortByUpstreamAddress
+}
+
+type UpstreamDerived struct {
+	Address       string
+	Handler       string
+	Healthy       bool
+	HealthChanged bool
+}
+
 type HostDerived struct {
 	Host                               string
 	RPS                                float64
@@ -178,11 +223,12 @@ type HostDerived struct {
 }
 
 type State struct {
-	Current     *fetcher.Snapshot
-	Previous    *fetcher.Snapshot
-	Derived     DerivedMetrics
-	HostDerived []HostDerived
-	percentiles *percentileTracker
+	Current         *fetcher.Snapshot
+	Previous        *fetcher.Snapshot
+	Derived         DerivedMetrics
+	HostDerived     []HostDerived
+	UpstreamDerived []UpstreamDerived
+	percentiles     *percentileTracker
 }
 
 type DerivedMetrics struct {
@@ -241,6 +287,14 @@ func (s *State) CopyForExport() State {
 			}
 			snap.Metrics.Hosts = hosts
 		}
+		if snap.Metrics.Upstreams != nil {
+			upstreams := make(map[string]*fetcher.UpstreamMetrics, len(snap.Metrics.Upstreams))
+			for k, v := range snap.Metrics.Upstreams {
+				uc := *v
+				upstreams[k] = &uc
+			}
+			snap.Metrics.Upstreams = upstreams
+		}
 		cp.Current = &snap
 	}
 	if s.HostDerived != nil {
@@ -257,6 +311,7 @@ func (s *State) CopyForExport() State {
 			}
 		}
 	}
+	cp.UpstreamDerived = slices.Clone(s.UpstreamDerived)
 	return cp
 }
 
@@ -271,6 +326,7 @@ func (s *State) Update(snap *fetcher.Snapshot) {
 		s.Current = snap
 		s.Derived = s.computeDerived()
 		s.HostDerived = s.computeHostDerived()
+		s.UpstreamDerived = s.computeUpstreamDerived()
 		return
 	}
 
@@ -279,6 +335,7 @@ func (s *State) Update(snap *fetcher.Snapshot) {
 	s.Current = snap
 	s.Derived = s.computeDerived()
 	s.HostDerived = s.computeHostDerived()
+	s.UpstreamDerived = s.computeUpstreamDerived()
 }
 
 // detectCounterReset returns true when cumulative Prometheus counters have
@@ -491,6 +548,36 @@ func (s *State) computeHostDerived() []HostDerived {
 		}
 
 		result = append(result, hd)
+	}
+	return result
+}
+
+// computeUpstreamDerived derives per-upstream state from the current snapshot.
+// HealthChanged is computed using the same key the Prometheus parser used for
+// this entry (address or address/handler), so multi-handler configs that expose
+// the same address twice are tracked independently instead of collapsing.
+func (s *State) computeUpstreamDerived() []UpstreamDerived {
+	if s.Current == nil || len(s.Current.Metrics.Upstreams) == 0 {
+		return nil
+	}
+
+	result := make([]UpstreamDerived, 0, len(s.Current.Metrics.Upstreams))
+	for key, u := range s.Current.Metrics.Upstreams {
+		healthy := u.Healthy >= 1
+		ud := UpstreamDerived{
+			Address: u.Address,
+			Handler: u.Handler,
+			Healthy: healthy,
+		}
+
+		if s.Previous != nil {
+			if prev, ok := s.Previous.Metrics.Upstreams[key]; ok {
+				prevHealthy := prev.Healthy >= 1
+				ud.HealthChanged = healthy != prevHealthy
+			}
+		}
+
+		result = append(result, ud)
 	}
 	return result
 }

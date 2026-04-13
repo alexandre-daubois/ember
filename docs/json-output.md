@@ -81,6 +81,11 @@ Each line is a JSON object with the following fields:
 | `hosts[].statusCodes` | Status code → rate (req/s) |
 | `hosts[].methodRates` | HTTP method → rate (req/s) |
 | `hosts[].avgRequestSize` | Average request body size in bytes (omitted when 0) |
+| `upstreams` | Reverse proxy upstream health (omitted when no `reverse_proxy` is configured) |
+| `upstreams[].address` | Upstream address (host:port) |
+| `upstreams[].handler` | Reverse proxy handler name (omitted when Caddy doesn't expose the label) |
+| `upstreams[].healthy` | Whether the upstream is healthy |
+| `upstreams[].healthChanged` | Whether health status changed since last poll (omitted when false) |
 
 ## Single Snapshot
 

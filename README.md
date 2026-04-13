@@ -25,6 +25,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Sorting, filtering, and full-screen ASCII graphs (CPU, RPS, RSS)
 - Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Certificates tab: TLS certificate monitoring with expiry tracking, color-coded warnings, and likely auto-renewal indication
+- Upstreams tab: reverse proxy upstream health monitoring with per-upstream status, auto-detected when `reverse_proxy` is configured
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**

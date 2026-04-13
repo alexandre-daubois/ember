@@ -1771,3 +1771,157 @@ func TestResetPercentiles_NilSafe(t *testing.T) {
 		s.ResetPercentiles()
 	}, "ResetPercentiles should not panic on uninitialized state")
 }
+
+func TestState_UpstreamDerived(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080/rp": {Address: "10.0.0.1:8080", Handler: "rp", Healthy: 1},
+				"10.0.0.2:8080/rp": {Address: "10.0.0.2:8080", Handler: "rp", Healthy: 0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	require.Len(t, s.UpstreamDerived, 2)
+
+	byAddr := make(map[string]UpstreamDerived)
+	for _, u := range s.UpstreamDerived {
+		byAddr[u.Address] = u
+	}
+
+	assert.True(t, byAddr["10.0.0.1:8080"].Healthy)
+	assert.False(t, byAddr["10.0.0.2:8080"].Healthy)
+	assert.False(t, byAddr["10.0.0.1:8080"].HealthChanged)
+	assert.False(t, byAddr["10.0.0.2:8080"].HealthChanged)
+}
+
+func TestState_UpstreamDerived_HealthChanged(t *testing.T) {
+	now := time.Now()
+
+	snap1 := &fetcher.Snapshot{
+		FetchedAt: now.Add(-time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080/rp": {Address: "10.0.0.1:8080", Handler: "rp", Healthy: 1},
+				"10.0.0.2:8080/rp": {Address: "10.0.0.2:8080", Handler: "rp", Healthy: 1},
+			},
+		},
+	}
+
+	snap2 := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080/rp": {Address: "10.0.0.1:8080", Handler: "rp", Healthy: 1},
+				"10.0.0.2:8080/rp": {Address: "10.0.0.2:8080", Handler: "rp", Healthy: 0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap1)
+	s.Update(snap2)
+
+	byAddr := make(map[string]UpstreamDerived)
+	for _, u := range s.UpstreamDerived {
+		byAddr[u.Address] = u
+	}
+
+	assert.False(t, byAddr["10.0.0.1:8080"].HealthChanged, "should not have changed")
+	assert.True(t, byAddr["10.0.0.2:8080"].HealthChanged, "should have changed from healthy to down")
+}
+
+func TestState_UpstreamDerived_MultiHandlerSameAddressTrackedIndependently(t *testing.T) {
+	now := time.Now()
+
+	snap1 := &fetcher.Snapshot{
+		FetchedAt: now.Add(-time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080/rp_0": {Address: "10.0.0.1:8080", Handler: "rp_0", Healthy: 1},
+				"10.0.0.1:8080/rp_1": {Address: "10.0.0.1:8080", Handler: "rp_1", Healthy: 1},
+			},
+		},
+	}
+
+	snap2 := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080/rp_0": {Address: "10.0.0.1:8080", Handler: "rp_0", Healthy: 1},
+				"10.0.0.1:8080/rp_1": {Address: "10.0.0.1:8080", Handler: "rp_1", Healthy: 0},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap1)
+	s.Update(snap2)
+
+	require.Len(t, s.UpstreamDerived, 2)
+
+	byHandler := make(map[string]UpstreamDerived)
+	for _, ud := range s.UpstreamDerived {
+		byHandler[ud.Handler] = ud
+	}
+
+	assert.False(t, byHandler["rp_0"].HealthChanged, "rp_0 stayed healthy")
+	assert.True(t, byHandler["rp_1"].HealthChanged, "rp_1 flipped to down and must be flagged")
+}
+
+func TestState_UpstreamDerived_NoUpstreams(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+	assert.Nil(t, s.UpstreamDerived)
+}
+
+func TestState_CopyForExport_IncludesUpstreams(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080/rp": {Address: "10.0.0.1:8080", Handler: "rp", Healthy: 1},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+
+	cp := s.CopyForExport()
+	require.Len(t, cp.UpstreamDerived, 1)
+	assert.Equal(t, "10.0.0.1:8080", cp.UpstreamDerived[0].Address)
+
+	cp.UpstreamDerived[0] = UpstreamDerived{Address: "modified"}
+	assert.NotEqual(t, "modified", s.UpstreamDerived[0].Address, "copy should be independent")
+}
+
+func TestUpstreamSortField_Cycle(t *testing.T) {
+	f := SortByUpstreamAddress
+	f = f.Next()
+	assert.Equal(t, SortByUpstreamHealth, f)
+	f = f.Next()
+	assert.Equal(t, SortByUpstreamAddress, f)
+
+	f = f.Prev()
+	assert.Equal(t, SortByUpstreamHealth, f)
+}
+
+func TestUpstreamSortField_String(t *testing.T) {
+	assert.Equal(t, "address", SortByUpstreamAddress.String())
+	assert.Equal(t, "health", SortByUpstreamHealth.String())
+}
