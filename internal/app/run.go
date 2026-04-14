@@ -35,6 +35,12 @@ type config struct {
 	metricsAuth   string
 }
 
+func Run(args []string, version string) error {
+	cmd := newRootCmd(version)
+	cmd.SetArgs(args)
+	return cmd.Execute()
+}
+
 func newRootCmd(version string) *cobra.Command {
 	var cfg config
 
@@ -119,7 +125,7 @@ Keybindings:
 
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address (http://, https://, or unix//path)")
-	pf.DurationVar(&cfg.interval, "interval", 1*time.Second, "Polling interval")
+	pf.DurationVarP(&cfg.interval, "interval", "i", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set)")
 	pf.StringVar(&cfg.caCert, "ca-cert", "", "Path to CA certificate for TLS verification")
@@ -146,12 +152,6 @@ Keybindings:
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd
-}
-
-func Run(args []string, version string) error {
-	cmd := newRootCmd(version)
-	cmd.SetArgs(args)
-	return cmd.Execute()
 }
 
 func contextWithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

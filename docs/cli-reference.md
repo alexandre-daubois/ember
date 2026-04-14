@@ -8,26 +8,26 @@ ember [flags]
 
 ## Flags
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--addr` | string | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`) |
-| `--interval` | duration | `1s` | Polling interval |
-| `--timeout` | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
+| Flag               | Type | Default | Description |
+|--------------------|------|---------|-------------|
+| `--addr`           | string | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`) |
+| `-i`, `--interval` | duration | `1s` | Polling interval |
+| `--timeout`        | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
 | `--frankenphp-pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
-| `--json` | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
-| `--once` | bool | `false` | Output a single snapshot and exit. Requires `--json`. See [JSON Output](json-output.md). |
-| `--expose` | string | _(none)_ | Start Prometheus metrics endpoint on this address (e.g. `:9191`). See [Prometheus Export](prometheus-export.md). |
-| `--daemon` | bool | `false` | Headless mode: no TUI. Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
+| `--json`           | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
+| `--once`           | bool | `false` | Output a single snapshot and exit. Requires `--json`. See [JSON Output](json-output.md). |
+| `--expose`         | string | _(none)_ | Start Prometheus metrics endpoint on this address (e.g. `:9191`). See [Prometheus Export](prometheus-export.md). |
+| `--daemon`         | bool | `false` | Headless mode: no TUI. Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
 | `--metrics-prefix` | string | _(none)_ | Prefix for exported Prometheus metric names. See [Prometheus Export](prometheus-export.md). |
-| `--log-format` | string | `text` | Log format for daemon/json modes (`text` or `json`). JSON format is suitable for log aggregation systems. |
-| `--ca-cert` | string | _(none)_ | Path to CA certificate for TLS verification |
-| `--client-cert` | string | _(none)_ | Path to client certificate for mTLS |
-| `--client-key` | string | _(none)_ | Path to client private key for mTLS |
-| `--insecure` | bool | `false` | Skip TLS certificate verification |
-| `--metrics-auth` | string | _(none)_ | Basic auth for the metrics endpoint (`user:password`). Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
-| `--no-color` | bool | `false` | Disable colors. Also enabled by the `NO_COLOR` env var (see [no-color.org](https://no-color.org/)). |
-| `--version` | | | Print version and exit |
+| `--log-format`     | string | `text` | Log format for daemon/json modes (`text` or `json`). JSON format is suitable for log aggregation systems. |
+| `--ca-cert`        | string | _(none)_ | Path to CA certificate for TLS verification |
+| `--client-cert`    | string | _(none)_ | Path to client certificate for mTLS |
+| `--client-key`     | string | _(none)_ | Path to client private key for mTLS |
+| `--insecure`       | bool | `false` | Skip TLS certificate verification |
+| `--metrics-auth`   | string | _(none)_ | Basic auth for the metrics endpoint (`user:password`). Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
+| `--no-color`       | bool | `false` | Disable colors. Also enabled by the `NO_COLOR` env var (see [no-color.org](https://no-color.org/)). |
+| `--version`        | | | Print version and exit |
 
 ## Environment Variables
 
