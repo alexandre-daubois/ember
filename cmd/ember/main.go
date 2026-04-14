@@ -7,7 +7,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/app"
 )
 
-var version = "1.0.0-dev"
+var version = "dev"
 
 func main() {
 	if err := app.Run(os.Args[1:], version); err != nil {
