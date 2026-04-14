@@ -141,6 +141,13 @@ func runInit(ctx context.Context, w io.Writer, r io.Reader, f *fetcher.HTTPFetch
 		})
 	}
 
+	fmt.Fprintln(w, "\nAccess logs:")
+	printCheck(w, initCheck{
+		label:  "Live streaming via hot-registered Caddy sink",
+		ok:     true,
+		detail: "Ember enables access logs on each HTTP server at run time and removes its config on exit",
+	})
+
 	fmt.Fprintln(w, "\nEmber is ready. Run \"ember\" to start the dashboard.")
 	return nil
 }

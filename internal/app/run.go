@@ -35,6 +35,7 @@ type config struct {
 	insecure      bool
 	metricsAuth   string
 	recorder      *instrumentation.Recorder
+	logListen     string
 }
 
 func Run(args []string, version string) error {
@@ -149,6 +150,7 @@ Keybindings:
 	f.StringVar(&cfg.metricsPrefix, "metrics-prefix", "", "Prefix for exported Prometheus metric names")
 	f.StringVar(&cfg.logFormat, "log-format", "text", "Log format for daemon/json modes (text or json)")
 	f.StringVar(&cfg.metricsAuth, "metrics-auth", "", "Basic auth for metrics endpoint (user:password)")
+	f.StringVar(&cfg.logListen, "log-listen", "", "Receive logs from Caddy via TCP, e.g. ':9210' or '127.0.0.1:9210'. Required when Caddy is on a remote host; auto-bound on a local loopback port otherwise.")
 
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
@@ -201,6 +203,7 @@ var envBindings = map[string]string{
 	"expose":         "EMBER_EXPOSE",
 	"metrics-prefix": "EMBER_METRICS_PREFIX",
 	"metrics-auth":   "EMBER_METRICS_AUTH",
+	"log-listen":     "EMBER_LOG_LISTEN",
 }
 
 func bindEnv(cmd *cobra.Command) {

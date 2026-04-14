@@ -26,6 +26,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Certificates tab: TLS certificate monitoring with expiry tracking, color-coded warnings, and likely auto-renewal indication
 - Upstreams tab: reverse proxy upstream health monitoring with per-upstream status, auto-detected when `reverse_proxy` is configured
+- Logs tab: live access log streaming with host, method, status, and search filters. Zero-config: Ember hot-registers a transient sink in Caddy via the admin API and receives logs over TCP, with no Caddyfile changes
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**
@@ -47,7 +48,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`
 - TLS and mTLS support for secured Caddy admin APIs
-- Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, ...) for container deployments
+- Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, `EMBER_LOG_LISTEN`, ...) for container deployments
 - `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))
 - Cross-platform binaries (Linux, macOS, Windows), Homebrew tap, and Docker image
@@ -116,6 +117,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [Caddy Configuration](docs/caddy-configuration.md): Caddyfile requirements
 - [Caddy Dashboard](docs/caddy-dashboard.md): Per-host traffic and latency
 - [FrankenPHP Dashboard](docs/frankenphp-dashboard.md): Thread introspection and workers
+- [Access Logs](docs/logs.md): Live tailing with filters
 - [CLI Reference](docs/cli-reference.md): Flags, keybindings, shell completions
 - [JSON Output](docs/json-output.md): Streaming JSONL for scripting
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode
