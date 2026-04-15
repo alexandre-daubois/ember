@@ -37,14 +37,15 @@ internal/
   model/             State management, derived metrics, percentiles
   ui/                Bubble Tea TUI components (dashboard, tables, graphs)
   exporter/          Prometheus metrics export
-local/               Local data for testing
+local/
+  frankenphp/        Local FrankenPHP setup for testing
 ```
 
 > [!NOTE]
 > You can start a local FrankenPHP instance for fast testing:
 >
 > ```bash
-> cd local && make local
+> cd local/frankenphp && make local
 > ```
 
 ## Running Tests
