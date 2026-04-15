@@ -710,8 +710,8 @@ func TestTabSwitch_Key2NoOpWithSingleTab(t *testing.T) {
 func TestEnableFrankenPHP_OnFetch(t *testing.T) {
 	app := &App{
 		activeTab:     tabCaddy,
-		tabs:          []tab{tabCaddy},
-		tabStates:     map[tab]*tabState{tabCaddy: {}},
+		tabs:          []tab{tabCaddy, tabConfig, tabCertificates},
+		tabStates:     map[tab]*tabState{tabCaddy: {}, tabConfig: {}, tabCertificates: {}},
 		hasFrankenPHP: false,
 		history:       newHistoryStore(),
 	}
@@ -729,7 +729,7 @@ func TestEnableFrankenPHP_OnFetch(t *testing.T) {
 	app.Update(fetchMsg{snap: snap})
 
 	assert.True(t, app.hasFrankenPHP, "should enable FrankenPHP flag")
-	assert.Contains(t, app.tabs, tabFrankenPHP, "should add FrankenPHP tab")
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabConfig, tabCertificates}, app.tabs, "should insert FrankenPHP tab after Caddy")
 	assert.NotNil(t, app.tabStates[tabFrankenPHP], "should initialize FrankenPHP tab state")
 }
 
@@ -890,8 +890,8 @@ func TestHandleListKey_SortCycling(t *testing.T) {
 func TestEnableFrankenPHP_NoDoubleAdd(t *testing.T) {
 	app := &App{
 		activeTab:     tabCaddy,
-		tabs:          []tab{tabCaddy, tabFrankenPHP},
-		tabStates:     map[tab]*tabState{tabCaddy: {}, tabFrankenPHP: {}},
+		tabs:          []tab{tabCaddy, tabFrankenPHP, tabConfig, tabCertificates},
+		tabStates:     map[tab]*tabState{tabCaddy: {}, tabFrankenPHP: {}, tabConfig: {}, tabCertificates: {}},
 		hasFrankenPHP: true,
 		history:       newHistoryStore(),
 	}
@@ -908,7 +908,62 @@ func TestEnableFrankenPHP_NoDoubleAdd(t *testing.T) {
 	}
 	app.Update(fetchMsg{snap: snap})
 
-	assert.Len(t, app.tabs, 2, "should not duplicate FrankenPHP tab")
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabConfig, tabCertificates}, app.tabs, "should not duplicate FrankenPHP tab")
+}
+
+func TestEnableFrankenPHP_OnFetch_WithUpstreams(t *testing.T) {
+	app := &App{
+		activeTab:     tabCaddy,
+		tabs:          []tab{tabCaddy, tabConfig, tabCertificates},
+		tabStates:     map[tab]*tabState{tabCaddy: {}, tabConfig: {}, tabCertificates: {}},
+		hasFrankenPHP: false,
+		hasUpstreams:  false,
+		history:       newHistoryStore(),
+		downSince:     make(map[string]time.Time),
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}},
+		},
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:   map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{"backend": {}},
+		},
+		HasFrankenPHP: true,
+	}
+	app.Update(fetchMsg{snap: snap})
+
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabUpstreams, tabConfig, tabCertificates}, app.tabs)
+}
+
+func TestEnableFrankenPHP_ThenUpstreams(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy, tabConfig, tabCertificates},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}, tabCertificates: {}},
+	}
+
+	app.enableFrankenPHP()
+	app.enableUpstreams()
+
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabUpstreams, tabConfig, tabCertificates}, app.tabs)
+}
+
+func TestEnableUpstreams_ThenFrankenPHP(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy, tabConfig, tabCertificates},
+		tabStates: map[tab]*tabState{tabCaddy: {}, tabConfig: {}, tabCertificates: {}},
+	}
+
+	app.enableUpstreams()
+	app.enableFrankenPHP()
+
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabUpstreams, tabConfig, tabCertificates}, app.tabs)
 }
 
 func TestConfigTab_SwitchViaTab(t *testing.T) {
