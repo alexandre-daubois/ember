@@ -22,6 +22,8 @@ func tabLabel(t tab) string {
 		return "Caddy Config"
 	case tabCertificates:
 		return "Certificates"
+	case tabUpstreams:
+		return "Upstreams"
 	case tabFrankenPHP:
 		return "FrankenPHP"
 	default:

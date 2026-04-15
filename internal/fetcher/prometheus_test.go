@@ -734,3 +734,74 @@ frankenphp_busy_threads 5
 	assert.Equal(t, float64(0), snap.ProcessRSSBytes)
 	assert.Equal(t, float64(0), snap.ProcessStartTimeSeconds)
 }
+
+// Caddy exports caddy_reverse_proxy_upstreams_healthy with only two labels:
+// upstream and handler. The current release even omits handler entirely, so this
+// fixture exercises both shapes.
+const sampleUpstreamMetrics = `# HELP caddy_reverse_proxy_upstreams_healthy Health status of reverse proxy upstreams
+# TYPE caddy_reverse_proxy_upstreams_healthy gauge
+caddy_reverse_proxy_upstreams_healthy{upstream="10.0.0.1:8080"} 1
+caddy_reverse_proxy_upstreams_healthy{upstream="10.0.0.2:8080"} 1
+caddy_reverse_proxy_upstreams_healthy{upstream="10.0.0.3:8080"} 0
+caddy_reverse_proxy_upstreams_healthy{handler="reverse_proxy_1",upstream="api.internal:9090"} 1
+`
+
+func TestParsePrometheusMetrics_Upstreams(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleUpstreamMetrics))
+	require.NoError(t, err)
+	require.Len(t, snap.Upstreams, 4)
+
+	u1 := snap.Upstreams["10.0.0.1:8080"]
+	require.NotNil(t, u1)
+	assert.Equal(t, "10.0.0.1:8080", u1.Address)
+	assert.Empty(t, u1.Handler, "current Caddy omits the handler label")
+	assert.Equal(t, float64(1), u1.Healthy)
+
+	u3 := snap.Upstreams["10.0.0.3:8080"]
+	require.NotNil(t, u3)
+	assert.Equal(t, float64(0), u3.Healthy)
+
+	api := snap.Upstreams["api.internal:9090/reverse_proxy_1"]
+	require.NotNil(t, api)
+	assert.Equal(t, "api.internal:9090", api.Address)
+	assert.Equal(t, "reverse_proxy_1", api.Handler)
+	assert.Equal(t, float64(1), api.Healthy)
+}
+
+func TestParsePrometheusMetrics_NoUpstreams(t *testing.T) {
+	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+	require.NoError(t, err)
+	assert.Nil(t, snap.Upstreams)
+}
+
+func TestParsePrometheusMetrics_UpstreamsWithHandlerLabel(t *testing.T) {
+	input := `# TYPE caddy_reverse_proxy_upstreams_healthy gauge
+caddy_reverse_proxy_upstreams_healthy{handler="rp_0",upstream="a:80"} 1
+caddy_reverse_proxy_upstreams_healthy{handler="rp_1",upstream="a:80"} 0
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, snap.Upstreams, 2, "same address with different handlers should be distinct entries")
+
+	u0 := snap.Upstreams["a:80/rp_0"]
+	require.NotNil(t, u0)
+	assert.Equal(t, "rp_0", u0.Handler)
+	assert.Equal(t, float64(1), u0.Healthy)
+
+	u1 := snap.Upstreams["a:80/rp_1"]
+	require.NotNil(t, u1)
+	assert.Equal(t, "rp_1", u1.Handler)
+	assert.Equal(t, float64(0), u1.Healthy)
+}
+
+func TestParsePrometheusMetrics_UpstreamsEmptyLabel(t *testing.T) {
+	input := `# HELP caddy_reverse_proxy_upstreams_healthy Health status
+# TYPE caddy_reverse_proxy_upstreams_healthy gauge
+caddy_reverse_proxy_upstreams_healthy{handler="rp",upstream=""} 1
+caddy_reverse_proxy_upstreams_healthy{handler="rp",upstream="valid:8080"} 1
+`
+	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, snap.Upstreams, 1)
+	assert.Contains(t, snap.Upstreams, "valid:8080/rp")
+}

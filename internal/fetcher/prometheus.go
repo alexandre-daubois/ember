@@ -80,6 +80,7 @@ func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
 	snap.ConfigLastReloadSuccessTimestamp = scalarValue(families, "caddy_config_last_reload_success_timestamp_seconds")
 
 	snap.Hosts = perHostMetrics(families)
+	snap.Upstreams = upstreamMetrics(families)
 
 	// Fallback: if HTTP metrics exist but no host labels, aggregate as a single "*" entry
 	if snap.HasHTTPMetrics && len(snap.Hosts) == 0 {
@@ -393,6 +394,36 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 	}
 
 	return hosts
+}
+
+func upstreamMetrics(families map[string]*dto.MetricFamily) map[string]*UpstreamMetrics {
+	fam, ok := families["caddy_reverse_proxy_upstreams_healthy"]
+	if !ok {
+		return nil
+	}
+
+	upstreams := make(map[string]*UpstreamMetrics)
+	for _, m := range fam.GetMetric() {
+		addr := labelValue(m, "upstream")
+		if addr == "" {
+			continue
+		}
+		handler := labelValue(m, "handler")
+		key := addr
+		if handler != "" {
+			key = addr + "/" + handler
+		}
+		upstreams[key] = &UpstreamMetrics{
+			Address: addr,
+			Handler: handler,
+			Healthy: metricValue(m),
+		}
+	}
+
+	if len(upstreams) == 0 {
+		return nil
+	}
+	return upstreams
 }
 
 func (s *MetricsSnapshot) getOrCreateWorker(name string) *WorkerMetrics {

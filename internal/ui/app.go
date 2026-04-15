@@ -48,6 +48,7 @@ const (
 	tabCaddy tab = iota
 	tabConfig
 	tabCertificates
+	tabUpstreams
 	tabFrankenPHP
 )
 
@@ -89,11 +90,13 @@ type App struct {
 	fetching  bool
 	viewTime  time.Time
 
-	activeTab     tab
-	tabs          []tab
-	tabStates     map[tab]*tabState
-	hasFrankenPHP bool
-	hostSortBy    model.HostSortField
+	activeTab      tab
+	tabs           []tab
+	tabStates      map[tab]*tabState
+	hasFrankenPHP  bool
+	hasUpstreams   bool
+	hostSortBy     model.HostSortField
+	upstreamSortBy model.UpstreamSortField
 
 	configRoot       *jsonNode
 	configCursor     int
@@ -102,6 +105,9 @@ type App struct {
 
 	certificates []fetcher.CertificateInfo
 	certSortBy   model.CertSortField
+
+	rpConfigs []fetcher.ReverseProxyConfig
+	downSince map[string]time.Time
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -129,6 +135,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		hasFrankenPHP: cfg.HasFrankenPHP,
 		history:       newHistoryStore(),
 		viewTime:      time.Now(),
+		downSince:     make(map[string]time.Time),
 	}
 }
 
@@ -151,6 +158,8 @@ func (a *App) switchTabCmd() tea.Cmd {
 		return a.doFetchConfig()
 	case a.activeTab == tabCertificates && a.certificates == nil:
 		return a.doFetchCertificates()
+	case a.activeTab == tabUpstreams && a.rpConfigs == nil:
+		return a.doFetchRPConfig()
 	}
 	return nil
 }
@@ -187,6 +196,10 @@ type configFetchMsg struct {
 type certFetchMsg struct {
 	certs []fetcher.CertificateInfo
 	err   error
+}
+type rpConfigFetchMsg struct {
+	configs []fetcher.ReverseProxyConfig
+	err     error
 }
 
 func (a *App) Init() tea.Cmd {
@@ -228,14 +241,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.history == nil {
 			a.history = newHistoryStore()
 		}
+		var rpCmd tea.Cmd
 		if msg.snap != nil {
 			if msg.snap.HasFrankenPHP && !a.hasFrankenPHP {
 				a.enableFrankenPHP()
 			}
+			if len(msg.snap.Metrics.Upstreams) > 0 && !a.hasUpstreams {
+				a.enableUpstreams()
+				rpCmd = a.doFetchRPConfig()
+			}
 
 			wasStale := a.stale
-			hasData := len(msg.snap.Threads.ThreadDebugStates) > 0 || msg.snap.Metrics.HasHTTPMetrics
-			hadData := a.state.Current != nil && (len(a.state.Current.Threads.ThreadDebugStates) > 0 || a.state.Current.Metrics.HasHTTPMetrics)
+			hasData := len(msg.snap.Threads.ThreadDebugStates) > 0 || msg.snap.Metrics.HasHTTPMetrics || len(msg.snap.Metrics.Upstreams) > 0
+			hadData := a.state.Current != nil && (len(a.state.Current.Threads.ThreadDebugStates) > 0 || a.state.Current.Metrics.HasHTTPMetrics || len(a.state.Current.Metrics.Upstreams) > 0)
 
 			if !hasData && hadData {
 				a.stale = true
@@ -289,11 +307,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			a.history.pruneMem(activeThreads)
 
+			a.updateDownSince()
+
 			if a.config.OnStateUpdate != nil {
 				a.config.OnStateUpdate(a.state)
 			}
 		}
-		return a, nil
+		return a, rpCmd
 	case restartResultMsg:
 		if msg.err != nil {
 			a.status = "restart failed: " + msg.err.Error()
@@ -330,6 +350,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if warn := certExpiryWarning(msg.certs); warn != "" {
 			a.status = warn
 		}
+		return a, nil
+	case rpConfigFetchMsg:
+		if msg.err != nil {
+			a.status = "upstream config fetch failed: " + msg.err.Error()
+			return a, nil
+		}
+		a.rpConfigs = msg.configs
 		return a, nil
 	}
 	return a, nil
@@ -373,8 +400,11 @@ func (a *App) View() string {
 	if a.certificates != nil {
 		counts[tabCertificates] = fmt.Sprintf("%d certs", len(a.certificates))
 	}
+	if a.hasUpstreams {
+		counts[tabUpstreams] = fmt.Sprintf("%d upstreams", len(a.state.UpstreamDerived))
+	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.paused, listWidth, a.activeTab)
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab)
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
@@ -411,6 +441,17 @@ func (a *App) View() string {
 				slowThreshold: a.config.SlowThreshold,
 				prevMemory:    a.prevThreadMemory(),
 				viewTime:      a.viewTime,
+			})
+		}
+	case tabUpstreams:
+		upstreams := a.filteredUpstreams()
+		if len(upstreams) == 0 && a.filter != "" {
+			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
+		} else {
+			contentList = renderUpstreamTable(upstreams, a.cursor, listWidth, a.upstreamSortBy, upstreamRenderOpts{
+				rpConfigs: a.rpConfigs,
+				downSince: a.downSince,
+				viewTime:  a.viewTime,
 			})
 		}
 	case tabCaddy:
@@ -485,7 +526,7 @@ func (a *App) View() string {
 	}
 
 	if a.mode == viewHelp {
-		return renderHelpOverlay(base, a.width, a.height, a.hasFrankenPHP)
+		return renderHelpOverlay(a.width, a.height, a.hasUpstreams, a.hasFrankenPHP)
 	}
 
 	return base
@@ -517,6 +558,11 @@ func (a *App) handleTabSwitch(key string) (tea.Cmd, bool) {
 	case "4":
 		if len(a.tabs) > 3 {
 			a.switchTab(a.tabs[3])
+		}
+		return a.switchTabCmd(), true
+	case "5":
+		if len(a.tabs) > 4 {
+			a.switchTab(a.tabs[4])
 		}
 		return a.switchTabCmd(), true
 	}
@@ -597,6 +643,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if a.activeTab == tabCertificates {
 		return a.handleCertListKey(msg)
+	}
+	if a.activeTab == tabUpstreams {
+		return a.handleUpstreamListKey(msg)
 	}
 
 	key := msg.String()
@@ -740,6 +789,22 @@ func (a *App) filteredHosts() []model.HostDerived {
 	return result
 }
 
+func (a *App) filteredUpstreams() []model.UpstreamDerived {
+	upstreams := sortUpstreams(a.state.UpstreamDerived, a.upstreamSortBy)
+	if a.filter == "" {
+		return upstreams
+	}
+	f := strings.ToLower(a.filter)
+	var result []model.UpstreamDerived
+	for _, u := range upstreams {
+		if strings.Contains(strings.ToLower(u.Address), f) ||
+			strings.Contains(strings.ToLower(u.Handler), f) {
+			result = append(result, u)
+		}
+	}
+	return result
+}
+
 func (a *App) pageSize() int {
 	ps := a.height - 10
 	if ps < 1 {
@@ -756,6 +821,8 @@ func (a *App) listLen() int {
 		return len(a.filteredCerts())
 	case tabCaddy:
 		return len(a.filteredHosts())
+	case tabUpstreams:
+		return len(a.filteredUpstreams())
 	default:
 		return len(a.filteredThreads())
 	}
@@ -771,6 +838,8 @@ func (a *App) clampCursor() {
 		count = len(a.filteredCerts())
 	case tabCaddy:
 		count = len(a.filteredHosts())
+	case tabUpstreams:
+		count = len(a.filteredUpstreams())
 	default:
 		count = len(a.filteredThreads())
 	}
@@ -798,6 +867,19 @@ func (a *App) enableFrankenPHP() {
 	a.hasFrankenPHP = true
 	a.tabs = append(a.tabs, tabFrankenPHP)
 	a.tabStates[tabFrankenPHP] = &tabState{}
+}
+
+func (a *App) enableUpstreams() {
+	a.hasUpstreams = true
+	newTabs := make([]tab, 0, len(a.tabs)+1)
+	for _, t := range a.tabs {
+		newTabs = append(newTabs, t)
+		if t == tabCaddy {
+			newTabs = append(newTabs, tabUpstreams)
+		}
+	}
+	a.tabs = newTabs
+	a.tabStates[tabUpstreams] = &tabState{}
 }
 
 func (a *App) doTick() tea.Cmd {
@@ -863,6 +945,56 @@ func (a *App) doFetchCertificates() tea.Cmd {
 		}
 
 		return certFetchMsg{certs: all}
+	}
+}
+
+func (a *App) doFetchRPConfig() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), globalFetchTimeout)
+		defer cancel()
+		cf, ok := a.fetcher.(configFetcher)
+		if !ok {
+			return rpConfigFetchMsg{err: fmt.Errorf("config inspection not supported")}
+		}
+		raw, err := cf.FetchConfig(ctx)
+		if err != nil {
+			return rpConfigFetchMsg{err: err}
+		}
+		return rpConfigFetchMsg{configs: fetcher.ParseReverseProxyConfigs(raw)}
+	}
+}
+
+// upstreamKey builds a stable identifier matching the one used by the Prometheus
+// parser: just the address when the handler label is absent (current Caddy behavior),
+// or address/handler when present. Using the same key here keeps downSince tracking
+// in sync with multi-handler configurations exporting the same upstream twice.
+func upstreamKey(ud model.UpstreamDerived) string {
+	if ud.Handler == "" {
+		return ud.Address
+	}
+	return ud.Address + "/" + ud.Handler
+}
+
+func (a *App) updateDownSince() {
+	now := a.viewTime
+
+	active := make(map[string]struct{})
+	for _, ud := range a.state.UpstreamDerived {
+		key := upstreamKey(ud)
+		active[key] = struct{}{}
+		if !ud.Healthy {
+			if _, tracked := a.downSince[key]; !tracked {
+				a.downSince[key] = now
+			}
+		} else {
+			delete(a.downSince, key)
+		}
+	}
+
+	for key := range a.downSince {
+		if _, ok := active[key]; !ok {
+			delete(a.downSince, key)
+		}
 	}
 }
 

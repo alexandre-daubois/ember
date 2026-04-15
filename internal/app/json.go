@@ -20,6 +20,14 @@ type jsonOutput struct {
 	Errors    []string                `json:"errors,omitempty"`
 	Derived   *jsonDerived            `json:"derived,omitempty"`
 	Hosts     []jsonHost              `json:"hosts,omitempty"`
+	Upstreams []jsonUpstream          `json:"upstreams,omitempty"`
+}
+
+type jsonUpstream struct {
+	Address       string `json:"address"`
+	Handler       string `json:"handler,omitempty"`
+	Healthy       bool   `json:"healthy"`
+	HealthChanged bool   `json:"healthChanged,omitempty"`
 }
 
 type jsonThreadsResponse struct {
@@ -144,6 +152,15 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 			jh.TTFBP99 = &hd.TTFBP99
 		}
 		out.Hosts = append(out.Hosts, jh)
+	}
+
+	for _, ud := range state.UpstreamDerived {
+		out.Upstreams = append(out.Upstreams, jsonUpstream{
+			Address:       ud.Address,
+			Handler:       ud.Handler,
+			Healthy:       ud.Healthy,
+			HealthChanged: ud.HealthChanged,
+		})
 	}
 
 	sanitizeForJSON(&out)

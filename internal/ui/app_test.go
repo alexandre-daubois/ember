@@ -9,6 +9,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newAppWithThreads(threads []fetcher.ThreadDebugState) *App {
@@ -225,6 +226,72 @@ func TestFetchMsg_RecoveryFromStaleZerosRPS(t *testing.T) {
 	assert.False(t, app.stale, "should no longer be stale")
 	assert.Equal(t, float64(0), app.state.Derived.RPS, "RPS should be 0 on first tick after stale recovery")
 	assert.Equal(t, float64(0), app.state.Derived.AvgTime, "AvgTime should be 0 on first tick after stale recovery")
+}
+
+func TestFetchMsg_UpstreamsAloneCountAsFreshData(t *testing.T) {
+	// Previous snapshot had HTTP metrics; next snapshot has only upstream
+	// health (e.g. Caddy restarted, reverse_proxy configured but no traffic
+	// yet, so HTTP counters are zero). Without upstream-aware freshness
+	// detection this enters the stale branch and skips state.Update(), which
+	// freezes UpstreamDerived.
+	prev := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:        map[string]*fetcher.WorkerMetrics{},
+			HasHTTPMetrics: true,
+		},
+	}
+	app := &App{
+		history:   newHistoryStore(),
+		viewTime:  time.Now(),
+		tabs:      []tab{tabCaddy, tabConfig, tabCertificates},
+		activeTab: tabCaddy,
+		tabStates: map[tab]*tabState{
+			tabCaddy:        {},
+			tabConfig:       {},
+			tabCertificates: {},
+		},
+		downSince: make(map[string]time.Time),
+	}
+	app.state.Update(prev)
+
+	next := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"10.0.0.1:8080": {Address: "10.0.0.1:8080", Healthy: 0},
+			},
+		},
+	}
+	app.Update(fetchMsg{snap: next})
+
+	assert.False(t, app.stale, "upstream-only snapshot must be treated as fresh data")
+	require.Len(t, app.state.UpstreamDerived, 1, "UpstreamDerived should be recomputed from the new snapshot")
+	assert.False(t, app.state.UpstreamDerived[0].Healthy)
+}
+
+func TestFetchMsg_EmptySnapshotAfterDataMarksStale(t *testing.T) {
+	// Guard the complement of the previous test: when nothing is present
+	// (no threads, no HTTP, no upstreams) we must still enter the stale
+	// branch, otherwise the connection-lost warning never fires.
+	prev := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:        map[string]*fetcher.WorkerMetrics{},
+			HasHTTPMetrics: true,
+		},
+	}
+	app := &App{
+		history:   newHistoryStore(),
+		viewTime:  time.Now(),
+		lastFresh: time.Now(),
+	}
+	app.state.Update(prev)
+
+	empty := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	app.Update(fetchMsg{snap: empty})
+
+	assert.True(t, app.stale, "snapshot with no data at all must flip to stale")
 }
 
 func TestFetchMsg_RecoveryFromStaleResetsPercentiles(t *testing.T) {
@@ -911,6 +978,87 @@ func TestConfigFetchMsg_OK(t *testing.T) {
 	assert.NotNil(t, app.configRoot, "configRoot should be populated")
 	assert.True(t, app.configRoot.expanded, "root should be auto-expanded")
 	assert.Equal(t, 0, app.configCursor)
+}
+
+func TestRPConfigFetchMsg_Error(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy},
+		tabStates: map[tab]*tabState{tabCaddy: {}},
+	}
+
+	app.Update(rpConfigFetchMsg{err: fmt.Errorf("connection refused")})
+	assert.Contains(t, app.status, "upstream config fetch failed")
+	assert.Contains(t, app.status, "connection refused")
+	assert.Nil(t, app.rpConfigs, "rpConfigs should stay empty on error")
+}
+
+func TestRPConfigFetchMsg_OK(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy},
+		tabStates: map[tab]*tabState{tabCaddy: {}},
+	}
+
+	configs := []fetcher.ReverseProxyConfig{
+		{LBPolicy: "round_robin"},
+	}
+	app.Update(rpConfigFetchMsg{configs: configs})
+	assert.Equal(t, configs, app.rpConfigs)
+	assert.Empty(t, app.status)
+}
+
+func TestUpdateDownSince(t *testing.T) {
+	now := time.Now()
+	app := &App{
+		downSince: make(map[string]time.Time),
+		viewTime:  now,
+	}
+	app.state.UpstreamDerived = []model.UpstreamDerived{
+		{Address: "a:80", Healthy: true},
+		{Address: "b:80", Healthy: false},
+	}
+
+	app.updateDownSince()
+	assert.NotContains(t, app.downSince, "a:80", "healthy upstream should not be tracked")
+	assert.Equal(t, now, app.downSince["b:80"], "down upstream should be tracked at viewTime")
+
+	app.viewTime = now.Add(5 * time.Second)
+	app.updateDownSince()
+	assert.Equal(t, now, app.downSince["b:80"], "existing entry must not be reset while still down")
+
+	app.state.UpstreamDerived[1].Healthy = true
+	app.updateDownSince()
+	assert.NotContains(t, app.downSince, "b:80", "recovered upstream should be cleared")
+}
+
+func TestUpdateDownSince_MultiHandlerSameAddress(t *testing.T) {
+	now := time.Now()
+	app := &App{
+		downSince: make(map[string]time.Time),
+		viewTime:  now,
+	}
+	app.state.UpstreamDerived = []model.UpstreamDerived{
+		{Address: "a:80", Handler: "rp_0", Healthy: true},
+		{Address: "a:80", Handler: "rp_1", Healthy: false},
+	}
+
+	app.updateDownSince()
+	assert.NotContains(t, app.downSince, "a:80/rp_0", "healthy handler should not be tracked")
+	assert.Equal(t, now, app.downSince["a:80/rp_1"], "only the down handler's key should be present")
+}
+
+func TestUpdateDownSince_PrunesMissingUpstreams(t *testing.T) {
+	app := &App{
+		downSince: map[string]time.Time{"old:80": time.Now().Add(-time.Minute)},
+		viewTime:  time.Now(),
+	}
+	app.state.UpstreamDerived = []model.UpstreamDerived{
+		{Address: "new:80", Healthy: true},
+	}
+
+	app.updateDownSince()
+	assert.NotContains(t, app.downSince, "old:80", "removed upstream should be pruned")
 }
 
 func TestConfigTab_ThreeKey(t *testing.T) {

@@ -37,6 +37,19 @@ type WorkerMetrics struct {
 	QueueDepth   float64 `json:"queueDepth"`
 }
 
+// UpstreamMetrics represents a single Caddy reverse proxy upstream health entry.
+// Address is the dial target (e.g. "backend1:80"). It is not unique on its own
+// when Caddy exports the same address from multiple handlers: in that case the
+// parser disambiguates by combining Address and Handler, so consumers that need
+// a stable identity should use both fields together. Handler is empty when
+// Caddy omits the label (the common case for caddy_reverse_proxy_upstreams_healthy).
+// Healthy is 1.0 when healthy, 0.0 when down.
+type UpstreamMetrics struct {
+	Address string  `json:"address"`
+	Handler string  `json:"handler,omitempty"`
+	Healthy float64 `json:"healthy"`
+}
+
 type HostMetrics struct {
 	Host              string             `json:"host"`
 	RequestsTotal     float64            `json:"requestsTotal"`
@@ -74,6 +87,9 @@ type MetricsSnapshot struct {
 
 	// Per-host Caddy HTTP metrics
 	Hosts map[string]*HostMetrics `json:"hosts,omitempty"`
+
+	// Caddy reverse proxy upstream health
+	Upstreams map[string]*UpstreamMetrics `json:"upstreams,omitempty"`
 
 	// Go runtime process metrics (from standard Prometheus collector)
 	ProcessCPUSecondsTotal  float64 `json:"processCpuSecondsTotal,omitempty"`
@@ -119,6 +135,19 @@ type CertificateInfo struct {
 	Source    string
 	Host      string
 	AutoRenew bool
+}
+
+type ReverseProxyConfig struct {
+	Handler        string
+	LBPolicy       string
+	HealthURI      string
+	HealthInterval string
+	Upstreams      []ReverseProxyUpstreamConfig
+}
+
+type ReverseProxyUpstreamConfig struct {
+	Address     string
+	MaxRequests int
 }
 
 type Fetcher interface {

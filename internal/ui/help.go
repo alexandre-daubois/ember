@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, paused bool, width int, activeTab tab) string {
+func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, upstreamSortBy model.UpstreamSortField, paused bool, width int, activeTab tab) string {
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
@@ -37,6 +37,17 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 			{"s/S", "sort(" + certSortBy.String() + ")"},
 			{"p", pauseLabel},
 			{"r", "refresh"},
+			{"g", "graphs"},
+			{"/", "filter"},
+			{"Tab/S-Tab", "switch"},
+			{"q", "quit"},
+		}
+	case tabUpstreams:
+		bindings = []binding{
+			{"↑/↓", "navigate"},
+			{"s/S", "sort(" + upstreamSortBy.String() + ")"},
+			{"p", pauseLabel},
+			{"r", "refresh config"},
 			{"g", "graphs"},
 			{"/", "filter"},
 			{"Tab/S-Tab", "switch"},
@@ -76,15 +87,24 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 	return helpStyle.Width(width).Render(content)
 }
 
-func renderHelpOverlay(base string, width, height int, hasFrankenPHP bool) string {
+func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool) string {
 	type binding struct {
 		key  string
 		desc string
 	}
 
-	tabHint := "1/2/3"
+	tabCount := 3
+	if hasUpstreams {
+		tabCount++
+	}
 	if hasFrankenPHP {
+		tabCount++
+	}
+	tabHint := "1/2/3"
+	if tabCount == 4 {
 		tabHint = "1/2/3/4"
+	} else if tabCount >= 5 {
+		tabHint = "1/2/3/4/5"
 	}
 
 	nav := []binding{

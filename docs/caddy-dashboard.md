@@ -66,6 +66,26 @@ Navigation in the Caddy Config tab:
 | `E` | Collapse all nodes |
 | `r` | Refresh config from Caddy |
 
+## Upstreams
+
+The **Upstreams** tab appears automatically when Caddy exposes `caddy_reverse_proxy_upstreams_healthy` metrics, which happens when at least one `reverse_proxy` handler is configured.
+
+The table shows one row per upstream:
+
+| Column | Description |
+|--------|-------------|
+| **Upstream** | Upstream address (host:port) |
+| **Check** | Active health check URI and interval (e.g. `/health @5s`), extracted from Caddy config |
+| **LB** | Load balancing policy (e.g. `round_robin`, `least_conn`), extracted from Caddy config |
+| **Health** | Health status: `● healthy` or `○ down` |
+| **Down** | Duration since the upstream went down (e.g. `5s`, `2m30s`, `1h5m`) |
+
+A `!` suffix on the health status indicates a state change since the previous poll (e.g. an upstream just went down or recovered).
+
+The Check and LB columns are populated from the Caddy config when the tab first appears. Press `r` to refresh the config data.
+
+Press `s`/`S` to sort by address or health status. Press `/` to filter by address or handler name.
+
 ## Graphs
 
 Press `g` to toggle full-screen graphs showing:

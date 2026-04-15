@@ -174,6 +174,16 @@ func formatStatusLine(state *model.State, hasFrankenPHP bool) string {
 		parts = append(parts, fmt.Sprintf("up %s", model.FormatUptime(snap.Process.Uptime)))
 	}
 
+	if upCount := len(snap.Metrics.Upstreams); upCount > 0 {
+		healthy := 0
+		for _, u := range snap.Metrics.Upstreams {
+			if u.Healthy >= 1 {
+				healthy++
+			}
+		}
+		parts = append(parts, fmt.Sprintf("%d/%d upstreams healthy", healthy, upCount))
+	}
+
 	if hasFrankenPHP {
 		total := d.TotalBusy + d.TotalIdle
 		fpPart := fmt.Sprintf("FrankenPHP %d/%d busy", d.TotalBusy, total)
