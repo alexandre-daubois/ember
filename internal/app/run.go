@@ -244,5 +244,28 @@ func validate(cfg *config) error {
 			return fmt.Errorf("--metrics-auth requires --expose")
 		}
 	}
+	if cfg.metricsPrefix != "" && !isValidMetricPrefix(cfg.metricsPrefix) {
+		return fmt.Errorf("--metrics-prefix %q is not a valid Prometheus metric name prefix (allowed: letters, digits, underscores; must not start with a digit; e.g. \"my_app\")", cfg.metricsPrefix)
+	}
 	return nil
+}
+
+// isValidMetricPrefix reports whether s is a legal leading segment of a
+// Prometheus metric name. The Prometheus spec allows [a-zA-Z_:][a-zA-Z0-9_:]*,
+// but ':' is conventionally reserved for recording rule outputs, so we keep
+// the prefix to the safer underscore-only subset.
+func isValidMetricPrefix(s string) bool {
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_':
+			// always allowed
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }

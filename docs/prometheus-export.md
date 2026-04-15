@@ -107,6 +107,8 @@ ember --expose :9191 --metrics-prefix myapp
 
 This turns `frankenphp_threads_total` into `myapp_frankenphp_threads_total`, `ember_host_rps` into `myapp_ember_host_rps`, and so on.
 
+The prefix must be a legal Prometheus metric name segment: letters, digits and underscores, not starting with a digit. Hyphens, dots and colons are rejected at startup so invalid names never reach a scraper.
+
 ## Health Endpoint
 
 `GET /healthz` returns a JSON response indicating whether Ember is collecting data successfully:
