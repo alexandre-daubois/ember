@@ -202,9 +202,6 @@ func TestHandler_RoundTrip_ValidPrometheus(t *testing.T) {
 	s.Derived.P50 = 12.5
 	s.Derived.P95 = 45.0
 	s.Derived.P99 = 120.3
-	s.Current.Metrics.HasConfigReloadMetrics = true
-	s.Current.Metrics.ConfigLastReloadSuccessful = 1
-	s.Current.Metrics.ConfigLastReloadSuccessTimestamp = 1.7120736e+09
 
 	holder := &StateHolder{}
 	holder.Store(s)
@@ -222,8 +219,6 @@ func TestHandler_RoundTrip_ValidPrometheus(t *testing.T) {
 	assert.Contains(t, families, "frankenphp_request_duration_milliseconds")
 	assert.Contains(t, families, "process_cpu_percent")
 	assert.Contains(t, families, "process_rss_bytes")
-	assert.Contains(t, families, "caddy_config_last_reload_successful")
-	assert.Contains(t, families, "caddy_config_last_reload_success_timestamp_seconds")
 }
 
 func TestHandler_WorkerMetrics_SortedDeterministic(t *testing.T) {
@@ -397,9 +392,6 @@ func TestHandler_WithPrefix_AllMetricsPrefixed(t *testing.T) {
 	s.Derived.P50 = 12.5
 	s.Derived.P95 = 45.0
 	s.Derived.P99 = 120.3
-	s.Current.Metrics.HasConfigReloadMetrics = true
-	s.Current.Metrics.ConfigLastReloadSuccessful = 1
-	s.Current.Metrics.ConfigLastReloadSuccessTimestamp = 1.7120736e+09
 	s.HostDerived = []model.HostDerived{
 		{Host: "test.com", RPS: 100, AvgTime: 25, InFlight: 3,
 			HasPercentiles: true, P50: 10, P90: 30, P95: 50, P99: 120,
@@ -427,54 +419,11 @@ func TestHandler_WithPrefix_AllMetricsPrefixed(t *testing.T) {
 	assert.Contains(t, families, "prod_ember_host_latency_milliseconds")
 	assert.Contains(t, families, "prod_ember_host_inflight")
 	assert.Contains(t, families, "prod_ember_host_status_rate")
-	assert.Contains(t, families, "prod_caddy_config_last_reload_successful")
-	assert.Contains(t, families, "prod_caddy_config_last_reload_success_timestamp_seconds")
 
 	// Original names must NOT be present
 	assert.NotContains(t, families, "frankenphp_threads_total")
 	assert.NotContains(t, families, "ember_host_rps")
 	assert.NotContains(t, families, "process_cpu_percent")
-	assert.NotContains(t, families, "caddy_config_last_reload_successful")
-}
-
-func TestHandler_ReloadMetrics(t *testing.T) {
-	s := stateWithThreads(nil, nil)
-	s.Current.Metrics.HasConfigReloadMetrics = true
-	s.Current.Metrics.ConfigLastReloadSuccessful = 1
-	s.Current.Metrics.ConfigLastReloadSuccessTimestamp = 1.7120736e+09
-
-	holder := &StateHolder{}
-	holder.Store(s)
-
-	body := get(holder).Body.String()
-	assert.Contains(t, body, "# HELP caddy_config_last_reload_successful")
-	assert.Contains(t, body, "# TYPE caddy_config_last_reload_successful gauge")
-	assert.Contains(t, body, "caddy_config_last_reload_successful 1")
-	assert.Contains(t, body, "# HELP caddy_config_last_reload_success_timestamp_seconds")
-	assert.Contains(t, body, "# TYPE caddy_config_last_reload_success_timestamp_seconds gauge")
-	assert.Contains(t, body, "caddy_config_last_reload_success_timestamp_seconds 1.7120736e+09")
-}
-
-func TestHandler_ReloadMetrics_SkippedWhenNoData(t *testing.T) {
-	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
-
-	body := get(holder).Body.String()
-	assert.NotContains(t, body, "caddy_config_last_reload_successful")
-	assert.NotContains(t, body, "caddy_config_last_reload_success_timestamp_seconds")
-}
-
-func TestHandler_ReloadMetrics_FailedState(t *testing.T) {
-	s := stateWithThreads(nil, nil)
-	s.Current.Metrics.HasConfigReloadMetrics = true
-	s.Current.Metrics.ConfigLastReloadSuccessful = 0
-	s.Current.Metrics.ConfigLastReloadSuccessTimestamp = 1.7120736e+09
-
-	holder := &StateHolder{}
-	holder.Store(s)
-
-	body := get(holder).Body.String()
-	assert.Contains(t, body, "caddy_config_last_reload_successful 0")
 }
 
 func TestHandler_ErrorMetrics(t *testing.T) {
