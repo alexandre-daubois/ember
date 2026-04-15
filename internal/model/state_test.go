@@ -1706,6 +1706,85 @@ func TestDetectCounterReset_ZeroPreviousIgnored(t *testing.T) {
 	assert.False(t, s.detectCounterReset(snap), "zero-to-zero should not be a reset")
 }
 
+func TestDetectCounterReset_WorkerOnlyRestart(t *testing.T) {
+	var s State
+	s.Current = &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			HTTPRequestsTotal:        1000,
+			HTTPRequestDurationCount: 1000,
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 1000},
+			},
+		},
+	}
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			HTTPRequestsTotal:        1100,
+			HTTPRequestDurationCount: 1100,
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 50},
+			},
+		},
+	}
+	assert.True(t, s.detectCounterReset(snap), "worker counter going backwards should trigger reset even when Caddy counters keep climbing")
+}
+
+func TestDetectCounterReset_WorkerDisappeared_NotAReset(t *testing.T) {
+	var s State
+	s.Current = &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			HTTPRequestsTotal: 1000,
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"old": {RequestCount: 500},
+				"w":   {RequestCount: 500},
+			},
+		},
+	}
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			HTTPRequestsTotal: 1100,
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"w": {RequestCount: 600},
+			},
+		},
+	}
+	assert.False(t, s.detectCounterReset(snap), "scale-down (worker disappearing) is not a reset")
+}
+
+func TestState_Update_WorkerRestart_DiscardsPreviousWhileCaddyKeepsRunning(t *testing.T) {
+	now := time.Now()
+
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			HTTPRequestDurationCount: 1000,
+			HTTPRequestsTotal:        1000,
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"app": {RequestCount: 1000, RequestTime: 50.0},
+			},
+		},
+	}
+	// FrankenPHP worker crashed and restarted; Caddy kept running.
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			HTTPRequestDurationCount: 1100,
+			HTTPRequestsTotal:        1100,
+			Workers: map[string]*fetcher.WorkerMetrics{
+				"app": {RequestCount: 10, RequestTime: 0.5},
+			},
+		},
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assert.Nil(t, s.Previous, "Previous must be discarded so derived metrics restart fresh")
+	assert.Equal(t, float64(0), s.Derived.RPS, "RPS must not go negative")
+	assert.Equal(t, float64(0), s.Derived.AvgTime, "AvgTime must not go negative")
+}
+
 func TestSortField_String(t *testing.T) {
 	tests := []struct {
 		field SortField
