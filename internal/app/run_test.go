@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidate_DaemonRequiresExpose(t *testing.T) {
@@ -247,6 +248,45 @@ func TestValidate_MetricsAuthEmptyPassword(t *testing.T) {
 func TestValidate_MetricsAuthEmptyOK(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191"}
 	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_MetricsPrefix(t *testing.T) {
+	cases := []struct {
+		name    string
+		prefix  string
+		wantErr bool
+	}{
+		{"empty", "", false},
+		{"snake_case", "my_app", false},
+		{"single underscore", "_", false},
+		{"leading underscore", "_app", false},
+		{"alpha only", "myapp", false},
+		{"alphanumeric", "app2", false},
+		{"uppercase", "MyApp_42", false},
+		{"kebab-case", "my-app", true},
+		{"leading digit", "9app", true},
+		{"colon (recording rule convention)", "team:app", true},
+		{"dot", "team.app", true},
+		{"space", "my app", true},
+		{"unicode", "monApp\u00e9", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config{
+				interval:      1 * time.Second,
+				addr:          "http://localhost:2019",
+				expose:        ":9191",
+				metricsPrefix: tc.prefix,
+			}
+			err := validate(cfg)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "--metrics-prefix")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestRun_IntervalTooLow(t *testing.T) {
