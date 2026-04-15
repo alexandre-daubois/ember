@@ -13,10 +13,26 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 )
+
+// swappableTransport routes requests through an inner *http.Transport that
+// can be replaced atomically. It lets SetTLSConfig swap TLS settings while
+// concurrent Fetch calls are in flight without any mutex on the hot path.
+type swappableTransport struct {
+	inner atomic.Pointer[http.Transport]
+}
+
+func (s *swappableTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return s.inner.Load().RoundTrip(req)
+}
+
+func (s *swappableTransport) store(t *http.Transport) *http.Transport {
+	return s.inner.Swap(t)
+}
 
 const (
 	maxRetries                 = 3
@@ -28,6 +44,7 @@ const (
 type HTTPFetcher struct {
 	baseURL    string
 	socketPath string
+	transport  *swappableTransport
 	httpClient *http.Client
 	procHandle *processHandle
 
@@ -60,10 +77,14 @@ func NewHTTPFetcher(baseURL string, pid int32) *HTTPFetcher {
 		}
 	}
 
+	swap := &swappableTransport{}
+	swap.store(transport)
+
 	return &HTTPFetcher{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		socketPath: socketPath,
-		httpClient: &http.Client{Transport: transport},
+		transport:  swap,
+		httpClient: &http.Client{Transport: swap},
 		procHandle: ph,
 	}
 }
@@ -75,15 +96,22 @@ func (f *HTTPFetcher) IsUnixSocket() bool {
 
 // SetTLSConfig replaces the HTTP transport with one using the given TLS configuration.
 // It is a no-op when the fetcher uses a Unix socket.
+//
+// The swap is atomic: concurrent Fetch calls observe either the old or the new
+// transport, never a torn value. The previous transport's idle connections are
+// closed so that subsequent requests negotiate TLS with the new configuration.
 func (f *HTTPFetcher) SetTLSConfig(tlsConfig *tls.Config) {
 	if f.socketPath != "" {
 		return
 	}
-	f.httpClient.Transport = &http.Transport{
+	next := &http.Transport{
 		TLSClientConfig:     tlsConfig,
 		MaxIdleConns:        2,
 		MaxIdleConnsPerHost: 2,
 		IdleConnTimeout:     30 * time.Second,
+	}
+	if prev := f.transport.store(next); prev != nil {
+		prev.CloseIdleConnections()
 	}
 }
 

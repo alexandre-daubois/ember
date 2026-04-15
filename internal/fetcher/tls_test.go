@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -9,8 +10,11 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,9 +99,81 @@ func TestSetTLSConfig(t *testing.T) {
 
 	f.SetTLSConfig(cfg)
 
-	tr, ok := f.httpClient.Transport.(*http.Transport)
-	require.True(t, ok)
+	tr := f.transport.inner.Load()
+	require.NotNil(t, tr)
+	require.NotNil(t, tr.TLSClientConfig)
 	assert.True(t, tr.TLSClientConfig.InsecureSkipVerify)
+}
+
+// TestSetTLSConfig_ConcurrentWithFetch reproduces the SIGHUP-during-Fetch
+// scenario that motivated the atomic transport swap. A pool of goroutines
+// hammers the server while another goroutine swaps the TLS config in a loop.
+// Run with -race; any unsynchronized access on the transport field will fail.
+func TestSetTLSConfig_ConcurrentWithFetch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var (
+		stop      atomic.Bool
+		wg        sync.WaitGroup
+		fetches   atomic.Int64
+		swaps     atomic.Int64
+		fetchErrs atomic.Int64
+	)
+
+	for range 8 {
+		wg.Go(func() {
+			for !stop.Load() {
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/", nil)
+				if err != nil {
+					fetchErrs.Add(1)
+					return
+				}
+				resp, err := f.httpClient.Do(req)
+				if err != nil {
+					fetchErrs.Add(1)
+					continue
+				}
+				_ = resp.Body.Close()
+				fetches.Add(1)
+			}
+		})
+	}
+
+	wg.Go(func() {
+		insecureCfg, err := BuildTLSConfig(TLSOptions{Insecure: true})
+		require.NoError(t, err)
+		caCfg, err := BuildTLSConfig(TLSOptions{CACert: generateTestCA(t)})
+		require.NoError(t, err)
+		toggle := false
+		for !stop.Load() {
+			if toggle {
+				f.SetTLSConfig(insecureCfg)
+			} else {
+				f.SetTLSConfig(caCfg)
+			}
+			toggle = !toggle
+			swaps.Add(1)
+		}
+	})
+
+	time.Sleep(500 * time.Millisecond)
+	stop.Store(true)
+	wg.Wait()
+
+	assert.Greater(t, fetches.Load(), int64(0), "should have completed at least one fetch")
+	assert.Greater(t, swaps.Load(), int64(0), "should have completed at least one swap")
+	// Some fetches may legitimately fail when the underlying connection is
+	// closed mid-flight by CloseIdleConnections; that is the documented
+	// behavior, not a race. We just want no panics and no -race report.
+	t.Logf("fetches=%d swaps=%d errs=%d", fetches.Load(), swaps.Load(), fetchErrs.Load())
 }
 
 func generateTestCA(t *testing.T) string {
