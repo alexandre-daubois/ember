@@ -90,15 +90,6 @@ This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies
 | `ember_host_status_rate` | gauge | `host`, `class` (`2xx`, `3xx`, `4xx`, `5xx`) | Request rate by status class |
 | `ember_host_error_rate` | gauge | `host` | Middleware error rate (handler-level errors, distinct from HTTP status codes) |
 
-### Caddy Config Reload
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `caddy_config_last_reload_successful` | gauge | Whether the last config reload succeeded (1) or failed (0) |
-| `caddy_config_last_reload_success_timestamp_seconds` | gauge | Unix timestamp of the last successful config reload |
-
-These metrics are only emitted once Caddy has recorded a successful config reload.
-
 ### Process Metrics
 
 | Metric | Type | Description |
