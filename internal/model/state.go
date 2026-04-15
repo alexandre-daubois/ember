@@ -339,8 +339,13 @@ func (s *State) Update(snap *fetcher.Snapshot) {
 }
 
 // detectCounterReset returns true when cumulative Prometheus counters have
-// decreased, which indicates that Caddy (or FrankenPHP) was restarted.
+// decreased, which indicates that Caddy (or a FrankenPHP worker) was restarted.
 // Discarding Previous on reset avoids negative deltas in derived metrics.
+//
+// Per-worker counters are checked independently from the Caddy-wide counters
+// so that a single worker restart (crash + auto-restart, USR2 to one worker)
+// is detected even when Caddy itself keeps running. Workers that disappear
+// between polls (scale down) are ignored to avoid false positives.
 func (s *State) detectCounterReset(snap *fetcher.Snapshot) bool {
 	if s.Current == nil {
 		return false
@@ -350,6 +355,15 @@ func (s *State) detectCounterReset(snap *fetcher.Snapshot) bool {
 	}
 	if s.Current.Metrics.HTTPRequestsTotal > 0 && snap.Metrics.HTTPRequestsTotal < s.Current.Metrics.HTTPRequestsTotal {
 		return true
+	}
+	for name, prev := range s.Current.Metrics.Workers {
+		curr, ok := snap.Metrics.Workers[name]
+		if !ok {
+			continue
+		}
+		if prev.RequestCount > 0 && curr.RequestCount < prev.RequestCount {
+			return true
+		}
 	}
 	return false
 }
