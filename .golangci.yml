@@ -21,3 +21,7 @@ linters:
       default-signifies-exhaustive: true
     nolintlint:
       require-explanation: true
+
+formatters:
+  enable:
+    - gofmt
