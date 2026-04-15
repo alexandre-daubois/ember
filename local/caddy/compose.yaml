@@ -1,0 +1,32 @@
+services:
+  caddy:
+    image: caddy:latest
+    container_name: ember-caddy-local
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2019:2019"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+
+  backend1:
+    image: traefik/whoami
+    container_name: ember-caddy-local-backend1
+
+  backend2:
+    image: traefik/whoami
+    container_name: ember-caddy-local-backend2
+
+  backend3:
+    image: traefik/whoami
+    container_name: ember-caddy-local-backend3
+
+volumes:
+  caddy_data:
+  caddy_config:

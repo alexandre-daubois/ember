@@ -38,14 +38,16 @@ internal/
   ui/                Bubble Tea TUI components (dashboard, tables, graphs)
   exporter/          Prometheus metrics export
 local/
-  frankenphp/        Local FrankenPHP setup for testing
+  caddy/             Exhaustive Caddy setup (TLS, upstreams, multiple hosts)
+  frankenphp/        Minimal FrankenPHP setup
 ```
 
 > [!NOTE]
-> You can start a local FrankenPHP instance for fast testing:
+> You can start a local instance for fast testing. Two setups are available:
 >
 > ```bash
-> cd local/frankenphp && make local
+> cd local/frankenphp && make local   # minimal FrankenPHP (worker, metrics)
+> cd local/caddy && make local        # exhaustive Caddy (TLS, upstreams, hosts)
 > ```
 
 ## Running Tests

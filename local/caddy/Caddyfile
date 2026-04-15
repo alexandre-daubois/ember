@@ -1,0 +1,37 @@
+{
+	admin 0.0.0.0:2019
+	metrics
+
+	local_certs
+}
+
+app.localhost {
+	reverse_proxy backend1:80 backend2:80 backend3:80 {
+		lb_policy round_robin
+		health_uri /
+		health_interval 10s
+		health_timeout 2s
+	}
+}
+
+api.localhost {
+	handle /health {
+		respond "OK" 200
+	}
+
+	handle /error {
+		respond "Internal Error" 500
+	}
+
+	handle /notfound {
+		respond "Not Found" 404
+	}
+
+	handle {
+		respond "Hello API" 200
+	}
+}
+
+static.localhost {
+	respond "Hello from static site" 200
+}
