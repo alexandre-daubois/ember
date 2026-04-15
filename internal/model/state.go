@@ -422,9 +422,10 @@ func (s *State) computeDerived() DerivedMetrics {
 			d.HasPercentiles = true
 		}
 	} else if s.percentiles != nil {
-		p50, p95, p99, ok := s.percentiles.percentiles(s.Current.FetchedAt)
+		p50, p90, p95, p99, ok := s.percentiles.percentiles(s.Current.FetchedAt)
 		if ok {
 			d.P50 = p50
+			d.P90 = p90
 			d.P95 = p95
 			d.P99 = p99
 			d.HasPercentiles = true

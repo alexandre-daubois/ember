@@ -35,11 +35,11 @@ func (pt *percentileTracker) record(durationMs float64, at time.Time) {
 	pt.samples = append(pt.samples, timedSample{at: at, value: durationMs})
 }
 
-func (pt *percentileTracker) percentiles(now time.Time) (p50, p95, p99 float64, ok bool) {
+func (pt *percentileTracker) percentiles(now time.Time) (p50, p90, p95, p99 float64, ok bool) {
 	pt.trim(now)
 	n := len(pt.samples)
 	if n == 0 {
-		return 0, 0, 0, false
+		return 0, 0, 0, 0, false
 	}
 
 	sorted := make([]float64, n)
@@ -49,9 +49,10 @@ func (pt *percentileTracker) percentiles(now time.Time) (p50, p95, p99 float64, 
 	slices.Sort(sorted)
 
 	p50 = percentileValue(sorted, 0.50)
+	p90 = percentileValue(sorted, 0.90)
 	p95 = percentileValue(sorted, 0.95)
 	p99 = percentileValue(sorted, 0.99)
-	return p50, p95, p99, true
+	return p50, p90, p95, p99, true
 }
 
 func (pt *percentileTracker) count(now time.Time) int {

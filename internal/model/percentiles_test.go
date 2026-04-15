@@ -11,7 +11,7 @@ import (
 
 func TestPercentileTracker_NoSamples(t *testing.T) {
 	pt := newPercentileTracker(5 * time.Minute)
-	_, _, _, ok := pt.percentiles(time.Now())
+	_, _, _, _, ok := pt.percentiles(time.Now())
 	assert.False(t, ok)
 	assert.Equal(t, 0, pt.count(time.Now()))
 }
@@ -21,9 +21,10 @@ func TestPercentileTracker_SingleSample(t *testing.T) {
 	pt := newPercentileTracker(5 * time.Minute)
 	pt.record(42.0, now)
 
-	p50, p95, p99, ok := pt.percentiles(now)
+	p50, p90, p95, p99, ok := pt.percentiles(now)
 	assert.True(t, ok)
 	assert.Equal(t, 42.0, p50)
+	assert.Equal(t, 42.0, p90)
 	assert.Equal(t, 42.0, p95)
 	assert.Equal(t, 42.0, p99)
 }
@@ -35,9 +36,10 @@ func TestPercentileTracker_KnownDistribution(t *testing.T) {
 		pt.record(float64(i), now)
 	}
 
-	p50, p95, p99, ok := pt.percentiles(now)
+	p50, p90, p95, p99, ok := pt.percentiles(now)
 	assert.True(t, ok)
 	assert.InDelta(t, 50.5, p50, 0.5)
+	assert.InDelta(t, 90.1, p90, 0.5)
 	assert.InDelta(t, 95.05, p95, 0.5)
 	assert.InDelta(t, 99.01, p99, 0.5)
 }
@@ -59,7 +61,7 @@ func TestPercentileTracker_ExpiresOldSamples(t *testing.T) {
 	now := recent.Add(11 * time.Second)
 	assert.Equal(t, 10, pt.count(now), "old samples should be expired")
 
-	p50, _, _, ok := pt.percentiles(now)
+	p50, _, _, _, ok := pt.percentiles(now)
 	assert.True(t, ok)
 	assert.InDelta(t, 5.5, p50, 0.5, "should only reflect recent samples")
 }
@@ -71,7 +73,7 @@ func TestPercentileTracker_AllExpired(t *testing.T) {
 	pt.record(100.0, old)
 	pt.record(200.0, old)
 
-	_, _, _, ok := pt.percentiles(time.Now())
+	_, _, _, _, ok := pt.percentiles(time.Now())
 	assert.False(t, ok, "all samples expired")
 }
 
@@ -83,7 +85,7 @@ func TestPercentileTracker_IgnoresNegativeAndZero(t *testing.T) {
 	pt.record(-100.0, now)
 
 	assert.Equal(t, 0, pt.count(now))
-	_, _, _, ok := pt.percentiles(now)
+	_, _, _, _, ok := pt.percentiles(now)
 	assert.False(t, ok)
 }
 
@@ -96,7 +98,7 @@ func TestPercentileTracker_Reset(t *testing.T) {
 
 	pt.reset()
 	assert.Equal(t, 0, pt.count(now))
-	_, _, _, ok := pt.percentiles(now)
+	_, _, _, _, ok := pt.percentiles(now)
 	assert.False(t, ok)
 }
 

@@ -568,6 +568,12 @@ func TestState_Update_MultipleCompletedRequests(t *testing.T) {
 
 	assert.True(t, s.Derived.HasPercentiles)
 	assert.Equal(t, 3, s.percentiles.count(now))
+	assert.Greater(t, s.Derived.P50, 0.0, "P50 must be populated from tracker")
+	assert.Greater(t, s.Derived.P90, 0.0, "P90 must be populated from tracker")
+	assert.Greater(t, s.Derived.P95, 0.0, "P95 must be populated from tracker")
+	assert.Greater(t, s.Derived.P99, 0.0, "P99 must be populated from tracker")
+	assert.GreaterOrEqual(t, s.Derived.P90, s.Derived.P50, "P90 >= P50")
+	assert.GreaterOrEqual(t, s.Derived.P95, s.Derived.P90, "P95 >= P90")
 }
 
 func TestState_Update_HistogramTakesPriorityOverThreadBased(t *testing.T) {
