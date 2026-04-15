@@ -1,0 +1,9 @@
+services:
+  frankenphp:
+    image: dunglas/frankenphp:latest
+    ports:
+      - "8080:8080"
+      - "2019:2019"
+    volumes:
+      - ./public:/app/public
+      - ./Caddyfile:/etc/frankenphp/Caddyfile

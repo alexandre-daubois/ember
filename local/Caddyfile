@@ -1,0 +1,12 @@
+{
+	auto_https off
+	admin 0.0.0.0:2019
+	metrics
+	frankenphp
+}
+
+:8080 {
+	root * /app/public
+	rewrite * /index.php
+	php
+}
