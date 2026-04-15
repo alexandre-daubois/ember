@@ -136,9 +136,11 @@ func TestHistogramPercentiles_NoPrev(t *testing.T) {
 		{UpperBound: math.Inf(1), CumulativeCount: 100},
 	}
 
-	p50, _, _, _, ok := histogramPercentiles(nil, curr)
-	assert.True(t, ok)
-	assert.True(t, p50 > 0)
+	// Without a baseline the cumulative counts cover the entire lifetime
+	// of the source, so we refuse to compute percentiles and the caller
+	// must wait for a second snapshot.
+	_, _, _, _, ok := histogramPercentiles(nil, curr)
+	assert.False(t, ok)
 }
 
 func TestHistogramPercentiles_EmptyCurr(t *testing.T) {
@@ -230,6 +232,13 @@ func TestSubtractBuckets_NegativeDeltaClamped(t *testing.T) {
 	}
 	delta := subtractBuckets(prev, curr)
 	assert.Equal(t, 0.0, delta[0].CumulativeCount)
+}
+
+func TestSubtractBuckets_NoPrev(t *testing.T) {
+	curr := []fetcher.HistogramBucket{
+		{UpperBound: 0.01, CumulativeCount: 100},
+	}
+	assert.Nil(t, subtractBuckets(nil, curr), "no baseline must yield no delta, never the cumulative counts as-is")
 }
 
 func TestHistogramQuantile_FallbackLastBucket(t *testing.T) {

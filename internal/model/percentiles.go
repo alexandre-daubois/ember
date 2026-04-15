@@ -119,12 +119,15 @@ func histogramPercentiles(prev, curr []fetcher.HistogramBucket) (p50, p90, p95, 
 }
 
 // subtractBuckets computes the delta (curr - prev) for matching buckets.
+//
+// Without a prev snapshot, the cumulative counts in curr cover the entire
+// lifetime of the source (potentially days), not the current polling
+// window: returning them as a delta would silently produce misleading
+// percentiles. We require a baseline and return nil otherwise so that
+// histogramPercentiles reports ok=false until two snapshots are available.
 func subtractBuckets(prev, curr []fetcher.HistogramBucket) []fetcher.HistogramBucket {
-	if len(curr) == 0 {
+	if len(curr) == 0 || len(prev) == 0 {
 		return nil
-	}
-	if len(prev) == 0 {
-		return curr
 	}
 
 	prevMap := make(map[float64]float64, len(prev))
