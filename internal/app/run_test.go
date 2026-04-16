@@ -143,6 +143,23 @@ func TestValidate_IntervalAboveMinimumOK(t *testing.T) {
 	assert.NoError(t, validate(cfg))
 }
 
+func TestValidate_TimeoutBelowInterval(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, timeout: 200 * time.Millisecond, addr: "http://localhost:2019"}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--timeout")
+}
+
+func TestValidate_TimeoutEqualIntervalOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, timeout: 1 * time.Second, addr: "http://localhost:2019"}
+	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_TimeoutZeroOK(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second, timeout: 0, addr: "http://localhost:2019"}
+	assert.NoError(t, validate(cfg))
+}
+
 func TestValidate_AddrMissingScheme(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addr: "localhost:2019"}
 	err := validate(cfg)
