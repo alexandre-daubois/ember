@@ -73,6 +73,7 @@ type jsonDerived struct {
 	AvgTime   float64  `json:"avgTime"`
 	ErrorRate float64  `json:"errorRate,omitempty"`
 	P50       *float64 `json:"p50,omitempty"`
+	P90       *float64 `json:"p90,omitempty"`
 	P95       *float64 `json:"p95,omitempty"`
 	P99       *float64 `json:"p99,omitempty"`
 }
@@ -125,6 +126,7 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 	}
 	if state.Derived.HasPercentiles {
 		out.Derived.P50 = &state.Derived.P50
+		out.Derived.P90 = &state.Derived.P90
 		out.Derived.P95 = &state.Derived.P95
 		out.Derived.P99 = &state.Derived.P99
 	}

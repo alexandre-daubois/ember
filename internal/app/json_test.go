@@ -212,6 +212,7 @@ func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 	state.Update(snap)
 	state.Derived.HasPercentiles = true
 	state.Derived.P50 = 12.5
+	state.Derived.P90 = 30.0
 	state.Derived.P95 = 45.0
 	state.Derived.P99 = 120.0
 
@@ -219,6 +220,7 @@ func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 
 	require.NotNil(t, out.Derived.P50)
 	assert.Equal(t, 12.5, *out.Derived.P50)
+	assert.Equal(t, 30.0, *out.Derived.P90)
 	assert.Equal(t, 45.0, *out.Derived.P95)
 	assert.Equal(t, 120.0, *out.Derived.P99)
 }
