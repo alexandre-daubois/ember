@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,14 +176,67 @@ func TestRenderWorkerList_Header(t *testing.T) {
 		{Index: 1, IsWaiting: true},
 		{Index: 2, IsWaiting: true},
 	}
-	out := renderWorkerListFromThreads(threads, 0, 120, model.SortByIndex, renderOpts{})
+	out := renderWorkerListFromThreads(threads, 0, 120, 20, model.SortByIndex, renderOpts{})
 	assert.Contains(t, out, "#")
 	assert.Contains(t, out, "State")
 }
 
 func TestRenderWorkerList_Empty(t *testing.T) {
-	out := renderWorkerListFromThreads(nil, 0, 120, model.SortByIndex, renderOpts{})
+	out := renderWorkerListFromThreads(nil, 0, 120, 20, model.SortByIndex, renderOpts{})
 	assert.Contains(t, out, "No threads")
+}
+
+func TestRenderWorkerList_ViewportClipping(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 100)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i, IsWaiting: true}
+	}
+
+	out := renderWorkerListFromThreads(threads, 50, 120, 15, model.SortByIndex, renderOpts{})
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 100, "viewport must clip output")
+	assert.Contains(t, out, ">", "cursor row must be visible")
+}
+
+func TestRenderWorkerList_ViewportCursorAtStart(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 50)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i, IsWaiting: true}
+	}
+
+	out := renderWorkerListFromThreads(threads, 0, 120, 15, model.SortByIndex, renderOpts{})
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 50, "viewport must clip output")
+	assert.Contains(t, out, ">", "cursor row must be visible")
+}
+
+func TestRenderWorkerList_ViewportCursorAtEnd(t *testing.T) {
+	threads := make([]fetcher.ThreadDebugState, 50)
+	for i := range threads {
+		threads[i] = fetcher.ThreadDebugState{Index: i, IsWaiting: true}
+	}
+
+	out := renderWorkerListFromThreads(threads, 49, 120, 15, model.SortByIndex, renderOpts{})
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 50, "viewport must clip output")
+	assert.Contains(t, out, ">", "cursor row must be visible")
+}
+
+func TestRenderWorkerList_ViewportWithGroupSeparators(t *testing.T) {
+	threads := []fetcher.ThreadDebugState{
+		{Index: 0, Name: "Regular PHP Thread", IsWaiting: true},
+		{Index: 1, Name: "Regular PHP Thread", IsWaiting: true},
+		{Index: 2, Name: "Worker PHP Thread - /app/worker.php", IsWaiting: true},
+		{Index: 3, Name: "Worker PHP Thread - /app/worker.php", IsWaiting: true},
+		{Index: 4, Name: "Worker PHP Thread - /app/worker.php", IsWaiting: true},
+	}
+
+	out := renderWorkerListFromThreads(threads, 3, 120, 10, model.SortByIndex, renderOpts{})
+
+	assert.Contains(t, out, ">", "cursor row must be visible")
 }
 
 func TestSortThreads_ByMethod(t *testing.T) {
