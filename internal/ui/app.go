@@ -115,11 +115,12 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 
-	tabs := []tab{tabCaddy, tabConfig, tabCertificates}
-	activeTab := tabCaddy
+	tabs := []tab{tabCaddy}
 	if cfg.HasFrankenPHP {
 		tabs = append(tabs, tabFrankenPHP)
 	}
+	tabs = append(tabs, tabConfig, tabCertificates)
+	activeTab := tabCaddy
 
 	ts := make(map[tab]*tabState)
 	for _, t := range tabs {
@@ -865,16 +866,27 @@ func (a *App) prevThreadMemory() map[int]int64 {
 
 func (a *App) enableFrankenPHP() {
 	a.hasFrankenPHP = true
-	a.tabs = append(a.tabs, tabFrankenPHP)
+	newTabs := make([]tab, 0, len(a.tabs)+1)
+	for _, t := range a.tabs {
+		newTabs = append(newTabs, t)
+		if t == tabCaddy {
+			newTabs = append(newTabs, tabFrankenPHP)
+		}
+	}
+	a.tabs = newTabs
 	a.tabStates[tabFrankenPHP] = &tabState{}
 }
 
 func (a *App) enableUpstreams() {
 	a.hasUpstreams = true
+	after := tabCaddy
+	if a.hasFrankenPHP {
+		after = tabFrankenPHP
+	}
 	newTabs := make([]tab, 0, len(a.tabs)+1)
 	for _, t := range a.tabs {
 		newTabs = append(newTabs, t)
-		if t == tabCaddy {
+		if t == after {
 			newTabs = append(newTabs, tabUpstreams)
 		}
 	}
