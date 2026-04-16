@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -47,6 +48,7 @@ type HTTPFetcher struct {
 	transport  *swappableTransport
 	httpClient *http.Client
 	procHandle *processHandle
+	recorder   *instrumentation.Recorder
 
 	mu                     sync.Mutex
 	hasFrankenPHP          bool
@@ -55,6 +57,14 @@ type HTTPFetcher struct {
 	lastPromSample         time.Time
 	lastServerNamesRefresh time.Time
 	lastFrankenPHPCheck    time.Time
+}
+
+// SetRecorder attaches a Recorder so each per-stage sub-fetch in Fetch
+// reports its duration and outcome. Must be called before any Fetch
+// goroutine is spawned (typically once at startup); the field is read
+// concurrently afterwards but never written. Passing nil disables it.
+func (f *HTTPFetcher) SetRecorder(r *instrumentation.Recorder) {
+	f.recorder = r
 }
 
 // NewHTTPFetcher creates a fetcher targeting the given Caddy admin API address.
@@ -256,7 +266,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 
 	if hasFP {
 		g.Go(func() error {
+			start := time.Now()
 			t, err := f.fetchThreads(gCtx)
+			f.recorder.Record(instrumentation.StageThreads, time.Since(start), err)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, err.Error())
@@ -269,7 +281,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	}
 
 	g.Go(func() error {
+		start := time.Now()
 		m, err := f.fetchMetrics(gCtx)
+		f.recorder.Record(instrumentation.StageMetrics, time.Since(start), err)
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, err.Error())
@@ -284,7 +298,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	})
 
 	g.Go(func() error {
+		start := time.Now()
 		p, err := f.procHandle.fetch(gCtx)
+		f.recorder.Record(instrumentation.StageProcess, time.Since(start), err)
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, err.Error())

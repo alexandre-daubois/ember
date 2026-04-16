@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -932,4 +933,68 @@ func TestHTTPFetcher_UnixSocket_TripleSlash_Integration(t *testing.T) {
 	raw, err := f.FetchConfig(context.Background())
 	require.NoError(t, err)
 	assert.JSONEq(t, `{}`, string(raw))
+}
+
+func TestFetch_RecordsScrapeMetricsForEachStage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/frankenphp/threads":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ThreadDebugStates":[],"ReservedThreadCount":0}`))
+		case "/metrics":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("# TYPE x counter\nx 1\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	rec := instrumentation.New("test")
+	f.SetRecorder(rec)
+	f.DetectFrankenPHP(context.Background())
+
+	_, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+
+	for _, s := range rec.Snapshot().Stages {
+		assert.Equal(t, uint64(1), s.Total, "stage %q must be recorded once", s.Stage)
+		assert.Zero(t, s.Errors, "stage %q must not report errors", s.Stage)
+	}
+}
+
+func TestFetch_RecordsErrorOnFailedStage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	rec := instrumentation.New("test")
+	f.SetRecorder(rec)
+
+	_, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+
+	for _, s := range rec.Snapshot().Stages {
+		if s.Stage == instrumentation.StageMetrics {
+			assert.Equal(t, uint64(1), s.Errors, "metrics stage must count the upstream failure")
+			assert.True(t, s.LastSuccessAt.IsZero(), "no success timestamp on a failure")
+		}
+	}
+}
+
+func TestFetch_NilRecorderIsNoOp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("# TYPE x counter\nx 1\n"))
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	f.SetRecorder(nil)
+
+	_, err := f.Fetch(context.Background())
+	require.NoError(t, err)
 }

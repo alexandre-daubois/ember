@@ -38,6 +38,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 **Integration & Operations**
 
 - Prometheus metrics export (`/metrics`) with optional basic auth and health endpoint (`/healthz`)
+- Self-observability: `ember_*` metrics (build info, per-stage scrape totals, errors, durations, last success) so you can monitor the monitor
 - Daemon mode for headless operation, with error throttling and TLS certificate reload via SIGHUP
 - JSON output mode for scripting, with `--once` for single snapshots
 - Quick health check: `ember status` (text or `--json`) for a one-line Caddy summary
