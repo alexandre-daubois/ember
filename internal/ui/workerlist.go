@@ -40,7 +40,7 @@ func uriWidth(totalWidth int) int {
 	return w
 }
 
-func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int, width int, sortBy model.SortField, opts renderOpts) string {
+func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor, width, height int, sortBy model.SortField, opts renderOpts) string {
 	if len(threads) == 0 {
 		return greyStyle.Render(" No threads")
 	}
@@ -69,6 +69,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 	headerLine := tableHeaderStyle.Width(width).Render(header)
 
 	var rows []string
+	cursorDisplayRow := 0
 	lastGroup := ""
 	rowIdx := 0
 	for i, t := range threads {
@@ -84,10 +85,31 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor int,
 		}
 		row := formatThreadRow(t, width, uriW, opts, i == cursor, rowIdx%2 == 1)
 		rows = append(rows, row)
+		if i == cursor {
+			cursorDisplayRow = len(rows) - 1
+		}
 		rowIdx++
 	}
 
-	content := strings.Join(rows, "\n")
+	bodyHeight := height - 1
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+
+	start := 0
+	if cursorDisplayRow > bodyHeight-1 {
+		start = cursorDisplayRow - bodyHeight + 1
+	}
+	end := start + bodyHeight
+	if end > len(rows) {
+		end = len(rows)
+		start = end - bodyHeight
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	content := strings.Join(rows[start:end], "\n")
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

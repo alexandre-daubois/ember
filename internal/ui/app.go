@@ -410,9 +410,9 @@ func (a *App) View() string {
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
 	var contentList string
+	dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
 	switch a.activeTab {
 	case tabConfig:
-		dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
 		configAreaHeight := a.height - dashLines - 4
 		if configAreaHeight < 5 {
 			configAreaHeight = 5
@@ -438,7 +438,14 @@ func (a *App) View() string {
 		if len(threads) == 0 && a.filter != "" {
 			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
 		} else {
-			contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, a.sortBy, renderOpts{
+			threadAreaHeight := a.height - dashLines - 4
+			if a.mode == viewFilter {
+				threadAreaHeight--
+			}
+			if threadAreaHeight < 5 {
+				threadAreaHeight = 5
+			}
+			contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, threadAreaHeight, a.sortBy, renderOpts{
 				slowThreshold: a.config.SlowThreshold,
 				prevMemory:    a.prevThreadMemory(),
 				viewTime:      a.viewTime,
@@ -479,7 +486,6 @@ func (a *App) View() string {
 	parts := []string{dashboard, tabBar}
 	switch a.mode {
 	case viewGraph:
-		dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
 		graphAreaHeight := a.height - dashLines - 2
 		if graphAreaHeight < 5 {
 			graphAreaHeight = 5
