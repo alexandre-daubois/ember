@@ -29,9 +29,7 @@ func hostNameWidth(totalWidth int) int {
 	return w
 }
 
-const minHostRows = 10
-
-func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy model.HostSortField, hostRPS map[string][]float64) string {
+func renderHostTable(hosts []model.HostDerived, cursor, width, height int, sortBy model.HostSortField, hostRPS map[string][]float64) string {
 	hostW := hostNameWidth(width)
 
 	colHead := func(label string, field model.HostSortField, w int, right bool) string {
@@ -62,19 +60,25 @@ func renderHostTable(hosts []model.HostDerived, cursor int, width int, sortBy mo
 		rows = append(rows, formatHostRow(h, width, hostW, i == cursor, i%2 == 1, hostRPS))
 	}
 
-	for i := len(hosts); i < minHostRows; i++ {
-		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s%*s%*s",
-			hostW, "", colHostRPS, "", colHostSparkline, "", colHostAvg, "",
-			colHostInFlight, "",
-			colHost2xx, "", colHost4xx, "", colHost5xx, "")
-		style := lipgloss.NewStyle()
-		if i%2 == 1 {
-			style = zebraStyle
-		}
-		rows = append(rows, style.Width(width).Render(emptyRow))
+	bodyHeight := height - 1
+	if bodyHeight < 1 {
+		bodyHeight = 1
 	}
 
-	content := strings.Join(rows, "\n")
+	start := 0
+	if cursor > bodyHeight-1 {
+		start = cursor - bodyHeight + 1
+	}
+	end := start + bodyHeight
+	if end > len(rows) {
+		end = len(rows)
+		start = end - bodyHeight
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	content := strings.Join(rows[start:end], "\n")
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

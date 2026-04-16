@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,7 +37,7 @@ func sampleCerts() []fetcher.CertificateInfo {
 }
 
 func TestRenderCertificateTable_Empty(t *testing.T) {
-	out := renderCertificateTable(nil, 0, 120, model.SortByCertDomain)
+	out := renderCertificateTable(nil, 0, 120, 20, model.SortByCertDomain)
 	plain := stripANSI(out)
 	assert.Contains(t, plain, "Domain")
 	assert.Contains(t, plain, "Expires")
@@ -44,7 +46,7 @@ func TestRenderCertificateTable_Empty(t *testing.T) {
 
 func TestRenderCertificateTable_WithCerts(t *testing.T) {
 	certs := sampleCerts()
-	out := renderCertificateTable(certs, 0, 120, model.SortByCertDomain)
+	out := renderCertificateTable(certs, 0, 120, 20, model.SortByCertDomain)
 	plain := stripANSI(out)
 	assert.Contains(t, plain, "example.com")
 	assert.Contains(t, plain, "Caddy Local Authority")
@@ -52,9 +54,45 @@ func TestRenderCertificateTable_WithCerts(t *testing.T) {
 
 func TestRenderCertificateTable_SortIndicator(t *testing.T) {
 	certs := sampleCerts()
-	out := renderCertificateTable(certs, 0, 120, model.SortByCertExpiry)
+	out := renderCertificateTable(certs, 0, 120, 20, model.SortByCertExpiry)
 	plain := stripANSI(out)
 	assert.Contains(t, plain, "Expires ▼")
+}
+
+func TestRenderCertificateTable_ViewportClipping(t *testing.T) {
+	certs := make([]fetcher.CertificateInfo, 50)
+	for i := range certs {
+		certs[i] = fetcher.CertificateInfo{
+			Subject:  fmt.Sprintf("domain%d.com", i),
+			Issuer:   "Test CA",
+			NotAfter: time.Now().Add(60 * 24 * time.Hour),
+			Source:   "tls",
+		}
+	}
+
+	out := renderCertificateTable(certs, 25, 120, 15, model.SortByCertDomain)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 50, "viewport must clip output")
+	assert.Contains(t, stripANSI(out), ">", "cursor row must be visible")
+}
+
+func TestRenderCertificateTable_ViewportCursorAtEnd(t *testing.T) {
+	certs := make([]fetcher.CertificateInfo, 30)
+	for i := range certs {
+		certs[i] = fetcher.CertificateInfo{
+			Subject:  fmt.Sprintf("domain%d.com", i),
+			Issuer:   "Test CA",
+			NotAfter: time.Now().Add(60 * 24 * time.Hour),
+			Source:   "tls",
+		}
+	}
+
+	out := renderCertificateTable(certs, 29, 120, 15, model.SortByCertDomain)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 30, "viewport must clip output")
+	assert.Contains(t, stripANSI(out), ">", "cursor row must be visible")
 }
 
 func TestSortCerts_ByDomain(t *testing.T) {

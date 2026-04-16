@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 var emptyOpts = upstreamRenderOpts{viewTime: time.Now()}
 
 func TestRenderUpstreamTable_Header(t *testing.T) {
-	out := stripANSI(renderUpstreamTable(nil, 0, 100, model.SortByUpstreamAddress, emptyOpts))
+	out := stripANSI(renderUpstreamTable(nil, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts))
 	assert.Contains(t, out, "Upstream")
 	assert.Contains(t, out, "Check")
 	assert.Contains(t, out, "LB")
@@ -23,7 +24,7 @@ func TestRenderUpstreamTable_Header(t *testing.T) {
 }
 
 func TestRenderUpstreamTable_SortIndicator(t *testing.T) {
-	out := stripANSI(renderUpstreamTable(nil, 0, 100, model.SortByUpstreamHealth, emptyOpts))
+	out := stripANSI(renderUpstreamTable(nil, 0, 100, 20, model.SortByUpstreamHealth, emptyOpts))
 	assert.Contains(t, out, "Health ▼")
 }
 
@@ -32,7 +33,7 @@ func TestRenderUpstreamTable_Rows(t *testing.T) {
 		{Address: "10.0.0.1:8080", Handler: "rp", Healthy: true},
 		{Address: "10.0.0.2:8080", Handler: "rp", Healthy: false},
 	}
-	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, model.SortByUpstreamAddress, emptyOpts))
+	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts))
 	assert.Contains(t, out, "10.0.0.1:8080")
 	assert.Contains(t, out, "10.0.0.2:8080")
 	assert.Contains(t, out, "● healthy")
@@ -43,17 +44,34 @@ func TestRenderUpstreamTable_HealthChanged(t *testing.T) {
 	upstreams := []model.UpstreamDerived{
 		{Address: "10.0.0.1:8080", Handler: "rp", Healthy: false, HealthChanged: true},
 	}
-	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, model.SortByUpstreamAddress, emptyOpts))
+	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts))
 	assert.Contains(t, out, "○ down !")
 }
 
-func TestRenderUpstreamTable_MinRows(t *testing.T) {
-	upstreams := []model.UpstreamDerived{
-		{Address: "10.0.0.1:8080", Handler: "rp", Healthy: true},
+func TestRenderUpstreamTable_ViewportClipping(t *testing.T) {
+	upstreams := make([]model.UpstreamDerived, 50)
+	for i := range upstreams {
+		upstreams[i] = model.UpstreamDerived{Address: fmt.Sprintf("10.0.0.%d:8080", i), Handler: "rp", Healthy: true}
 	}
-	out := renderUpstreamTable(upstreams, 0, 100, model.SortByUpstreamAddress, emptyOpts)
-	lineCount := strings.Count(out, "\n") + 1
-	assert.GreaterOrEqual(t, lineCount, minUpstreamRows, "should pad to minimum rows")
+
+	out := renderUpstreamTable(upstreams, 25, 100, 15, model.SortByUpstreamAddress, emptyOpts)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 50, "viewport must clip output")
+	assert.Contains(t, stripANSI(out), ">", "cursor row must be visible")
+}
+
+func TestRenderUpstreamTable_ViewportCursorAtEnd(t *testing.T) {
+	upstreams := make([]model.UpstreamDerived, 30)
+	for i := range upstreams {
+		upstreams[i] = model.UpstreamDerived{Address: fmt.Sprintf("10.0.0.%d:8080", i), Handler: "rp", Healthy: true}
+	}
+
+	out := renderUpstreamTable(upstreams, 29, 100, 15, model.SortByUpstreamAddress, emptyOpts)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 30, "viewport must clip output")
+	assert.Contains(t, stripANSI(out), ">", "cursor row must be visible")
 }
 
 func TestRenderUpstreamTable_WithCheckAndLB(t *testing.T) {
@@ -73,7 +91,7 @@ func TestRenderUpstreamTable_WithCheckAndLB(t *testing.T) {
 		},
 		viewTime: time.Now(),
 	}
-	out := stripANSI(renderUpstreamTable(upstreams, 0, 120, model.SortByUpstreamAddress, opts))
+	out := stripANSI(renderUpstreamTable(upstreams, 0, 120, 20, model.SortByUpstreamAddress, opts))
 	assert.Contains(t, out, "/health @5s")
 	assert.Contains(t, out, "round_robin")
 }
@@ -89,7 +107,7 @@ func TestRenderUpstreamTable_WithDownSince(t *testing.T) {
 		},
 		viewTime: now,
 	}
-	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, model.SortByUpstreamAddress, opts))
+	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, 20, model.SortByUpstreamAddress, opts))
 	assert.Contains(t, out, "2m")
 }
 
@@ -101,7 +119,7 @@ func TestRenderUpstreamTable_HealthyNoDownDuration(t *testing.T) {
 		downSince: map[string]time.Time{},
 		viewTime:  time.Now(),
 	}
-	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, model.SortByUpstreamAddress, opts))
+	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, 20, model.SortByUpstreamAddress, opts))
 	assert.NotContains(t, out, "0s")
 }
 

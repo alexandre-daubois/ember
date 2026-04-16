@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -83,30 +84,43 @@ func TestSortHosts_Empty(t *testing.T) {
 }
 
 func TestRenderHostTable_EmptyHosts(t *testing.T) {
-	out := renderHostTable(nil, 0, 120, model.SortByHost, nil)
+	out := renderHostTable(nil, 0, 120, 20, model.SortByHost, nil)
 	assert.Contains(t, out, "Host")
 	assert.Contains(t, out, "RPS")
-	lines := strings.Split(out, "\n")
-	// header + minHostRows padding
-	assert.GreaterOrEqual(t, len(lines), minHostRows)
-}
-
-func TestRenderHostTable_PaddingRows(t *testing.T) {
-	hosts := []model.HostDerived{
-		{Host: "example.com", StatusCodes: map[int]float64{}},
-	}
-	out := renderHostTable(hosts, 0, 120, model.SortByHost, nil)
-	lines := strings.Split(out, "\n")
-	// 1 header + at least minHostRows
-	assert.GreaterOrEqual(t, len(lines), 1+minHostRows)
 }
 
 func TestRenderHostTable_SortIndicator(t *testing.T) {
 	hosts := []model.HostDerived{
 		{Host: "a.com", StatusCodes: map[int]float64{}},
 	}
-	out := renderHostTable(hosts, 0, 120, model.SortByHostRPS, nil)
+	out := renderHostTable(hosts, 0, 120, 20, model.SortByHostRPS, nil)
 	assert.Contains(t, out, "RPS ▼")
+}
+
+func TestRenderHostTable_ViewportClipping(t *testing.T) {
+	hosts := make([]model.HostDerived, 50)
+	for i := range hosts {
+		hosts[i] = model.HostDerived{Host: fmt.Sprintf("host%d.com", i), StatusCodes: map[int]float64{}}
+	}
+
+	out := renderHostTable(hosts, 25, 120, 15, model.SortByHost, nil)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 50, "viewport must clip output")
+	assert.Contains(t, out, ">", "cursor row must be visible")
+}
+
+func TestRenderHostTable_ViewportCursorAtEnd(t *testing.T) {
+	hosts := make([]model.HostDerived, 30)
+	for i := range hosts {
+		hosts[i] = model.HostDerived{Host: fmt.Sprintf("host%d.com", i), StatusCodes: map[int]float64{}}
+	}
+
+	out := renderHostTable(hosts, 29, 120, 15, model.SortByHost, nil)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+	assert.Less(t, len(lines), 30, "viewport must clip output")
+	assert.Contains(t, out, ">", "cursor row must be visible")
 }
 
 func TestFormatHostRow_StarRenamed(t *testing.T) {
@@ -153,7 +167,7 @@ func TestRenderHostTable_WithSparklines(t *testing.T) {
 	history := map[string][]float64{
 		"spark.test": {10, 20, 50, 80, 100, 60, 30, 90},
 	}
-	out := renderHostTable(hosts, 0, 140, model.SortByHost, history)
+	out := renderHostTable(hosts, 0, 140, 20, model.SortByHost, history)
 	hasSparkChar := false
 	for _, r := range out {
 		for _, b := range sparkBlocks {

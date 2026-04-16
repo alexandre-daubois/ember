@@ -20,7 +20,6 @@ const (
 	colCertIssuer  = 40
 	colCertAuto    = 6
 	colCertFixed   = 1 + colCertExpires + colCertDays + colCertSource + colCertIssuer + colCertAuto
-	minCertRows    = 10
 	expiryWarnDays = 30
 	expiryCritDays = 7
 )
@@ -33,7 +32,7 @@ func certDomainWidth(totalWidth int) int {
 	return w
 }
 
-func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width int, sortBy model.CertSortField) string {
+func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width, height int, sortBy model.CertSortField) string {
 	domW := certDomainWidth(width)
 
 	colHead := func(label string, field model.CertSortField, w int, right bool) string {
@@ -62,18 +61,25 @@ func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width int, 
 		rows = append(rows, formatCertRow(c, width, domW, i == cursor, i%2 == 1))
 	}
 
-	for i := len(certs); i < minCertRows; i++ {
-		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s%*s",
-			domW, "", colCertExpires, "", colCertDays, "",
-			colCertSource, "", colCertIssuer, "", colCertAuto, "")
-		style := lipgloss.NewStyle()
-		if i%2 == 1 {
-			style = zebraStyle
-		}
-		rows = append(rows, style.Width(width).Render(emptyRow))
+	bodyHeight := height - 1
+	if bodyHeight < 1 {
+		bodyHeight = 1
 	}
 
-	content := strings.Join(rows, "\n")
+	start := 0
+	if cursor > bodyHeight-1 {
+		start = cursor - bodyHeight + 1
+	}
+	end := start + bodyHeight
+	if end > len(rows) {
+		end = len(rows)
+		start = end - bodyHeight
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	content := strings.Join(rows[start:end], "\n")
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

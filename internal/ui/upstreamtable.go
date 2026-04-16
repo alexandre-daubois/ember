@@ -19,7 +19,6 @@ const (
 	colUpstreamLB     = 14
 	colUpstreamDown   = 10
 	colUpstreamFixed  = 1 + colUpstreamCheck + colUpstreamHealth + colUpstreamLB + colUpstreamDown
-	minUpstreamRows   = 10
 )
 
 func upstreamAddressWidth(totalWidth int) int {
@@ -36,7 +35,7 @@ type upstreamRenderOpts struct {
 	viewTime  time.Time
 }
 
-func renderUpstreamTable(upstreams []model.UpstreamDerived, cursor, width int, sortBy model.UpstreamSortField, opts upstreamRenderOpts) string {
+func renderUpstreamTable(upstreams []model.UpstreamDerived, cursor, width, height int, sortBy model.UpstreamSortField, opts upstreamRenderOpts) string {
 	addrW := upstreamAddressWidth(width)
 	configMap := buildUpstreamConfigMap(opts.rpConfigs)
 
@@ -65,17 +64,25 @@ func renderUpstreamTable(upstreams []model.UpstreamDerived, cursor, width int, s
 		rows = append(rows, formatUpstreamRow(u, width, addrW, i == cursor, i%2 == 1, configMap, opts))
 	}
 
-	for i := len(upstreams); i < minUpstreamRows; i++ {
-		emptyRow := fmt.Sprintf(" %-*s%*s%*s%*s%*s",
-			addrW, "", colUpstreamCheck, "", colUpstreamLB, "", colUpstreamHealth, "", colUpstreamDown, "")
-		style := lipgloss.NewStyle()
-		if i%2 == 1 {
-			style = zebraStyle
-		}
-		rows = append(rows, style.Width(width).Render(emptyRow))
+	bodyHeight := height - 1
+	if bodyHeight < 1 {
+		bodyHeight = 1
 	}
 
-	content := strings.Join(rows, "\n")
+	start := 0
+	if cursor > bodyHeight-1 {
+		start = cursor - bodyHeight + 1
+	}
+	end := start + bodyHeight
+	if end > len(rows) {
+		end = len(rows)
+		start = end - bodyHeight
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	content := strings.Join(rows[start:end], "\n")
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

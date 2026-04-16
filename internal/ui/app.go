@@ -411,6 +411,13 @@ func (a *App) View() string {
 	var hosts []model.HostDerived
 	var contentList string
 	dashLines := strings.Count(dashboard, "\n") + strings.Count(tabBar, "\n") + 2
+	contentAreaHeight := a.height - dashLines - 4
+	if a.mode == viewFilter {
+		contentAreaHeight--
+	}
+	if contentAreaHeight < 5 {
+		contentAreaHeight = 5
+	}
 	switch a.activeTab {
 	case tabConfig:
 		configAreaHeight := a.height - dashLines - 4
@@ -428,7 +435,7 @@ func (a *App) View() string {
 			if len(certs) == 0 && a.filter != "" {
 				contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
 			} else {
-				contentList = renderCertificateTable(certs, a.cursor, listWidth, a.certSortBy)
+				contentList = renderCertificateTable(certs, a.cursor, listWidth, contentAreaHeight, a.certSortBy)
 			}
 		} else {
 			contentList = greyStyle.Render(" Loading certificates...")
@@ -438,14 +445,7 @@ func (a *App) View() string {
 		if len(threads) == 0 && a.filter != "" {
 			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
 		} else {
-			threadAreaHeight := a.height - dashLines - 4
-			if a.mode == viewFilter {
-				threadAreaHeight--
-			}
-			if threadAreaHeight < 5 {
-				threadAreaHeight = 5
-			}
-			contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, threadAreaHeight, a.sortBy, renderOpts{
+			contentList = renderWorkerListFromThreads(threads, a.cursor, listWidth, contentAreaHeight, a.sortBy, renderOpts{
 				slowThreshold: a.config.SlowThreshold,
 				prevMemory:    a.prevThreadMemory(),
 				viewTime:      a.viewTime,
@@ -456,7 +456,7 @@ func (a *App) View() string {
 		if len(upstreams) == 0 && a.filter != "" {
 			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
 		} else {
-			contentList = renderUpstreamTable(upstreams, a.cursor, listWidth, a.upstreamSortBy, upstreamRenderOpts{
+			contentList = renderUpstreamTable(upstreams, a.cursor, listWidth, contentAreaHeight, a.upstreamSortBy, upstreamRenderOpts{
 				rpConfigs: a.rpConfigs,
 				downSince: a.downSince,
 				viewTime:  a.viewTime,
@@ -467,7 +467,7 @@ func (a *App) View() string {
 		if len(hosts) == 0 && a.filter != "" {
 			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
 		} else {
-			contentList = renderHostTable(hosts, a.cursor, listWidth, a.hostSortBy, a.history.hostRPS)
+			contentList = renderHostTable(hosts, a.cursor, listWidth, contentAreaHeight, a.hostSortBy, a.history.hostRPS)
 		}
 	}
 
