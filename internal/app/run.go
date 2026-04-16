@@ -224,6 +224,9 @@ func validate(cfg *config) error {
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)
 	}
+	if cfg.timeout > 0 && cfg.timeout < cfg.interval {
+		return fmt.Errorf("--timeout (%s) must be at least --interval (%s)", cfg.timeout, cfg.interval)
+	}
 	if !strings.HasPrefix(cfg.addr, "http://") && !strings.HasPrefix(cfg.addr, "https://") && !fetcher.IsUnixAddr(cfg.addr) {
 		return fmt.Errorf("--addr must start with http://, https://, or unix//")
 	}
