@@ -2,13 +2,16 @@ package exporter
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/prometheus/common/expfmt"
 	prommodel "github.com/prometheus/common/model"
@@ -32,13 +35,13 @@ func stateWithThreads(threads []fetcher.ThreadDebugState, workers map[string]*fe
 
 func get(holder *StateHolder) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	Handler(holder)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	Handler(holder, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	return rec
 }
 
 func getWithPrefix(holder *StateHolder, prefix string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	Handler(holder, prefix)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	Handler(holder, prefix, nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	return rec
 }
 
@@ -620,4 +623,33 @@ func TestBasicAuth_InvalidUser(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestHandler_WithRecorder_GoldenPath(t *testing.T) {
+	holder := &StateHolder{}
+	holder.Store(stateWithThreads(nil, nil))
+
+	rec := instrumentation.New("v")
+	rec.Record(instrumentation.StageMetrics, 12*time.Millisecond, nil)
+	rec.Record(instrumentation.StageMetrics, 8*time.Millisecond, errors.New("boom"))
+	rec.Record(instrumentation.StageThreads, 3*time.Millisecond, nil)
+
+	w := httptest.NewRecorder()
+	Handler(holder, "myapp", rec)(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `myapp_ember_build_info{version="v"`, "build_info must carry the prefix")
+	assert.Contains(t, body, `myapp_ember_scrape_total{stage="metrics"} 2`)
+	assert.Contains(t, body, `myapp_ember_scrape_errors_total{stage="metrics"} 1`)
+	assert.Contains(t, body, `myapp_ember_scrape_total{stage="threads"} 1`)
+	assert.Contains(t, body, `myapp_ember_scrape_duration_seconds{stage="threads"} 0.003`)
+	assert.Regexp(t, `myapp_ember_last_successful_scrape_timestamp_seconds\{stage="metrics"\} \d+\.\d+`, body)
+	assert.Regexp(t, `myapp_ember_last_successful_scrape_timestamp_seconds\{stage="process"\} 0\.000`, body)
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(strings.NewReader(body))
+	require.NoError(t, err, "self-metrics output must be valid Prometheus text format")
+	assert.Contains(t, families, "myapp_ember_build_info")
+	assert.Contains(t, families, "myapp_ember_scrape_total")
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,7 @@ type config struct {
 	clientKey     string
 	insecure      bool
 	metricsAuth   string
+	recorder      *instrumentation.Recorder
 }
 
 func Run(args []string, version string) error {
@@ -107,6 +109,10 @@ Keybindings:
 			f := fetcher.NewHTTPFetcher(cfg.addr, pid)
 			if err := configureTLS(f, &cfg); err != nil {
 				return err
+			}
+			if cfg.expose != "" {
+				cfg.recorder = instrumentation.New(version)
+				f.SetRecorder(cfg.recorder)
 			}
 			hasFrankenPHP := f.DetectFrankenPHP(ctx)
 			f.FetchServerNames(ctx)

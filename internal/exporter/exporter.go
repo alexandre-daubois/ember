@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/alexandre-daubois/ember/internal/model"
 )
 
@@ -33,11 +34,10 @@ func (h *StateHolder) Load() model.State {
 
 const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 
-func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
-	p := ""
-	if len(prefix) > 0 {
-		p = prefix[0]
-	}
+// Handler returns an /metrics handler. prefix may be "" for unprefixed names.
+// recorder may be nil; when set, Ember's own scrape metrics (build_info,
+// per-stage counters and timestamps) are appended to the response.
+func Handler(holder *StateHolder, prefix string, recorder *instrumentation.Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s := holder.Load()
 		if s.Current == nil {
@@ -47,13 +47,16 @@ func Handler(holder *StateHolder, prefix ...string) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", prometheusContentType)
 
-		writeThreadMetrics(w, &s, p)
-		writeThreadMemory(w, &s, p)
-		writeWorkerMetrics(w, &s, p)
-		writeHostMetrics(w, &s, p)
-		writeErrorMetrics(w, &s, p)
-		writePercentiles(w, &s, p)
-		writeProcessMetrics(w, &s, p)
+		writeThreadMetrics(w, &s, prefix)
+		writeThreadMemory(w, &s, prefix)
+		writeWorkerMetrics(w, &s, prefix)
+		writeHostMetrics(w, &s, prefix)
+		writeErrorMetrics(w, &s, prefix)
+		writePercentiles(w, &s, prefix)
+		writeProcessMetrics(w, &s, prefix)
+		if recorder != nil {
+			writeSelfMetrics(w, recorder.Snapshot(), prefix)
+		}
 	}
 }
 
@@ -290,6 +293,54 @@ func writeProcessMetrics(w http.ResponseWriter, s *model.State, prefix string) {
 	fmt.Fprintf(w, "# HELP %s Resident set size of the monitored process\n", rss)
 	fmt.Fprintf(w, "# TYPE %s gauge\n", rss)
 	fmt.Fprintf(w, "%s %d\n", rss, s.Current.Process.RSS)
+}
+
+// writeSelfMetrics emits ember_* metrics describing the exporter itself:
+// build info, per-stage scrape totals/errors, last duration and last
+// success timestamp. Stages are sorted by name in the snapshot, so output
+// is deterministic across scrapes.
+func writeSelfMetrics(w http.ResponseWriter, snap instrumentation.Snapshot, prefix string) {
+	build := prefixed(prefix, "ember_build_info")
+	fmt.Fprintf(w, "# HELP %s Ember build information; the value is always 1\n", build)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", build)
+	fmt.Fprintf(w, "%s{version=\"%s\",goversion=\"%s\"} 1\n",
+		build, escapeLabelValue(snap.Version), escapeLabelValue(snap.GoVersion))
+
+	if len(snap.Stages) == 0 {
+		return
+	}
+
+	total := prefixed(prefix, "ember_scrape_total")
+	fmt.Fprintf(w, "# HELP %s Total scrape attempts per stage (success + error)\n", total)
+	fmt.Fprintf(w, "# TYPE %s counter\n", total)
+	for _, s := range snap.Stages {
+		fmt.Fprintf(w, "%s{stage=\"%s\"} %d\n", total, escapeLabelValue(s.Stage), s.Total)
+	}
+
+	errs := prefixed(prefix, "ember_scrape_errors_total")
+	fmt.Fprintf(w, "# HELP %s Failed scrape attempts per stage\n", errs)
+	fmt.Fprintf(w, "# TYPE %s counter\n", errs)
+	for _, s := range snap.Stages {
+		fmt.Fprintf(w, "%s{stage=\"%s\"} %d\n", errs, escapeLabelValue(s.Stage), s.Errors)
+	}
+
+	dur := prefixed(prefix, "ember_scrape_duration_seconds")
+	fmt.Fprintf(w, "# HELP %s Duration of the last scrape attempt per stage, in seconds\n", dur)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", dur)
+	for _, s := range snap.Stages {
+		fmt.Fprintf(w, "%s{stage=\"%s\"} %.6f\n", dur, escapeLabelValue(s.Stage), s.LastDuration.Seconds())
+	}
+
+	last := prefixed(prefix, "ember_last_successful_scrape_timestamp_seconds")
+	fmt.Fprintf(w, "# HELP %s Unix timestamp of the last successful scrape per stage; 0 means none yet\n", last)
+	fmt.Fprintf(w, "# TYPE %s gauge\n", last)
+	for _, s := range snap.Stages {
+		var ts float64
+		if !s.LastSuccessAt.IsZero() {
+			ts = float64(s.LastSuccessAt.UnixNano()) / 1e9
+		}
+		fmt.Fprintf(w, "%s{stage=\"%s\"} %.3f\n", last, escapeLabelValue(s.Stage), ts)
+	}
 }
 
 func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {

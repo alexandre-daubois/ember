@@ -97,6 +97,24 @@ This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies
 | `process_cpu_percent` | gauge | CPU usage of the monitored process |
 | `process_rss_bytes` | gauge | Resident set size of the monitored process |
 
+### Ember Self-Metrics
+
+Ember emits its own scrape metrics so operators can observe the observer. They appear on `/metrics` whenever `--expose` is set, alongside the Caddy and FrankenPHP metrics.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `ember_build_info` | gauge | `version`, `goversion` | Constant `1`, exposes the build identifiers |
+| `ember_scrape_total` | counter | `stage` (`threads`, `metrics`, `process`) | Scrape attempts per sub-fetch (success + error) |
+| `ember_scrape_errors_total` | counter | `stage` | Failed scrape attempts per sub-fetch |
+| `ember_scrape_duration_seconds` | gauge | `stage` | Duration of the last scrape attempt, in seconds |
+| `ember_last_successful_scrape_timestamp_seconds` | gauge | `stage` | Unix timestamp of the last success per stage; `0` means never |
+
+Common alerts:
+
+- `rate(ember_scrape_errors_total[5m]) > 0`: Ember is failing to talk to Caddy.
+- `time() - ember_last_successful_scrape_timestamp_seconds{stage="metrics"} > 60`: no fresh metrics for over a minute.
+- `ember_scrape_duration_seconds{stage="metrics"} > 1`: scrape latency degraded.
+
 ## Custom Metric Prefix
 
 Use `--metrics-prefix` to add a prefix to all metric names:

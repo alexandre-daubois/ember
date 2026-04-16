@@ -220,7 +220,7 @@ func TestIntegration_Daemon_Metrics(t *testing.T) {
 	holder := &exporter.StateHolder{}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
 	srv := &http.Server{Addr: expose, Handler: mux}
 
@@ -272,7 +272,7 @@ func TestIntegration_Daemon_Healthz(t *testing.T) {
 	holder := &exporter.StateHolder{}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
 	srv := &http.Server{Addr: expose, Handler: mux}
 
@@ -345,7 +345,7 @@ func TestIntegration_Daemon_BasicAuth(t *testing.T) {
 	holder.Store(state.CopyForExport())
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
 	srv := &http.Server{Addr: expose, Handler: exporter.BasicAuth(mux, "admin", "secret")}
 
@@ -409,7 +409,7 @@ func TestIntegration_Daemon_MetricsPrefix(t *testing.T) {
 	holder.Store(state.CopyForExport())
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", exporter.Handler(holder, "myapp"))
+	mux.HandleFunc("/metrics", exporter.Handler(holder, "myapp", nil))
 	srv := &http.Server{Addr: expose, Handler: mux}
 
 	go func() { _ = srv.ListenAndServe() }()
@@ -616,7 +616,7 @@ func TestIntegration_PrometheusRoundTrip_WithHosts(t *testing.T) {
 	holder.Store(state.CopyForExport())
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", exporter.Handler(holder))
+	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
 	srv := &http.Server{Addr: expose, Handler: mux}
 
 	go func() { _ = srv.ListenAndServe() }()
