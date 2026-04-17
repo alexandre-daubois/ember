@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -95,6 +96,19 @@ func TestRenderHostTable_SortIndicator(t *testing.T) {
 	}
 	out := renderHostTable(hosts, 0, 120, 20, model.SortByHostRPS, nil)
 	assert.Contains(t, out, "RPS ▼")
+}
+
+func TestRenderHostTable_FillsRequestedHeight(t *testing.T) {
+	hosts := []model.HostDerived{
+		{Host: "single.com", StatusCodes: map[int]float64{}},
+	}
+	out := renderHostTable(hosts, 0, 120, 20, model.SortByHost, nil)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"a single row must still fill the requested height with empty padding")
+
+	out = renderHostTable(nil, 0, 120, 20, model.SortByHost, nil)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"empty data must still fill the requested height")
 }
 
 func TestRenderHostTable_ViewportClipping(t *testing.T) {

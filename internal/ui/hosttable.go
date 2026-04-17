@@ -60,7 +60,7 @@ func renderHostTable(hosts []model.HostDerived, cursor, width, height int, sortB
 		rows = append(rows, formatHostRow(h, width, hostW, i == cursor, i%2 == 1, hostRPS))
 	}
 
-	bodyHeight := height - 1
+	bodyHeight := height - lipgloss.Height(headerLine)
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -79,6 +79,9 @@ func renderHostTable(hosts []model.HostDerived, cursor, width, height int, sortB
 	}
 
 	content := strings.Join(rows[start:end], "\n")
+	if h := lipgloss.Height(content); h < bodyHeight {
+		content += strings.Repeat("\n", bodyHeight-h)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

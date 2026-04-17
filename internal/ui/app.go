@@ -504,7 +504,7 @@ func (a *App) View() string {
 			contentList = renderHostTable(hosts, a.cursor, listWidth, contentAreaHeight, a.hostSortBy, a.history.hostRPS)
 		}
 	case tabLogs:
-		contentList = a.renderLogsTab(listWidth)
+		contentList = a.renderLogsTab(listWidth, contentAreaHeight)
 	}
 
 	var statusLine string

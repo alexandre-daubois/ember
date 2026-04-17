@@ -17,8 +17,6 @@ const (
 	colLogFixed  = 1 + colLogTime + colLogStatus + colLogMethod + colLogHost + colLogDur
 )
 
-const minLogRows = 10
-
 func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, filterActive bool, filterLabel, emptyHint string) string {
 	uriW := width - colLogFixed
 	if uriW < 10 {
@@ -35,46 +33,42 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, filte
 	)
 	headerLine := tableHeaderStyle.Width(width).Render(header)
 
-	rows := make([]string, 0, len(entries)+minLogRows)
+	var bannerLine string
+	if filterActive && filterLabel != "" {
+		bannerLine = helpStyle.Width(width).Render(" " + filterLabel)
+	}
+
+	bodyHeight := height - lipgloss.Height(headerLine)
+	if bannerLine != "" {
+		bodyHeight -= lipgloss.Height(bannerLine)
+	}
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+
+	var rows []string
 	if len(entries) == 0 {
 		rows = append(rows, greyStyle.Render(" "+emptyHint))
 	}
 
-	// Cap to the visible height so scrolling is predictable.
 	visible := entries
-	if height > 0 && len(visible) > height {
-		visible = visible[:height]
+	if len(visible) > bodyHeight {
+		visible = visible[:bodyHeight]
 	}
 
 	for i, e := range visible {
 		rows = append(rows, formatLogRow(e, width, uriW, i == cursor, i%2 == 1))
 	}
 
-	padTarget := minLogRows
-	if height > padTarget {
-		padTarget = height
-	}
-	for i := len(visible); i < padTarget; i++ {
-		emptyRow := fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s  %-*s",
-			colLogTime, "",
-			colLogStatus, "",
-			colLogMethod, "",
-			colLogHost, "",
-			colLogDur, "",
-			uriW-2, "")
-		style := lipgloss.NewStyle()
-		if i%2 == 1 {
-			style = zebraStyle
-		}
-		rows = append(rows, style.Width(width).Render(emptyRow))
+	for len(rows) < bodyHeight {
+		rows = append(rows, "")
 	}
 
 	body := strings.Join(rows, "\n")
 	joined := lipgloss.JoinVertical(lipgloss.Left, headerLine, body)
 
-	if filterActive && filterLabel != "" {
-		banner := helpStyle.Width(width).Render(" " + filterLabel)
-		return lipgloss.JoinVertical(lipgloss.Left, banner, joined)
+	if bannerLine != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, bannerLine, joined)
 	}
 	return joined
 }

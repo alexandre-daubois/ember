@@ -11,13 +11,12 @@ import (
 // When paused, the view is rendered from a frozen snapshot taken at the
 // moment of pause; filter changes still take effect against that snapshot so
 // the user can slice the captured window freely.
-func (a *App) renderLogsTab(width int) string {
+func (a *App) renderLogsTab(width, height int) string {
 	if a.logBuffer == nil {
 		return greyStyle.Render(" Logs unavailable: Caddy is not local and --log-listen was not set.\n" +
 			" Pass --log-listen :PORT and make sure Caddy can reach this address. See docs/logs.md.")
 	}
 
-	height := a.pageSize()
 	filter := a.activeLogFilter()
 
 	var entries []fetcher.LogEntry

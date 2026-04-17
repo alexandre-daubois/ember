@@ -8,6 +8,7 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +47,19 @@ func TestRenderUpstreamTable_HealthChanged(t *testing.T) {
 	}
 	out := stripANSI(renderUpstreamTable(upstreams, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts))
 	assert.Contains(t, out, "○ down !")
+}
+
+func TestRenderUpstreamTable_FillsRequestedHeight(t *testing.T) {
+	upstreams := []model.UpstreamDerived{
+		{Address: "10.0.0.1:8080", Handler: "rp", Healthy: true},
+	}
+	out := renderUpstreamTable(upstreams, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"a single row must still fill the requested height with empty padding")
+
+	out = renderUpstreamTable(nil, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"empty data must still fill the requested height")
 }
 
 func TestRenderUpstreamTable_ViewportClipping(t *testing.T) {

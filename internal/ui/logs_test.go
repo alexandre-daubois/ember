@@ -8,6 +8,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func appendLog(t *testing.T, buf *model.LogBuffer, host, method string, status i
 
 func TestRenderLogsTab_NoBuffer_ShowsHelp(t *testing.T) {
 	app := newLogsApp(nil)
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "Logs unavailable")
 	assert.Contains(t, out, "--log-listen")
 }
@@ -49,8 +50,26 @@ func TestRenderLogsTab_NoBuffer_ShowsHelp(t *testing.T) {
 func TestRenderLogsTab_EmptyBuffer_ShowsWaiting(t *testing.T) {
 	buf := model.NewLogBuffer(100)
 	app := newLogsApp(buf)
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "Listening on /tmp/access.log")
+}
+
+func TestRenderLogsTab_FillsRequestedHeight(t *testing.T) {
+	buf := model.NewLogBuffer(100)
+	app := newLogsApp(buf)
+	out := app.renderLogsTab(120, 20)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"empty buffer must still render exactly the requested height")
+
+	appendLog(t, buf, "single.com", "GET", 200, time.Now())
+	out = app.renderLogsTab(120, 20)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"a single log row must still render exactly the requested height")
+
+	app.filter = "single"
+	out = app.renderLogsTab(120, 20)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"the filter banner must not push the table beyond the requested height")
 }
 
 func TestRenderLogsTab_ShowsRecentEntriesNewestFirst(t *testing.T) {
@@ -61,7 +80,7 @@ func TestRenderLogsTab_ShowsRecentEntriesNewestFirst(t *testing.T) {
 	appendLog(t, buf, "c.com", "DELETE", 404, now.Add(-1*time.Second))
 
 	app := newLogsApp(buf)
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 
 	assert.Contains(t, out, "a.com")
 	assert.Contains(t, out, "b.com")
@@ -84,13 +103,13 @@ func TestRenderLogsTab_SearchFiltersAcrossColumns(t *testing.T) {
 	// match against host...
 	app := newLogsApp(buf)
 	app.filter = "a.com"
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "a.com")
 	assert.NotContains(t, out, "b.com")
 
 	// ...and against method.
 	app.filter = "post"
-	out = stripANSI(app.renderLogsTab(120))
+	out = stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "b.com")
 	assert.NotContains(t, out, "a.com")
 }
@@ -104,7 +123,7 @@ func TestRenderLogsTab_SearchFiltersByStatusCode(t *testing.T) {
 	app := newLogsApp(buf)
 	app.filter = "503"
 
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "fail.com")
 	assert.NotContains(t, out, "ok.com")
 }
@@ -114,7 +133,7 @@ func TestRenderLogsTab_FilterLabelShown(t *testing.T) {
 	app := newLogsApp(buf)
 	app.filter = "foo"
 
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "foo")
 }
 
@@ -146,7 +165,7 @@ func TestPause_FreezesRenderedEntries(t *testing.T) {
 	// New entries arrive after pause: the live buffer grows but the view
 	// must still only show the frozen two.
 	appendLog(t, buf, "after-pause.com", "GET", 200, now)
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "first.com")
 	assert.Contains(t, out, "second.com")
 	assert.NotContains(t, out, "after-pause.com")
@@ -156,7 +175,7 @@ func TestPause_FreezesRenderedEntries(t *testing.T) {
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	require.False(t, app.logPaused)
 	require.Nil(t, app.logPausedSnapshot)
-	out = stripANSI(app.renderLogsTab(120))
+	out = stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "after-pause.com")
 	assert.NotContains(t, out, "PAUSED")
 }
@@ -172,7 +191,7 @@ func TestPause_EmptyBuffer_StillBlocksLiveEntries(t *testing.T) {
 	// New entries arrive after pause.
 	appendLog(t, buf, "late.com", "GET", 200, time.Now())
 
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.NotContains(t, out, "late.com", "entries arriving after pause on empty buffer must not appear")
 	assert.Contains(t, out, "PAUSED")
 }
@@ -194,7 +213,7 @@ func TestPause_FilterStillAppliesToFrozenWindow(t *testing.T) {
 	appendLog(t, buf, "late-5xx.com", "GET", 503, now)
 	app.filter = "500"
 
-	out := stripANSI(app.renderLogsTab(120))
+	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "b.com")
 	assert.NotContains(t, out, "late-5xx.com")
 }

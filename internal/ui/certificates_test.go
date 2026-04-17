@@ -9,6 +9,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -57,6 +58,19 @@ func TestRenderCertificateTable_SortIndicator(t *testing.T) {
 	out := renderCertificateTable(certs, 0, 120, 20, model.SortByCertExpiry)
 	plain := stripANSI(out)
 	assert.Contains(t, plain, "Expires ▼")
+}
+
+func TestRenderCertificateTable_FillsRequestedHeight(t *testing.T) {
+	certs := []fetcher.CertificateInfo{
+		{Subject: "single.com", NotAfter: time.Now().Add(60 * 24 * time.Hour), Source: "tls"},
+	}
+	out := renderCertificateTable(certs, 0, 120, 20, model.SortByCertDomain)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"a single row must still fill the requested height with empty padding")
+
+	out = renderCertificateTable(nil, 0, 120, 20, model.SortByCertDomain)
+	assert.Equal(t, 20, lipgloss.Height(out),
+		"empty data must still fill the requested height")
 }
 
 func TestRenderCertificateTable_ViewportClipping(t *testing.T) {

@@ -64,7 +64,7 @@ func renderUpstreamTable(upstreams []model.UpstreamDerived, cursor, width, heigh
 		rows = append(rows, formatUpstreamRow(u, width, addrW, i == cursor, i%2 == 1, configMap, opts))
 	}
 
-	bodyHeight := height - 1
+	bodyHeight := height - lipgloss.Height(headerLine)
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -83,6 +83,9 @@ func renderUpstreamTable(upstreams []model.UpstreamDerived, cursor, width, heigh
 	}
 
 	content := strings.Join(rows[start:end], "\n")
+	if h := lipgloss.Height(content); h < bodyHeight {
+		content += strings.Repeat("\n", bodyHeight-h)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

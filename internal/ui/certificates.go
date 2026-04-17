@@ -61,7 +61,7 @@ func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width, heig
 		rows = append(rows, formatCertRow(c, width, domW, i == cursor, i%2 == 1))
 	}
 
-	bodyHeight := height - 1
+	bodyHeight := height - lipgloss.Height(headerLine)
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -80,6 +80,9 @@ func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width, heig
 	}
 
 	content := strings.Join(rows[start:end], "\n")
+	if h := lipgloss.Height(content); h < bodyHeight {
+		content += strings.Repeat("\n", bodyHeight-h)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 
