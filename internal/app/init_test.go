@@ -186,6 +186,20 @@ func TestRunInit_SkipsMetricsOnNo(t *testing.T) {
 	assert.Contains(t, buf.String(), "{ metrics }")
 }
 
+func TestRunInit_AccessLogs_AnnouncesHotSink(t *testing.T) {
+	is := &initServer{metricsEnabled: true, servers: map[string]any{"srv0": nil}}
+	srv := newInitTestServer(is)
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+	var buf bytes.Buffer
+	require.NoError(t, runInit(context.Background(), &buf, strings.NewReader(""), f, srv.URL, true))
+
+	out := buf.String()
+	assert.Contains(t, out, "Access logs")
+	assert.Contains(t, out, "hot-registered")
+}
+
 func TestRunInit_Unreachable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)

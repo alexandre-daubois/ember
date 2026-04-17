@@ -40,6 +40,8 @@ type Config struct {
 	HasFrankenPHP    bool
 	OnStateUpdate    func(model.State)
 	MetricsServerErr <-chan error
+	LogBuffer        *model.LogBuffer
+	LogSource        string // path or description; empty when no source is known
 }
 
 type tab int
@@ -49,6 +51,7 @@ const (
 	tabConfig
 	tabCertificates
 	tabUpstreams
+	tabLogs
 	tabFrankenPHP
 )
 
@@ -108,6 +111,11 @@ type App struct {
 
 	rpConfigs []fetcher.ReverseProxyConfig
 	downSince map[string]time.Time
+
+	logBuffer         *model.LogBuffer
+	logSource         string
+	logPaused         bool
+	logPausedSnapshot []fetcher.LogEntry
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -119,7 +127,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	if cfg.HasFrankenPHP {
 		tabs = append(tabs, tabFrankenPHP)
 	}
-	tabs = append(tabs, tabConfig, tabCertificates)
+	tabs = append(tabs, tabConfig, tabCertificates, tabLogs)
 	activeTab := tabCaddy
 
 	ts := make(map[tab]*tabState)
@@ -137,6 +145,8 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		history:       newHistoryStore(),
 		viewTime:      time.Now(),
 		downSince:     make(map[string]time.Time),
+		logBuffer:     cfg.LogBuffer,
+		logSource:     cfg.LogSource,
 	}
 }
 
@@ -203,6 +213,10 @@ type rpConfigFetchMsg struct {
 	err     error
 }
 
+// logRefreshMsg drives the Logs tab redraw cadence; the tailer writes into
+// the shared LogBuffer asynchronously and the UI re-snapshots on each tick.
+type logRefreshMsg struct{}
+
 func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{a.doFetch(), a.doTick()}
 	if a.config.MetricsServerErr != nil {
@@ -215,7 +229,18 @@ func (a *App) Init() tea.Cmd {
 			return metricsServerErrMsg{err: err}
 		})
 	}
+	if a.logBuffer != nil {
+		cmds = append(cmds, a.scheduleLogRefresh())
+	}
 	return tea.Batch(cmds...)
+}
+
+const logRefreshInterval = 250 * time.Millisecond
+
+func (a *App) scheduleLogRefresh() tea.Cmd {
+	return tea.Tick(logRefreshInterval, func(time.Time) tea.Msg {
+		return logRefreshMsg{}
+	})
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -359,6 +384,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.rpConfigs = msg.configs
 		return a, nil
+	case logRefreshMsg:
+		return a, a.scheduleLogRefresh()
 	}
 	return a, nil
 }
@@ -404,8 +431,15 @@ func (a *App) View() string {
 	if a.hasUpstreams {
 		counts[tabUpstreams] = fmt.Sprintf("%d upstreams", len(a.state.UpstreamDerived))
 	}
+	if a.logBuffer != nil && a.logBuffer.Len() > 0 {
+		if a.logBuffer.Full() {
+			counts[tabLogs] = fmt.Sprintf("%d+", a.logBuffer.Len())
+		} else {
+			counts[tabLogs] = fmt.Sprintf("%d", a.logBuffer.Len())
+		}
+	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab)
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab, a.logPaused)
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
@@ -469,6 +503,8 @@ func (a *App) View() string {
 		} else {
 			contentList = renderHostTable(hosts, a.cursor, listWidth, contentAreaHeight, a.hostSortBy, a.history.hostRPS)
 		}
+	case tabLogs:
+		contentList = a.renderLogsTab(listWidth)
 	}
 
 	var statusLine string
@@ -654,6 +690,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if a.activeTab == tabUpstreams {
 		return a.handleUpstreamListKey(msg)
 	}
+	if a.activeTab == tabLogs {
+		return a.handleLogsListKey(msg)
+	}
 
 	key := msg.String()
 
@@ -699,6 +738,22 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		a.prevMode = a.mode
 		a.mode = viewHelp
+	case "l":
+		if a.activeTab == tabCaddy && a.logBuffer != nil {
+			// Capture the host name before switchTab, which overwrites
+			// a.cursor with the Logs tab's saved cursor and would otherwise
+			// make us index hosts[] with the wrong value.
+			hosts := a.filteredHosts()
+			var host string
+			if a.cursor >= 0 && a.cursor < len(hosts) {
+				host = hosts[a.cursor].Host
+			}
+			a.switchTab(tabLogs)
+			if host != "" {
+				a.filter = host
+				a.cursor = 0
+			}
+		}
 	}
 	return a, nil
 }
