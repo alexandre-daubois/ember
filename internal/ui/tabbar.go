@@ -9,9 +9,13 @@ import (
 var (
 	activeTabStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ember)
+			Foreground(lipgloss.AdaptiveColor{Light: "#FFF8F0", Dark: "#1A1410"}).
+			Background(ember).
+			Padding(0, 1)
 	inactiveTabStyle = lipgloss.NewStyle().
-				Foreground(subtle)
+				Foreground(subtle).
+				Padding(0, 1)
+	tabSeparatorStyle = lipgloss.NewStyle().Foreground(subtle)
 )
 
 func tabLabel(t tab) string {
@@ -41,11 +45,11 @@ func renderTabBar(tabs []tab, active tab, width int, counts map[tab]string) stri
 			label += " (" + c + ")"
 		}
 		if t == active {
-			parts = append(parts, activeTabStyle.Render(" ["+label+"]"))
+			parts = append(parts, activeTabStyle.Render("["+label+"]"))
 		} else {
-			parts = append(parts, inactiveTabStyle.Render("  "+label+" "))
+			parts = append(parts, inactiveTabStyle.Render(label))
 		}
 	}
-	bar := strings.Join(parts, "")
-	return lipgloss.NewStyle().Width(width).Render(bar)
+	bar := strings.Join(parts, tabSeparatorStyle.Render("│"))
+	return lipgloss.NewStyle().Width(width).PaddingBottom(1).Render(bar)
 }
