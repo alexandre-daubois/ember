@@ -46,3 +46,23 @@ func TestRenderTabBar_EmptyCountIgnored(t *testing.T) {
 
 	assert.NotContains(t, result, "()")
 }
+
+func TestTabLabel_AllKnown(t *testing.T) {
+	cases := map[tab]string{
+		tabCaddy:        "Caddy",
+		tabConfig:       "Caddy Config",
+		tabCertificates: "Certificates",
+		tabUpstreams:    "Upstreams",
+		tabLogs:         "Access logs",
+		tabFrankenPHP:   "FrankenPHP",
+	}
+	for tb, want := range cases {
+		assert.Equal(t, want, tabLabel(tb))
+	}
+}
+
+func TestTabLabel_UnknownReturnsPlaceholder(t *testing.T) {
+	// Unknown tab values must render as a stable placeholder rather than
+	// an empty string so a coding mistake stays visible in the bar.
+	assert.Equal(t, "?", tabLabel(tab(999)))
+}

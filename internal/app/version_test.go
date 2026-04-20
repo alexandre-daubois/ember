@@ -110,6 +110,28 @@ func TestCheckLatestVersion_WithVPrefix(t *testing.T) {
 	assert.Contains(t, buf.String(), "latest version")
 }
 
+func TestVersionCmd_CheckFlag_HitsAPI(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(githubRelease{TagName: "v1.2.3", HTMLURL: "https://example/release"})
+	}))
+	defer srv.Close()
+
+	origURL := latestReleaseURL
+	setLatestReleaseURL(srv.URL)
+	defer setLatestReleaseURL(origURL)
+
+	cmd := newRootCmd("1.2.3")
+	cmd.SetArgs([]string{"version", "--check"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	require.NoError(t, cmd.Execute())
+	out := buf.String()
+	assert.Contains(t, out, "ember 1.2.3")
+	assert.Contains(t, out, "latest version",
+		"--check must consult the release API and report the result")
+}
+
 func TestVersionCmd_Help(t *testing.T) {
 	cmd := newRootCmd("1.0.0")
 	cmd.SetArgs([]string{"version", "--help"})

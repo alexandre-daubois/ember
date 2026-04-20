@@ -161,3 +161,39 @@ func TestRun_WaitInheritsAddr(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "--addr")
 }
+
+func TestRun_WaitCmd_ExecutesRunE(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total 1\n"))
+	}))
+	defer srv.Close()
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"wait", "--addr", srv.URL, "--interval", "100ms", "--timeout", "2s"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, buf.String(), "ready",
+		"wait command must succeed end-to-end against a reachable server")
+}
+
+func TestRun_WaitCmd_QuietSuppressesOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total 1\n"))
+	}))
+	defer srv.Close()
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"wait", "--quiet", "--addr", srv.URL, "--interval", "100ms", "--timeout", "2s"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+	assert.NotContains(t, buf.String(), "ready",
+		"--quiet must keep stdout empty even on success")
+}

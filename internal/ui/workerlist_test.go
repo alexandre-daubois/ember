@@ -413,6 +413,57 @@ func TestSortThreads_GroupsByScript(t *testing.T) {
 	}
 }
 
+func TestFormatTimeWithStyle_BusyDefaultStyleBelowThreshold(t *testing.T) {
+	now := time.Now()
+	thread := fetcher.ThreadDebugState{
+		IsBusy:           true,
+		RequestStartedAt: now.Add(-50 * time.Millisecond).UnixMilli(),
+	}
+	text, _ := formatTimeWithStyle(thread, 500*time.Millisecond, now)
+	assert.NotEmpty(t, text)
+}
+
+func TestFormatTimeWithStyle_BusyWarnAboveThreshold(t *testing.T) {
+	now := time.Now()
+	thread := fetcher.ThreadDebugState{
+		IsBusy:           true,
+		RequestStartedAt: now.Add(-700 * time.Millisecond).UnixMilli(),
+	}
+	text, style := formatTimeWithStyle(thread, 500*time.Millisecond, now)
+	assert.NotEmpty(t, text)
+	// warn style is non-zero
+	assert.Equal(t, warnStyle, style)
+}
+
+func TestFormatTimeWithStyle_BusyDangerWayAboveThreshold(t *testing.T) {
+	now := time.Now()
+	thread := fetcher.ThreadDebugState{
+		IsBusy:           true,
+		RequestStartedAt: now.Add(-2 * time.Second).UnixMilli(),
+	}
+	_, style := formatTimeWithStyle(thread, 500*time.Millisecond, now)
+	assert.Equal(t, dangerStyle, style,
+		"requests above 2x threshold must surface in danger style")
+}
+
+func TestFormatTimeWithStyle_ZeroThresholdFallsBackToDefault(t *testing.T) {
+	now := time.Now()
+	thread := fetcher.ThreadDebugState{
+		IsBusy:           true,
+		RequestStartedAt: now.Add(-600 * time.Millisecond).UnixMilli(),
+	}
+	_, style := formatTimeWithStyle(thread, 0, now)
+	// 600ms > default 500ms, so warn style applies via the default fallback
+	assert.Equal(t, warnStyle, style,
+		"a zero threshold must default to 500ms, not disable thresholds")
+}
+
+func TestFormatTimeWithStyle_BusyButNoStartTimeReturnsDash(t *testing.T) {
+	thread := fetcher.ThreadDebugState{IsBusy: true}
+	text, _ := formatTimeWithStyle(thread, 500*time.Millisecond, time.Now())
+	assert.Equal(t, "—", text)
+}
+
 func TestThreadGroup(t *testing.T) {
 	tests := []struct {
 		name string

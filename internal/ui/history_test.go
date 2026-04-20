@@ -122,3 +122,20 @@ func TestHistoryStore_PruneMem_EmptyActive(t *testing.T) {
 
 	assert.Empty(t, h.mem)
 }
+
+func TestLastN_ShorterThanWindowReturnsAll(t *testing.T) {
+	got := lastN([]float64{1, 2, 3}, 5)
+	assert.Equal(t, []float64{1, 2, 3}, got,
+		"a window larger than the slice must return everything, not pad")
+}
+
+func TestLastN_LongerThanWindowReturnsTail(t *testing.T) {
+	got := lastN([]float64{1, 2, 3, 4, 5}, 3)
+	assert.Equal(t, []float64{3, 4, 5}, got)
+}
+
+func TestLastN_EqualReturnsSame(t *testing.T) {
+	in := []float64{1, 2, 3}
+	got := lastN(in, 3)
+	assert.Equal(t, in, got)
+}

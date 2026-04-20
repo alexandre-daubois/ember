@@ -244,6 +244,46 @@ func TestPromptYesNo_EOFIsNo(t *testing.T) {
 	assert.False(t, promptYesNo(&buf, strings.NewReader(""), "test?", false))
 }
 
+func TestRun_InitCmd_ExecutesRunE(t *testing.T) {
+	is := &initServer{
+		metricsEnabled: true,
+		hasHTTPMetrics: true,
+		servers:        map[string]any{"main": nil},
+	}
+	srv := newInitTestServer(is)
+	defer srv.Close()
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"init", "--addr", srv.URL, "-y"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+	assert.Contains(t, buf.String(), "Ember is ready",
+		"init command must complete the full pipeline against a stubbed admin API")
+}
+
+func TestRun_InitCmd_QuietSuppressesOutput(t *testing.T) {
+	is := &initServer{
+		metricsEnabled: true,
+		hasHTTPMetrics: true,
+		servers:        map[string]any{"main": nil},
+	}
+	srv := newInitTestServer(is)
+	defer srv.Close()
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"init", "--addr", srv.URL, "-yq"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+	assert.NotContains(t, buf.String(), "Ember is ready",
+		"-q must keep stdout silent on success — only the exit code carries the verdict")
+}
+
 func TestRun_InitHelp(t *testing.T) {
 	cmd := newRootCmd("1.0.0")
 	cmd.SetArgs([]string{"init", "--help"})

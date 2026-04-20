@@ -308,6 +308,126 @@ func TestExtractListenPorts_SkipsUnixSockets(t *testing.T) {
 	assert.Equal(t, []string{"443"}, ports)
 }
 
+func TestExtractListenPorts_DedupsAcrossServers(t *testing.T) {
+	servers := map[string]json.RawMessage{
+		"srv0": json.RawMessage(`{"listen":[":443"]}`),
+		"srv1": json.RawMessage(`{"listen":[":443",":8443"]}`),
+	}
+	ports := extractListenPorts(servers)
+	assert.Len(t, ports, 2, "ports shared across multiple servers must be deduped")
+	assert.Contains(t, ports, "443")
+	assert.Contains(t, ports, "8443")
+}
+
+func TestExtractListenPorts_SkipsMalformedEntries(t *testing.T) {
+	servers := map[string]json.RawMessage{
+		"good": json.RawMessage(`{"listen":[":443"]}`),
+		"bad":  json.RawMessage(`not even close to JSON`),
+	}
+	ports := extractListenPorts(servers)
+	assert.Equal(t, []string{"443"}, ports,
+		"a malformed server entry must not poison the whole port list")
+}
+
+func TestDiscoverCAIDs_BadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	_, err := f.discoverCAIDs(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestDiscoverCAIDs_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	_, err := f.discoverCAIDs(context.Background())
+	require.Error(t, err)
+}
+
+func TestFetchPKICertificates_DiscoveryFails_FallsBackToLocal(t *testing.T) {
+	// When the discovery call returns a non-200, FetchPKICertificates must
+	// still try the conventional "local" CA so out-of-the-box Caddy installs
+	// (which always have it) still surface their root cert.
+	rootPEM, _ := generateTestCAPEM(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/config/apps/pki/certificate_authorities":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/pki/ca/local":
+			json.NewEncoder(w).Encode(pkiCAInfo{
+				ID:              "local",
+				RootCertificate: string(rootPEM),
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	certs := f.FetchPKICertificates(context.Background())
+	require.Len(t, certs, 1)
+	assert.Equal(t, "local", certs[0].Host)
+}
+
+func TestFetchCAInfo_BadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	_, err := f.fetchCAInfo(context.Background(), "local")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "local")
+}
+
+func TestFetchCAInfo_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not a CA"))
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	_, err := f.fetchCAInfo(context.Background(), "local")
+	require.Error(t, err)
+}
+
+func TestResolveTLSAddresses_NoServersDefaultsTo443(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Empty servers map: no listen ports.
+		json.NewEncoder(w).Encode(map[string]json.RawMessage{})
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	targets := f.resolveTLSAddresses(context.Background(), []string{"example.com"})
+	require.Len(t, targets, 1)
+	assert.Equal(t, "example.com:443", targets[0].addr,
+		"with no listen ports announced, callers must still get the conventional 443 default")
+}
+
+func TestResolveTLSAddresses_BadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	targets := f.resolveTLSAddresses(context.Background(), []string{"example.com"})
+	assert.Nil(t, targets, "discovery failure must not leak into a half-built target list")
+}
+
 func TestIsNumericPort(t *testing.T) {
 	assert.True(t, isNumericPort("443"))
 	assert.True(t, isNumericPort("8080"))

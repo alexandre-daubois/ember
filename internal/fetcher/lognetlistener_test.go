@@ -234,6 +234,25 @@ func TestLogNetListener_BindFailure(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLogNetListener_LastError_NilUntilSet(t *testing.T) {
+	listener, err := NewLogNetListener("127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	assert.NoError(t, listener.LastError(),
+		"a fresh listener has not seen any error yet")
+}
+
+func TestLogNetListener_LastError_SurfacesRecentSetErr(t *testing.T) {
+	listener, err := NewLogNetListener("127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	listener.setErr(fmt.Errorf("synthetic boom"))
+	assert.EqualError(t, listener.LastError(), "synthetic boom",
+		"the listener must surface the most recent non-fatal error verbatim")
+}
+
 func TestLogNetListener_OversizedLineDropped(t *testing.T) {
 	listener, err := NewLogNetListener("127.0.0.1:0")
 	require.NoError(t, err)

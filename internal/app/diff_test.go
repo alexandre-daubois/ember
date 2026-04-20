@@ -191,6 +191,35 @@ func TestRunDiff_ErrorRateRegression(t *testing.T) {
 	assert.Contains(t, buf.String(), "Error rate")
 }
 
+func TestRun_DiffCmd_ExecutesRunE(t *testing.T) {
+	dir := t.TempDir()
+	beforePath := filepath.Join(dir, "before.json")
+	afterPath := filepath.Join(dir, "after.json")
+	require.NoError(t, os.WriteFile(beforePath, []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(afterPath, []byte("{}"), 0o600))
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"diff", beforePath, afterPath})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute(),
+		"diffing two empty snapshots must succeed end-to-end through cobra")
+	assert.Contains(t, buf.String(), "No regressions detected")
+}
+
+func TestRun_DiffCmd_RequiresExactlyTwoArgs(t *testing.T) {
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"diff", "only-one.json"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err := cmd.Execute()
+	require.Error(t, err, "cobra must reject diff with one argument")
+}
+
 func TestRunDiff_NilDerived(t *testing.T) {
 	dir := t.TempDir()
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -227,4 +228,91 @@ func TestBuildUpstreamConfigMap(t *testing.T) {
 
 func TestBuildUpstreamConfigMap_Empty(t *testing.T) {
 	assert.Nil(t, buildUpstreamConfigMap(nil))
+}
+
+func newUpstreamApp(upstreams ...model.UpstreamDerived) *App {
+	app := &App{
+		activeTab: tabUpstreams,
+		tabs:      []tab{tabCaddy, tabUpstreams, tabConfig, tabLogs},
+		tabStates: map[tab]*tabState{
+			tabCaddy: {}, tabUpstreams: {}, tabConfig: {}, tabLogs: {},
+		},
+		history: newHistoryStore(),
+		width:   120,
+		height:  30,
+	}
+	app.state.UpstreamDerived = upstreams
+	return app
+}
+
+func TestHandleUpstreamListKey_NavigationMovesCursor(t *testing.T) {
+	app := newUpstreamApp(
+		model.UpstreamDerived{Address: "a:80", Healthy: true},
+		model.UpstreamDerived{Address: "b:80", Healthy: true},
+		model.UpstreamDerived{Address: "c:80", Healthy: true},
+	)
+
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyDown})
+	assert.Equal(t, 1, app.cursor)
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyDown})
+	assert.Equal(t, 2, app.cursor)
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyUp})
+	assert.Equal(t, 1, app.cursor)
+}
+
+func TestHandleUpstreamListKey_SortToggles(t *testing.T) {
+	app := newUpstreamApp()
+	start := app.upstreamSortBy
+
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	assert.NotEqual(t, start, app.upstreamSortBy, "s must advance the sort field")
+
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'S'}})
+	assert.Equal(t, start, app.upstreamSortBy,
+		"S must reverse the s rotation so the round-trip is a no-op")
+}
+
+func TestHandleUpstreamListKey_PauseToggles(t *testing.T) {
+	app := newUpstreamApp()
+	require.False(t, app.paused)
+
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	assert.True(t, app.paused)
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	assert.False(t, app.paused)
+}
+
+func TestHandleUpstreamListKey_FilterEntersFilterMode(t *testing.T) {
+	app := newUpstreamApp()
+	app.filter = "leftover"
+
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	assert.Equal(t, viewFilter, app.mode)
+	assert.Empty(t, app.filter, "entering filter mode must reset any previous input")
+}
+
+func TestHandleUpstreamListKey_RefreshClearsRPConfigs(t *testing.T) {
+	app := newUpstreamApp()
+	app.rpConfigs = []fetcher.ReverseProxyConfig{{Handler: "rp"}}
+
+	_, cmd := app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	assert.Nil(t, app.rpConfigs, "r must invalidate the cached configs so the next render refetches")
+	assert.NotNil(t, cmd, "r must return a refetch command")
+}
+
+func TestHandleUpstreamListKey_QuitReturnsQuitCmd(t *testing.T) {
+	app := newUpstreamApp()
+	_, cmd := app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	assert.NotNil(t, cmd)
+}
+
+func TestHandleUpstreamListKey_GraphAndHelpModes(t *testing.T) {
+	app := newUpstreamApp()
+
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	assert.Equal(t, viewGraph, app.mode)
+
+	app.mode = viewList
+	_, _ = app.handleUpstreamListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	assert.Equal(t, viewHelp, app.mode)
 }

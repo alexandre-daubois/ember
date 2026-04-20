@@ -140,3 +140,34 @@ func TestFetchFrankenPHPConfig_NotAvailable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, cfg)
 }
+
+func TestFetchFrankenPHPConfig_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/apps/frankenphp" {
+			w.WriteHeader(200)
+			w.Write([]byte("not json"))
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	cfg, err := f.FetchFrankenPHPConfig(context.Background())
+	require.Error(t, err, "garbled response must surface as an error rather than nil cfg")
+	assert.Nil(t, cfg)
+}
+
+func TestCheckMetricsEnabled_InvalidJSONTreatedAsDisabled(t *testing.T) {
+	// Caddy can return a 200 with non-JSON when admin is mis-routed; the
+	// safest fallback is "metrics off" so the operator is prompted to fix it
+	// rather than silently believing metrics are wired up.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	enabled, err := f.CheckMetricsEnabled(context.Background())
+	require.NoError(t, err)
+	assert.False(t, enabled)
+}
