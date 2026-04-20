@@ -437,6 +437,20 @@ func TestRenderHostDetailPanel_Footer(t *testing.T) {
 	assert.Contains(t, panel, "close")
 }
 
+func TestRenderHostDetailPanel_Breadcrumb(t *testing.T) {
+	h := model.HostDerived{Host: "api.example.com"}
+	panel := renderHostDetailPanel(h, 44, 30)
+
+	assert.Contains(t, stripANSI(panel), "Caddy › api.example.com")
+}
+
+func TestRenderDetailPanel_Breadcrumb(t *testing.T) {
+	thread := fetcher.ThreadDebugState{Index: 7, Name: "Thread", IsWaiting: true}
+	panel := renderDetailPanel(thread, 44, 25, nil, time.Now())
+
+	assert.Contains(t, stripANSI(panel), "FrankenPHP › Thread #7")
+}
+
 func TestHostDetailPanel_SideLayout(t *testing.T) {
 	app := newAppWithHosts([]model.HostDerived{
 		{Host: "example.com", RPS: 10, StatusCodes: map[int]float64{200: 10}},

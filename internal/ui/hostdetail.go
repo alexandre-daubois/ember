@@ -22,10 +22,15 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 	if host == "*" {
 		host = "* (All traffic)"
 	}
-	if len(host) > inner {
-		host = host[:inner-1] + "…"
+	crumb := greyStyle.Render("Caddy › ")
+	avail := inner - lipgloss.Width(crumb)
+	if avail < 1 {
+		avail = 1
 	}
-	lines = append(lines, titleStyle.Render(host))
+	if len(host) > avail {
+		host = host[:avail-1] + "…"
+	}
+	lines = append(lines, crumb+titleStyle.Render(host))
 
 	lines = append(lines, "")
 	lines = append(lines, sectionHeader("Traffic", inner))

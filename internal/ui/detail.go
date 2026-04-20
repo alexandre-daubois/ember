@@ -30,8 +30,8 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 
 	var lines []string
 
-	title := fmt.Sprintf("Thread #%d", t.Index)
-	lines = append(lines, titleStyle.Render(title))
+	crumb := greyStyle.Render("FrankenPHP › ")
+	lines = append(lines, crumb+titleStyle.Render(fmt.Sprintf("Thread #%d", t.Index)))
 
 	if script := workerScript(t.Name); script != "" {
 		lines = append(lines, greyStyle.Render("worker"))
