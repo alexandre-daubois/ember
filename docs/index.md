@@ -9,7 +9,7 @@ Ember is a real-time monitoring tool for [Caddy](https://caddyserver.com/) and [
 - [Caddy Dashboard](caddy-dashboard.md): Per-host traffic, latency percentiles, status codes
 - [FrankenPHP Dashboard](frankenphp-dashboard.md): Thread introspection, worker management, memory tracking
 - [CLI Reference](cli-reference.md): Flags, subcommands, keybindings, and shell completions
-- [Access Logs](logs.md): Live tailing of Caddy JSON access logs with filters
+- [Logs](logs.md): Live tailing of Caddy access and runtime logs, with a sidepanel to drill into a host
 - [JSON Output](json-output.md): Streaming JSONL mode for scripting
 - [Prometheus Export](prometheus-export.md): Metrics endpoint, health checks, and daemon mode
 - [Docker](docker.md): Running Ember in a container

@@ -26,7 +26,7 @@ ember [flags]
 | `--client-key`     | string | _(none)_ | Path to client private key for mTLS |
 | `--insecure`       | bool | `false` | Skip TLS certificate verification |
 | `--metrics-auth`   | string | _(none)_ | Basic auth for the metrics endpoint (`user:password`). Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
-| `--log-listen`     | string | _(auto)_ | Bind a TCP listener at this address (e.g. `:9210`) and ask Caddy to push access logs to it via a hot-registered sink. Required when Caddy is on a remote host; auto-bound on a free loopback port otherwise. See [Access Logs](logs.md). |
+| `--log-listen`     | string | _(auto)_ | Bind a TCP listener at this address (e.g. `:9210`) and ask Caddy to push its logs to it via two hot-registered sinks (access + runtime). Required when Caddy is on a remote host; auto-bound on a free loopback port otherwise. See [Logs](logs.md). |
 | `--no-color`       | bool | `false` | Disable colors. Also enabled by the `NO_COLOR` env var (see [no-color.org](https://no-color.org/)). |
 | `--version`        | | | Print version and exit |
 

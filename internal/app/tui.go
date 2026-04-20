@@ -158,28 +158,41 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	// crash (pointing at a dead port) is naturally overwritten here, so no
 	// defensive DELETE is needed. If Caddy is not yet reachable (e.g. Ember
 	// started first), the watchdog retries periodically until it succeeds.
+	//
+	// Two sinks share the same TCP listener: __ember__ (access logs, via
+	// include) and __ember_runtime__ (everything else, via exclude). Caddy
+	// opens one connection per sink; the listener handles both transparently
+	// and onBatch routes entries by logger name.
 	regCtx, regCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	_ = hf.RegisterEmberLogSink(regCtx, advertiseAddr)
+	_ = hf.RegisterEmberRuntimeLogSink(regCtx, advertiseAddr)
 	regCancel()
 
 	// Caddy only emits access logs when a server has a `logs` block. Without
-	// this step the sink would receive nothing, defeating the zero-config
-	// promise. enableAccessLogs records which servers we touched so we can
-	// undo only those at cleanup.
+	// this step the access sink would receive nothing, defeating the
+	// zero-config promise. Runtime logs are always emitted so no equivalent
+	// step is needed for them. enableAccessLogs records which servers we
+	// touched so we can undo only those at cleanup.
 	enabled := enableAccessLogs(hf)
 
-	buf := model.NewLogBuffer(0)
-	uiCfg.LogBuffer = buf
+	accessBuf := model.NewLogBuffer(0)
+	runtimeBuf := model.NewLogBuffer(0)
+	uiCfg.LogBuffer = accessBuf
+	uiCfg.RuntimeLogBuffer = runtimeBuf
 	uiCfg.LogSource = "net " + advertiseAddr
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go ln.Start(ctx, func(batch []fetcher.LogEntry) {
 		for _, e := range batch {
-			buf.Append(e)
+			if e.IsAccessLog() {
+				accessBuf.Append(e)
+			} else {
+				runtimeBuf.Append(e)
+			}
 		}
 	})
 
-	// Watchdog: re-registers the sink and access-logs blocks periodically.
+	// Watchdog: re-registers both sinks and access-logs blocks periodically.
 	// Covers both Caddy reloads (which wipe runtime config) and late Caddy
 	// starts (where the initial registration could not reach the admin API).
 	// `enabled` is only read/written by this single goroutine; the cleanup
@@ -195,18 +208,24 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 				return
 			case <-ticker.C:
 				checkCtx, checkCancel := context.WithTimeout(ctx, 3*time.Second)
-				exists := hf.CheckEmberLogSink(checkCtx)
+				accessExists := hf.CheckEmberLogSink(checkCtx)
+				runtimeExists := hf.CheckEmberRuntimeLogSink(checkCtx)
 				checkCancel()
-				if !exists {
+				if !accessExists {
 					reregCtx, reregCancel := context.WithTimeout(ctx, 3*time.Second)
 					_ = hf.RegisterEmberLogSink(reregCtx, advertiseAddr)
+					reregCancel()
+				}
+				if !runtimeExists {
+					reregCtx, reregCancel := context.WithTimeout(ctx, 3*time.Second)
+					_ = hf.RegisterEmberRuntimeLogSink(reregCtx, advertiseAddr)
 					reregCancel()
 				}
 				// Always retry enableAccessLogs when the enabled list
 				// is empty: the sink may have been registered on a
 				// prior tick but enableAccessLogs may have failed
 				// (e.g. Caddy's server list was not ready yet).
-				if !exists || len(enabled) == 0 {
+				if !accessExists || len(enabled) == 0 {
 					enabled = enableAccessLogs(hf)
 				}
 			}
@@ -220,6 +239,7 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 		unregCtx, unregCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer unregCancel()
 		_ = hf.UnregisterEmberLogSink(unregCtx)
+		_ = hf.UnregisterEmberRuntimeLogSink(unregCtx)
 		restoreAccessLogs(hf, enabled)
 	}, true
 }

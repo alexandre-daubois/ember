@@ -1,6 +1,7 @@
 package model
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -115,6 +116,40 @@ func (f LogFilter) matches(e fetcher.LogEntry) bool {
 		}
 	}
 	return true
+}
+
+// UniqueHosts returns the set of distinct non-empty Host values currently in
+// the buffer, sorted alphabetically. Runs under the read lock and walks the
+// ring in place so the UI can refresh the sidepanel list without paying for
+// a full Snapshot copy on every render.
+func (b *LogBuffer) UniqueHosts() []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	total := b.head
+	if b.full {
+		total = b.capacity
+	}
+	if total == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 8)
+	out := make([]string, 0, 8)
+	for i := 0; i < total; i++ {
+		idx := (b.head - 1 - i + b.capacity) % b.capacity
+		h := b.entries[idx].Host
+		if h == "" {
+			continue
+		}
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Snapshot returns up to limit entries that match the filter, ordered from

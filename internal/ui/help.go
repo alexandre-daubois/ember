@@ -121,6 +121,7 @@ func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool) stri
 		{"/", "Filter / search"},
 		{"e/E", "Expand / collapse all (Caddy Config tab)"},
 		{"c", "Clear log buffer (Logs tab)"},
+		{"←/→", "Focus sidepanel / table (Logs tab)"},
 		{"l", "Jump to Logs for selected host (Caddy tab)"},
 		{"g", "Toggle graphs"},
 	}

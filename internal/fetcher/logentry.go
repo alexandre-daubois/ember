@@ -7,9 +7,26 @@ import (
 	"time"
 )
 
-// LogEntry is a single access log line parsed from Caddy's JSON log output.
-// RawLine is populated when the input is not valid JSON so the UI can still
-// show the line to the user.
+// accessLoggerPrefix is the prefix Caddy uses for per-server access loggers
+// ("http.log.access.log0", "http.log.access.<name>"). Everything else is
+// treated as a runtime log.
+const accessLoggerPrefix = "http.log.access"
+
+// IsAccessLog reports whether the entry comes from Caddy's access-log
+// subsystem. Used to route entries between the access and runtime buffers.
+// A line that failed to parse is classified as runtime so it surfaces in the
+// place most likely to be inspected when things go wrong.
+func (e LogEntry) IsAccessLog() bool {
+	if e.ParseError {
+		return false
+	}
+	return strings.HasPrefix(e.Logger, accessLoggerPrefix)
+}
+
+// LogEntry is a single log line parsed from Caddy's JSON log output. Both
+// HTTP access logs and runtime logs (startup, TLS, admin, plugins) flow
+// through this type; IsAccessLog tells them apart. RawLine is populated when
+// the input is not valid JSON so the UI can still show the line to the user.
 type LogEntry struct {
 	Timestamp  time.Time
 	Level      string

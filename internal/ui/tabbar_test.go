@@ -53,7 +53,7 @@ func TestTabLabel_AllKnown(t *testing.T) {
 		tabConfig:       "Caddy Config",
 		tabCertificates: "Certificates",
 		tabUpstreams:    "Upstreams",
-		tabLogs:         "Access logs",
+		tabLogs:         "Logs",
 		tabFrankenPHP:   "FrankenPHP",
 	}
 	for tb, want := range cases {
