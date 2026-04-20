@@ -112,10 +112,13 @@ type App struct {
 	rpConfigs []fetcher.ReverseProxyConfig
 	downSince map[string]time.Time
 
-	logBuffer         *model.LogBuffer
-	logSource         string
-	logPaused         bool
-	logPausedSnapshot []fetcher.LogEntry
+	logBuffer *model.LogBuffer
+	logSource string
+
+	logFrozen       bool
+	logSnapshot     []fetcher.LogEntry
+	logFrozenAt     int64
+	logScrollOffset int
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -439,7 +442,7 @@ func (a *App) View() string {
 		}
 	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab, a.logPaused)
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab, a.logFrozen)
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
@@ -786,17 +789,22 @@ func (a *App) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		a.mode = viewList
 		a.filter = ""
+		a.logScrollOffset = 0
 	case "enter":
 		a.mode = viewList
 		a.cursor = 0
+		a.logScrollOffset = 0
 	case "backspace":
 		if len(a.filter) > 0 {
 			a.filter = a.filter[:len(a.filter)-1]
+			a.cursor = 0
+			a.logScrollOffset = 0
 		}
 	default:
 		if len(msg.String()) == 1 {
 			a.filter += msg.String()
 			a.cursor = 0
+			a.logScrollOffset = 0
 		}
 	}
 	return a, nil
@@ -891,7 +899,7 @@ func (a *App) listLen() int {
 }
 
 func (a *App) clampCursor() {
-	if a.activeTab == tabConfig {
+	if a.activeTab == tabConfig || a.activeTab == tabLogs {
 		return
 	}
 	var count int

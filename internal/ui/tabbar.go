@@ -29,7 +29,7 @@ func tabLabel(t tab) string {
 	case tabUpstreams:
 		return "Upstreams"
 	case tabLogs:
-		return "Logs"
+		return "Access logs"
 	case tabFrankenPHP:
 		return "FrankenPHP"
 	default:

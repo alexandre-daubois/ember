@@ -15,15 +15,30 @@ const (
 	colLogHost   = 22
 	colLogDur    = 9
 	colLogFixed  = 1 + colLogTime + colLogStatus + colLogMethod + colLogHost + colLogDur
+
+	// logHeaderHeight is the number of visual rows consumed by the header:
+	// one row of column labels plus one row for the bottom border. Shared
+	// by the slicer in logs.go so the cursor-visibility math matches what
+	// renderLogTable actually draws.
+	logHeaderHeight = 2
 )
 
-func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, filterActive bool, filterLabel, emptyHint string) string {
+var logHeaderBorderStyle = lipgloss.NewStyle().
+	BorderBottom(true).
+	BorderStyle(lipgloss.NormalBorder()).
+	BorderForeground(subtle)
+
+var logHeaderLabelsStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(subtle)
+
+func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, rightStatus, emptyHint string) string {
 	uriW := width - colLogFixed
 	if uriW < 10 {
 		uriW = 10
 	}
 
-	header := fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s  %-*s",
+	labels := fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s  %-*s",
 		colLogTime, "Time",
 		colLogStatus, "Code",
 		colLogMethod, "Method",
@@ -31,17 +46,9 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, filte
 		colLogDur, "Duration",
 		uriW-2, "URI",
 	)
-	headerLine := tableHeaderStyle.Width(width).Render(header)
-
-	var bannerLine string
-	if filterActive && filterLabel != "" {
-		bannerLine = helpStyle.Width(width).Render(" " + filterLabel)
-	}
+	headerLine := renderLogHeader(labels, rightStatus, width)
 
 	bodyHeight := height - lipgloss.Height(headerLine)
-	if bannerLine != "" {
-		bodyHeight -= lipgloss.Height(bannerLine)
-	}
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -65,12 +72,36 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, filte
 	}
 
 	body := strings.Join(rows, "\n")
-	joined := lipgloss.JoinVertical(lipgloss.Left, headerLine, body)
+	return lipgloss.JoinVertical(lipgloss.Left, headerLine, body)
+}
 
-	if bannerLine != "" {
-		return lipgloss.JoinVertical(lipgloss.Left, bannerLine, joined)
+// renderLogHeader lays out column labels on the left and an already-styled
+// status pill on the right of a single header line, with a border underneath.
+// Embedding the status here saves a full line compared to a separate banner
+// and keeps the frozen indicator visually anchored to the table.
+func renderLogHeader(labels, rightStatus string, width int) string {
+	styledLabels := logHeaderLabelsStyle.Render(labels)
+	if rightStatus == "" {
+		return logHeaderBorderStyle.Width(width).Render(styledLabels)
 	}
-	return joined
+
+	labelsW := lipgloss.Width(styledLabels)
+	statusW := lipgloss.Width(rightStatus)
+	gap := width - labelsW - statusW - 1
+	if gap < 1 {
+		gap = 1
+		// If labels won't fit next to the status, truncate the URI-end of
+		// the labels rather than dropping the status, which carries state.
+		maxLabelsW := width - statusW - 2
+		if maxLabelsW < 10 {
+			maxLabelsW = 10
+		}
+		if labelsW > maxLabelsW {
+			styledLabels = lipgloss.NewStyle().MaxWidth(maxLabelsW).Render(styledLabels)
+		}
+	}
+	combined := styledLabels + strings.Repeat(" ", gap) + rightStatus + " "
+	return logHeaderBorderStyle.Width(width).Render(combined)
 }
 
 func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, zebra bool) string {

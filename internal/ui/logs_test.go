@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -137,33 +138,30 @@ func TestRenderLogsTab_FilterLabelShown(t *testing.T) {
 	assert.Contains(t, out, "foo")
 }
 
-func TestHandleLogsListKey_Pause(t *testing.T) {
+func TestHandleLogsListKey_PauseToggle(t *testing.T) {
 	buf := model.NewLogBuffer(100)
 	app := newLogsApp(buf)
 
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	assert.True(t, app.logPaused)
+	assert.True(t, app.logFrozen)
 
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	assert.False(t, app.logPaused)
+	assert.False(t, app.logFrozen)
 }
 
 func TestPause_FreezesRenderedEntries(t *testing.T) {
-	// Pausing must snapshot the buffer so subsequent Appends do not leak
-	// into the rendered view until the user resumes.
+	// Pausing with `p` must snapshot the buffer so subsequent Appends do not
+	// leak into the rendered view until the user resumes.
 	buf := model.NewLogBuffer(100)
 	now := time.Now()
 	appendLog(t, buf, "first.com", "GET", 200, now)
 	appendLog(t, buf, "second.com", "GET", 200, now)
 
 	app := newLogsApp(buf)
-	// Enter pause.
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	require.True(t, app.logPaused)
-	require.Len(t, app.logPausedSnapshot, 2)
+	require.True(t, app.logFrozen)
+	require.Len(t, app.logSnapshot, 2)
 
-	// New entries arrive after pause: the live buffer grows but the view
-	// must still only show the frozen two.
 	appendLog(t, buf, "after-pause.com", "GET", 200, now)
 	out := stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "first.com")
@@ -171,10 +169,9 @@ func TestPause_FreezesRenderedEntries(t *testing.T) {
 	assert.NotContains(t, out, "after-pause.com")
 	assert.Contains(t, out, "PAUSED")
 
-	// Resuming drops the cache and reveals every buffered entry.
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	require.False(t, app.logPaused)
-	require.Nil(t, app.logPausedSnapshot)
+	require.False(t, app.logFrozen)
+	require.Nil(t, app.logSnapshot)
 	out = stripANSI(app.renderLogsTab(120, 20))
 	assert.Contains(t, out, "after-pause.com")
 	assert.NotContains(t, out, "PAUSED")
@@ -184,11 +181,9 @@ func TestPause_EmptyBuffer_StillBlocksLiveEntries(t *testing.T) {
 	buf := model.NewLogBuffer(100)
 	app := newLogsApp(buf)
 
-	// Pause on a completely empty buffer.
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
-	require.True(t, app.logPaused)
+	require.True(t, app.logFrozen)
 
-	// New entries arrive after pause.
 	appendLog(t, buf, "late.com", "GET", 200, time.Now())
 
 	out := stripANSI(app.renderLogsTab(120, 20))
@@ -197,8 +192,6 @@ func TestPause_EmptyBuffer_StillBlocksLiveEntries(t *testing.T) {
 }
 
 func TestPause_FilterStillAppliesToFrozenWindow(t *testing.T) {
-	// While paused, changing the search re-slices the frozen window rather
-	// than flashing live data.
 	buf := model.NewLogBuffer(100)
 	now := time.Now()
 	appendLog(t, buf, "a.com", "GET", 200, now)
@@ -207,9 +200,6 @@ func TestPause_FilterStillAppliesToFrozenWindow(t *testing.T) {
 	app := newLogsApp(buf)
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 
-	// Post-pause, a new entry arrives. Search for "500": we should still
-	// see only b.com (from the snapshot), not any fresh 500 from the live
-	// buffer.
 	appendLog(t, buf, "late-5xx.com", "GET", 503, now)
 	app.filter = "500"
 
@@ -226,6 +216,7 @@ func TestHandleLogsListKey_Clear(t *testing.T) {
 	app := newLogsApp(buf)
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 	assert.Equal(t, 0, buf.Len())
+	assert.False(t, app.logFrozen, "clearing must also resume live follow")
 }
 
 func TestHandleLogsListKey_SlashEntersFilterMode(t *testing.T) {
@@ -243,6 +234,162 @@ func TestActiveLogFilter_UsesSearch(t *testing.T) {
 
 	got := app.activeLogFilter()
 	assert.Equal(t, "abc", got.Search)
+}
+
+func TestScroll_AutoFreezesFromLive(t *testing.T) {
+	buf := model.NewLogBuffer(100)
+	now := time.Now()
+	appendLog(t, buf, "a.com", "GET", 200, now.Add(-2*time.Second))
+	appendLog(t, buf, "b.com", "GET", 200, now.Add(-time.Second))
+	appendLog(t, buf, "c.com", "GET", 200, now)
+
+	app := newLogsApp(buf)
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+
+	assert.True(t, app.logFrozen, "pressing down from live view must auto-freeze")
+	assert.Equal(t, 1, app.cursor)
+}
+
+func TestScroll_FrozenViewDoesNotShiftOnNewArrival(t *testing.T) {
+	// The whole point of auto-freeze: scrolling must not be disturbed by
+	// new logs arriving at the top of the buffer.
+	buf := model.NewLogBuffer(100)
+	now := time.Now()
+	appendLog(t, buf, "entry-a.com", "GET", 200, now.Add(-3*time.Second))
+	appendLog(t, buf, "entry-b.com", "GET", 200, now.Add(-2*time.Second))
+	appendLog(t, buf, "entry-c.com", "GET", 200, now.Add(-time.Second))
+
+	app := newLogsApp(buf)
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+	require.True(t, app.logFrozen)
+	require.Equal(t, 1, app.cursor)
+
+	for i := 0; i < 5; i++ {
+		appendLog(t, buf, "fresh.com", "GET", 200, now)
+	}
+
+	out := stripANSI(app.renderLogsTab(120, 20))
+	assert.NotContains(t, out, "fresh.com", "frozen view must hide live arrivals")
+	assert.Contains(t, out, "5 new", "banner must surface how many lines are hidden")
+}
+
+func TestScroll_FollowKeyResumesWhenFrozen(t *testing.T) {
+	buf := model.NewLogBuffer(100)
+	now := time.Now()
+	appendLog(t, buf, "a.com", "GET", 200, now.Add(-time.Second))
+	appendLog(t, buf, "b.com", "GET", 200, now)
+
+	app := newLogsApp(buf)
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+	require.True(t, app.logFrozen)
+
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	assert.False(t, app.logFrozen, "f must resume live follow")
+	assert.Equal(t, 0, app.cursor)
+}
+
+func TestScroll_HomeAlsoResumes(t *testing.T) {
+	// Home remains available for keyboards that have it; Mac users lean on f.
+	buf := model.NewLogBuffer(100)
+	now := time.Now()
+	appendLog(t, buf, "a.com", "GET", 200, now)
+
+	app := newLogsApp(buf)
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	require.True(t, app.logFrozen)
+
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyHome})
+	assert.False(t, app.logFrozen, "home must also resume live follow")
+}
+
+func TestScroll_OffsetLetsCursorGoBeyondViewport(t *testing.T) {
+	// With N entries larger than the viewport, scrolling must reveal older
+	// rows via logScrollOffset.
+	buf := model.NewLogBuffer(100)
+	now := time.Now()
+	for i := 0; i < 30; i++ {
+		appendLog(t, buf, fmt.Sprintf("host-%02d.com", i), "GET", 200, now.Add(time.Duration(i)*time.Second))
+	}
+
+	app := newLogsApp(buf)
+	app.height = 20 // bodyHeight ~ 9, much smaller than 30 entries
+
+	for i := 0; i < 15; i++ {
+		_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	assert.True(t, app.logFrozen)
+	assert.Equal(t, 15, app.cursor)
+	assert.Greater(t, app.logScrollOffset, 0, "cursor past the viewport must grow the scroll offset")
+}
+
+func TestScroll_FilterClearsScrollOffset(t *testing.T) {
+	buf := model.NewLogBuffer(100)
+	now := time.Now()
+	for i := 0; i < 10; i++ {
+		appendLog(t, buf, fmt.Sprintf("host-%d.com", i), "GET", 200, now.Add(time.Duration(i)*time.Second))
+	}
+
+	app := newLogsApp(buf)
+	for i := 0; i < 5; i++ {
+		_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	require.Equal(t, 5, app.cursor)
+
+	app.mode = viewFilter
+	_, _ = app.handleFilterKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+
+	assert.Equal(t, 0, app.cursor)
+	assert.Equal(t, 0, app.logScrollOffset)
+}
+
+func TestHeader_LiveHasNoPausedPill(t *testing.T) {
+	buf := model.NewLogBuffer(10)
+	appendLog(t, buf, "a.com", "GET", 200, time.Now())
+	app := newLogsApp(buf)
+
+	out := stripANSI(app.renderLogsTab(120, 20))
+	assert.NotContains(t, out, "PAUSED")
+}
+
+func TestHeader_FrozenShowsPausedPill(t *testing.T) {
+	buf := model.NewLogBuffer(10)
+	appendLog(t, buf, "a.com", "GET", 200, time.Now())
+	app := newLogsApp(buf)
+
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	out := stripANSI(app.renderLogsTab(120, 20))
+	assert.Contains(t, out, "PAUSED")
+}
+
+func TestHeader_FollowBindingAppearsOnlyWhenFrozen(t *testing.T) {
+	// Live: help shows pause, no follow.
+	help := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabLogs, false))
+	assert.Contains(t, help, "pause")
+	assert.NotContains(t, help, "follow")
+
+	// Frozen: help shows resume + follow hint.
+	help = stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabLogs, true))
+	assert.Contains(t, help, "resume")
+	assert.Contains(t, help, "follow")
+}
+
+func TestClampCursor_LeavesLogsTabAlone(t *testing.T) {
+	// Regression: clampCursor used to fall through to filteredThreads() on
+	// the Logs tab, resetting the cursor to 0 on every 1s metrics tick.
+	buf := model.NewLogBuffer(10)
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		appendLog(t, buf, "h.com", "GET", 200, now.Add(time.Duration(i)*time.Second))
+	}
+	app := newLogsApp(buf)
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, 2, app.cursor)
+
+	app.clampCursor()
+
+	assert.Equal(t, 2, app.cursor, "clampCursor must not touch the Logs tab cursor")
 }
 
 func newCaddyAppWithHosts(buf *model.LogBuffer, hosts ...string) *App {

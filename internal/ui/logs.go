@@ -1,51 +1,113 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// renderLogsTab is the View() entry point for the Logs tab. It snapshots the
-// current LogBuffer through the active filter and feeds it to renderLogTable.
-// When paused, the view is rendered from a frozen snapshot taken at the
-// moment of pause; filter changes still take effect against that snapshot so
-// the user can slice the captured window freely.
+// renderLogsTab is the View() entry point for the Logs tab. It slices the
+// filtered log list through the scroll offset (when frozen) or returns the
+// live tail (when following), so the cursor always maps to a stable entry on
+// screen.
 func (a *App) renderLogsTab(width, height int) string {
 	if a.logBuffer == nil {
 		return greyStyle.Render(" Logs unavailable: Caddy is not local and --log-listen was not set.\n" +
 			" Pass --log-listen :PORT and make sure Caddy can reach this address. See docs/logs.md.")
 	}
 
-	filter := a.activeLogFilter()
+	all := a.filteredLogEntries()
+	rightStatus := a.buildLogsHeaderStatus()
 
-	var entries []fetcher.LogEntry
-	var sourceLen int
-	if a.logPaused {
-		entries = filterEntriesWithLimit(a.logPausedSnapshot, filter, height)
-		sourceLen = len(a.logPausedSnapshot)
-	} else {
-		entries = a.logBuffer.Snapshot(filter, height)
-		sourceLen = a.logBuffer.Len()
+	bodyHeight := height - logHeaderHeight
+	if bodyHeight < 1 {
+		bodyHeight = 1
 	}
+	visible, localCursor := a.sliceLogViewport(all, bodyHeight)
 
-	filterLabel := a.logFilterLabel()
-	banner := buildLogsBanner(filterLabel, a.logPaused)
-
+	sourceLen := a.logSourceLen()
 	emptyHint := "Waiting for log lines (it can take up to 30s for the first lines to appear)..."
 	if a.logSource != "" {
 		emptyHint = "Listening on " + a.logSource + " — waiting for log lines (it can take up to 30s)..."
 	}
-	if filterLabel != "" && sourceLen > 0 && len(entries) == 0 {
-		emptyHint = "No matching log lines (filter: " + filterLabel + ")"
+	if a.filter != "" && sourceLen > 0 && len(visible) == 0 {
+		emptyHint = "No matching log lines (filter: " + a.filter + ")"
 	}
 
-	return renderLogTable(entries, a.cursor, width, height, banner != "", banner, emptyHint)
+	return renderLogTable(visible, localCursor, width, height, rightStatus, emptyHint)
+}
+
+// filteredLogEntries returns the current source list through the active
+// filter. When frozen, everything in the snapshot is available so the user
+// can scroll through full history; when live, only the newest pageSize()
+// entries are needed (cursor stays at 0).
+func (a *App) filteredLogEntries() []fetcher.LogEntry {
+	if a.logBuffer == nil {
+		return nil
+	}
+	filter := a.activeLogFilter()
+	if a.logFrozen {
+		return filterEntriesWithLimit(a.logSnapshot, filter, 0)
+	}
+	return a.logBuffer.Snapshot(filter, a.pageSize())
+}
+
+// sliceLogViewport returns the rows to draw and the cursor position within
+// that slice, re-clamping the persisted offset against the actual viewport
+// height so the cursor is always visible.
+func (a *App) sliceLogViewport(all []fetcher.LogEntry, bodyHeight int) ([]fetcher.LogEntry, int) {
+	if !a.logFrozen || bodyHeight <= 0 {
+		return all, 0
+	}
+	offset := a.logScrollOffset
+	if a.cursor < offset {
+		offset = a.cursor
+	} else if a.cursor >= offset+bodyHeight {
+		offset = a.cursor - bodyHeight + 1
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	maxOffset := len(all) - bodyHeight
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	end := offset + bodyHeight
+	if end > len(all) {
+		end = len(all)
+	}
+	visible := all[offset:end]
+	local := a.cursor - offset
+	if local < 0 {
+		local = 0
+	}
+	if local >= len(visible) && len(visible) > 0 {
+		local = len(visible) - 1
+	}
+	return visible, local
+}
+
+// logSourceLen returns the size of the source the view is reading from, used
+// only to distinguish "no logs at all" from "filter matched nothing".
+func (a *App) logSourceLen() int {
+	if a.logFrozen {
+		return len(a.logSnapshot)
+	}
+	if a.logBuffer == nil {
+		return 0
+	}
+	return a.logBuffer.Len()
 }
 
 // filterEntriesWithLimit applies a LogFilter to a pre-captured slice and
 // returns at most limit matching entries, preserving order. Used to re-filter
-// the paused snapshot without taking a fresh buffer snapshot.
+// the frozen snapshot without touching the live buffer.
 func filterEntriesWithLimit(entries []fetcher.LogEntry, filter model.LogFilter, limit int) []fetcher.LogEntry {
 	if limit <= 0 {
 		limit = len(entries)
@@ -63,31 +125,107 @@ func filterEntriesWithLimit(entries []fetcher.LogEntry, filter model.LogFilter, 
 	return out
 }
 
-// buildLogsBanner assembles the filter/paused indicator shown above the log
-// table. Pause is surfaced as its own "PAUSED" prefix rather than mixed into
-// the filter descriptor.
-func buildLogsBanner(filterLabel string, paused bool) string {
-	switch {
-	case paused && filterLabel != "":
-		return " PAUSED · filter: " + filterLabel
-	case paused:
-		return " PAUSED"
-	case filterLabel != "":
-		return " filter: " + filterLabel
-	default:
-		return ""
+// pausedBadgeStyle renders the "● PAUSED" pill on the right of the column
+// header when the view is frozen.
+var pausedBadgeStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.AdaptiveColor{Light: "#FFF8F0", Dark: "#1A1410"}).
+	Background(warn).
+	Padding(0, 1)
+
+// buildLogsHeaderStatus returns the pre-styled right-aligned status chunk
+// for the column header. Empty when there's nothing to say.
+func (a *App) buildLogsHeaderStatus() string {
+	var pill string
+	if a.logFrozen {
+		label := "● PAUSED"
+		if n := a.newLogsSinceFreeze(); n > 0 {
+			label += fmt.Sprintf(" · %d new", n)
+		}
+		pill = pausedBadgeStyle.Render(label)
 	}
+	if a.filter == "" {
+		return pill
+	}
+	filterChip := helpStyle.Render("filter: " + a.filter)
+	if pill == "" {
+		return filterChip
+	}
+	return filterChip + "  " + pill
+}
+
+// newLogsSinceFreeze counts entries that have been appended to the buffer
+// since the snapshot was taken.
+func (a *App) newLogsSinceFreeze() int64 {
+	if !a.logFrozen || a.logBuffer == nil {
+		return 0
+	}
+	delta := a.logBuffer.WriteCount() - a.logFrozenAt
+	if delta < 0 {
+		return 0
+	}
+	return delta
 }
 
 func (a *App) activeLogFilter() model.LogFilter {
 	return model.LogFilter{Search: a.filter}
 }
 
-func (a *App) logFilterLabel() string {
-	return a.filter
+// freezeLogs captures the current buffer and enters frozen mode. Called
+// implicitly on scroll and explicitly on `p` from live.
+func (a *App) freezeLogs() {
+	if a.logBuffer == nil || a.logFrozen {
+		return
+	}
+	a.logSnapshot = a.logBuffer.Snapshot(model.LogFilter{}, 0)
+	a.logFrozenAt = a.logBuffer.WriteCount()
+	a.logScrollOffset = 0
+	a.cursor = 0
+	a.logFrozen = true
+}
+
+// resumeLogs drops the snapshot and returns the view to live-follow mode.
+func (a *App) resumeLogs() {
+	a.logFrozen = false
+	a.logSnapshot = nil
+	a.logFrozenAt = 0
+	a.cursor = 0
+	a.logScrollOffset = 0
+}
+
+// clampLogScrollOffset keeps the cursor visible inside the viewport and
+// prevents the offset from running past the end of the filtered list. Called
+// after every cursor mutation; render re-clamps against the true viewport
+// height so any drift is self-correcting.
+func (a *App) clampLogScrollOffset(total int) {
+	if !a.logFrozen {
+		a.logScrollOffset = 0
+		return
+	}
+	bodyHeight := a.pageSize() - logHeaderHeight
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+	if a.cursor < a.logScrollOffset {
+		a.logScrollOffset = a.cursor
+	} else if a.cursor >= a.logScrollOffset+bodyHeight {
+		a.logScrollOffset = a.cursor - bodyHeight + 1
+	}
+	if a.logScrollOffset < 0 {
+		a.logScrollOffset = 0
+	}
+	maxOffset := total - bodyHeight
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if a.logScrollOffset > maxOffset {
+		a.logScrollOffset = maxOffset
+	}
 }
 
 // handleLogsListKey processes keystrokes when the Logs tab is in list mode.
+// Navigation keys auto-freeze from live mode so the list stops sliding.
+// `f`, `home`, or `p` resume live follow.
 func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
@@ -95,11 +233,25 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 
-	maxIdx := a.logVisibleLen() - 1
+	switch key {
+	case "f", "home":
+		if a.logFrozen {
+			a.resumeLogs()
+			return a, nil
+		}
+	case "up", "down", "pgup", "pgdown", "end", "j", "k":
+		if !a.logFrozen && a.logBuffer != nil && a.logBuffer.Len() > 0 {
+			a.freezeLogs()
+		}
+	}
+
+	all := a.filteredLogEntries()
+	maxIdx := len(all) - 1
 	if maxIdx < 0 {
 		maxIdx = 0
 	}
 	moveCursor(key, &a.cursor, maxIdx, a.pageSize())
+	a.clampLogScrollOffset(len(all))
 
 	switch key {
 	case "q", "ctrl+c":
@@ -108,20 +260,15 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.mode = viewFilter
 		a.filter = ""
 	case "p":
-		if !a.logPaused && a.logBuffer != nil {
-			// Cache the full, unfiltered contents so the user can change the
-			// filter (status band, search) after pausing and see the frozen
-			// window re-sliced rather than a flash of live data.
-			a.logPausedSnapshot = a.logBuffer.Snapshot(model.LogFilter{}, 0)
+		if a.logFrozen {
+			a.resumeLogs()
 		} else {
-			a.logPausedSnapshot = nil
+			a.freezeLogs()
 		}
-		a.logPaused = !a.logPaused
 	case "c":
 		if a.logBuffer != nil {
 			a.logBuffer.Clear()
-			a.logPausedSnapshot = nil
-			a.cursor = 0
+			a.resumeLogs()
 			a.status = "log buffer cleared"
 		}
 	case "?":
@@ -131,33 +278,24 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// logVisibleLen returns the number of entries currently shown so the cursor
-// can be clamped. It mirrors the source selection in renderLogsTab so the
-// cursor stays within the rendered rows.
-func (a *App) logVisibleLen() int {
-	if a.logBuffer == nil {
-		return 0
-	}
-	height := a.pageSize()
-	filter := a.activeLogFilter()
-	if a.logPaused {
-		return len(filterEntriesWithLimit(a.logPausedSnapshot, filter, height))
-	}
-	return len(a.logBuffer.Snapshot(filter, height))
-}
-
 // logsHelpBindings returns the bindings shown at the bottom of the Logs tab.
-func logsHelpBindings(paused bool) []binding {
+func logsHelpBindings(frozen bool) []binding {
 	pauseLabel := "pause"
-	if paused {
+	if frozen {
 		pauseLabel = "resume"
 	}
-	return []binding{
+	bindings := []binding{
 		{"↑/↓", "navigate"},
 		{"/", "filter"},
 		{"p", pauseLabel},
-		{"c", "clear"},
-		{"Tab/S-Tab", "switch"},
-		{"q", "quit"},
 	}
+	if frozen {
+		bindings = append(bindings, binding{"f", "follow"})
+	}
+	bindings = append(bindings,
+		binding{"c", "clear"},
+		binding{"Tab/S-Tab", "switch"},
+		binding{"q", "quit"},
+	)
+	return bindings
 }

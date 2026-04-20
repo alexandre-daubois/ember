@@ -16,11 +16,12 @@ const DefaultLogBufferCapacity = 10_000
 // LogBuffer is a fixed-size ring buffer of log entries, safe for concurrent
 // use from one writer (the tailer goroutine) and multiple readers (the UI).
 type LogBuffer struct {
-	mu       sync.RWMutex
-	entries  []fetcher.LogEntry
-	capacity int
-	head     int  // next write index
-	full     bool // true once the buffer has wrapped at least once
+	mu         sync.RWMutex
+	entries    []fetcher.LogEntry
+	capacity   int
+	head       int   // next write index
+	full       bool  // true once the buffer has wrapped at least once
+	writeCount int64 // monotonic total ever appended; survives Clear so diffs against a snapshot stay meaningful
 }
 
 // NewLogBuffer creates a buffer that keeps at most capacity entries.
@@ -45,6 +46,15 @@ func (b *LogBuffer) Append(e fetcher.LogEntry) {
 	if b.head == 0 {
 		b.full = true
 	}
+	b.writeCount++
+}
+
+// WriteCount returns the total number of entries ever appended, regardless
+// of evictions. Useful for diffing a frozen snapshot against live growth.
+func (b *LogBuffer) WriteCount() int64 {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.writeCount
 }
 
 // Len returns the number of entries currently stored.

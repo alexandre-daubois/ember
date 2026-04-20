@@ -12,7 +12,7 @@ type binding struct {
 	desc string
 }
 
-func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, upstreamSortBy model.UpstreamSortField, paused bool, width int, activeTab tab, logPaused bool) string {
+func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, upstreamSortBy model.UpstreamSortField, paused bool, width int, activeTab tab, logFrozen bool) string {
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
@@ -21,7 +21,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 	var bindings []binding
 	switch activeTab {
 	case tabLogs:
-		bindings = logsHelpBindings(logPaused)
+		bindings = logsHelpBindings(logFrozen)
 	case tabConfig:
 		bindings = []binding{
 			{"↑/↓", "navigate"},

@@ -26,7 +26,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Certificates tab: TLS certificate monitoring with expiry tracking, color-coded warnings, and likely auto-renewal indication
 - Upstreams tab: reverse proxy upstream health monitoring with per-upstream status, auto-detected when `reverse_proxy` is configured
-- Logs tab: live access log streaming with host, method, status, and search filters. Zero-config: Ember hot-registers a transient sink in Caddy via the admin API and receives logs over TCP, with no Caddyfile changes
+- Access logs tab: live access log streaming with host, method, status, and search filters. Zero-config: Ember hot-registers a transient sink in Caddy via the admin API and receives logs over TCP, with no Caddyfile changes
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**

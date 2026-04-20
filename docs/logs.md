@@ -1,6 +1,6 @@
 # Access Logs
 
-The Logs tab streams Caddy's HTTP access logs into the Ember TUI in real time,
+The Access logs tab streams Caddy's HTTP access logs into the Ember TUI in real time,
 with a free-text filter that matches case-insensitively across the status
 code, method, host, URI and message. Each line is parsed on the fly and kept
 in an in-memory ring buffer of the last 10 000 entries.
@@ -14,7 +14,7 @@ At startup, Ember:
    server (see details below). If Caddy is not yet reachable (e.g. Ember
    started before Caddy), the listener stays open and a background watchdog
    retries every 30 seconds until it succeeds: no restart required.
-3. Starts parsing incoming lines into the Logs tab.
+3. Starts parsing incoming lines into the Access logs tab.
 
 At clean shutdown, Ember:
 
@@ -89,17 +89,36 @@ Notes:
 Lines that fail to parse as JSON are still shown in grey, so corrupt or
 mid-write lines never silently disappear.
 
+## Scroll modes
+
+The Access logs tab has two states:
+
+- **Following** (default): the table pins the newest entry at the top and
+  redraws as lines arrive.
+- **Frozen**: the view stops sliding so you can read a specific line without
+  having it pushed down by new arrivals. The full buffer at freeze time is
+  available, so you can scroll well past the initial viewport to inspect older
+  entries. A pill on the right of the column header shows `● PAUSED` plus how
+  many new lines have been captured in the background.
+
+Entering Frozen mode happens either implicitly when you scroll (`↑`, `↓`,
+`PgUp`, `PgDn`, `End`) or explicitly by pressing `p`. Resume live follow with
+`f` (or `Home`, or `p` again).
+
 ## Keybindings
 
-| Key         | Action                                                   |
-|-------------|----------------------------------------------------------|
-| `↑` / `↓`   | Navigate                                                 |
-| `/`         | Filter: matches case-insensitively against status code, method, host, URI and message |
-| `p`         | Pause / resume: freezes the view on a snapshot of the current buffer; filter changes still re-slice the frozen window, new log lines are captured in the background and revealed on resume |
-| `c`         | Clear the in-memory buffer                               |
-| `Tab`       | Switch tab                                               |
-| `?`         | Help overlay                                             |
-| `q`         | Quit                                                     |
+| Key             | Action                                                   |
+|-----------------|----------------------------------------------------------|
+| `↑` / `↓`       | Navigate. Auto-freezes the view on first press from live |
+| `PgUp` / `PgDn` | Page up/down (also auto-freezes)                         |
+| `End`           | Jump to the oldest entry in the frozen snapshot          |
+| `f` / `Home`    | Resume live follow                                       |
+| `/`             | Filter: matches case-insensitively against status code, method, host, URI and message |
+| `p`             | Toggle pause: freezes or resumes. Filter changes still re-slice the frozen window; new log lines are captured in the background |
+| `c`             | Clear the in-memory buffer (also resumes live follow)    |
+| `Tab`           | Switch tab                                               |
+| `?`             | Help overlay                                             |
+| `q`             | Quit                                                     |
 
 The filter is the only text input on this tab: type `200` to see successful
 requests, `GET` to see GET requests, `api.example.com` to focus on a host,
@@ -107,7 +126,7 @@ requests, `GET` to see GET requests, `api.example.com` to focus on a host,
 
 ## Jumping from the Caddy tab
 
-While on the **Caddy** tab, press `l` on a host to switch to the Logs tab
+While on the **Caddy** tab, press `l` on a host to switch to the Access logs tab
 with the filter pre-set to that host. Clear it by pressing `/` and hitting
 Enter on an empty input, or by entering any other search.
 
