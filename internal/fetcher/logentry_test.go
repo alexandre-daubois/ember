@@ -122,6 +122,27 @@ func TestParseLogLine_UnparseableStringTimestamp(t *testing.T) {
 	assert.False(t, e.Timestamp.IsZero())
 }
 
+func TestIsAccessLog(t *testing.T) {
+	tests := []struct {
+		name   string
+		entry  LogEntry
+		expect bool
+	}{
+		{"server access logger", LogEntry{Logger: "http.log.access.log0"}, true},
+		{"bare access prefix", LogEntry{Logger: "http.log.access"}, true},
+		{"tls runtime logger", LogEntry{Logger: "tls.handshake"}, false},
+		{"admin api logger", LogEntry{Logger: "admin.api"}, false},
+		{"empty logger is runtime", LogEntry{Logger: ""}, false},
+		{"parse error is never access", LogEntry{Logger: "http.log.access.log0", ParseError: true}, false},
+		{"sibling logger not matching prefix", LogEntry{Logger: "http.log"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expect, tc.entry.IsAccessLog())
+		})
+	}
+}
+
 func BenchmarkParseLogLine(b *testing.B) {
 	line := `{"level":"info","ts":1742472000.123456,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"192.168.1.1","remote_port":"54321","proto":"HTTP/2.0","method":"GET","host":"example.com","uri":"/api/users"},"bytes_read":0,"duration":0.001234,"size":1234,"status":200,"resp_headers":{}}`
 

@@ -14,6 +14,79 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRegisterEmberRuntimeLogSink_PayloadUsesExclude(t *testing.T) {
+	var captured atomic.Pointer[string]
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/logging/logs/"+EmberRuntimeLogSinkName {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPut {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		s := string(body)
+		captured.Store(&s)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.RegisterEmberRuntimeLogSink(context.Background(), "127.0.0.1:9210"))
+
+	got := captured.Load()
+	require.NotNil(t, got)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(*got), &parsed))
+
+	// The runtime sink must exclude access logs so it doesn't duplicate
+	// what the __ember__ sink already streams.
+	exclude, ok := parsed["exclude"].([]any)
+	require.True(t, ok, "runtime sink payload must have exclude")
+	require.Len(t, exclude, 1)
+	assert.Equal(t, "http.log.access", exclude[0])
+	_, hasInclude := parsed["include"]
+	assert.False(t, hasInclude, "runtime sink must not constrain with include")
+}
+
+func TestUnregisterEmberRuntimeLogSink_OK(t *testing.T) {
+	var path atomic.Pointer[string]
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		p := r.URL.Path
+		path.Store(&p)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.UnregisterEmberRuntimeLogSink(context.Background()))
+
+	require.NotNil(t, path.Load())
+	assert.Contains(t, *path.Load(), EmberRuntimeLogSinkName)
+}
+
+func TestCheckEmberRuntimeLogSink_Found(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, EmberRuntimeLogSinkName) {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"writer":{}}`)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	assert.True(t, f.CheckEmberRuntimeLogSink(context.Background()))
+}
+
 func TestRegisterEmberLogSink_PutsExpectedPayload(t *testing.T) {
 	var captured atomic.Pointer[string]
 

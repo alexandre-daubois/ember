@@ -142,6 +142,38 @@ func TestLogBuffer_Snapshot_FilterBySearch_MatchesMethod(t *testing.T) {
 	assert.Equal(t, "POST", snap[0].Method)
 }
 
+func TestLogBuffer_UniqueHosts_DedupesAndSorts(t *testing.T) {
+	b := NewLogBuffer(10)
+	b.Append(makeEntry(1, "b.com", "GET", 200))
+	b.Append(makeEntry(2, "a.com", "GET", 200))
+	b.Append(makeEntry(3, "b.com", "POST", 200))
+	b.Append(makeEntry(4, "c.com", "GET", 404))
+
+	assert.Equal(t, []string{"a.com", "b.com", "c.com"}, b.UniqueHosts())
+}
+
+func TestLogBuffer_UniqueHosts_SkipsEmpty(t *testing.T) {
+	b := NewLogBuffer(10)
+	b.Append(fetcher.LogEntry{Host: ""})
+	b.Append(fetcher.LogEntry{Host: "real.com"})
+	assert.Equal(t, []string{"real.com"}, b.UniqueHosts())
+}
+
+func TestLogBuffer_UniqueHosts_Empty(t *testing.T) {
+	b := NewLogBuffer(5)
+	assert.Nil(t, b.UniqueHosts())
+}
+
+func TestLogBuffer_UniqueHosts_AfterWrap(t *testing.T) {
+	b := NewLogBuffer(3)
+	b.Append(makeEntry(1, "evicted.com", "GET", 200))
+	b.Append(makeEntry(2, "kept1.com", "GET", 200))
+	b.Append(makeEntry(3, "kept2.com", "GET", 200))
+	b.Append(makeEntry(4, "kept3.com", "GET", 200))
+
+	assert.Equal(t, []string{"kept1.com", "kept2.com", "kept3.com"}, b.UniqueHosts())
+}
+
 func TestLogBuffer_Clear(t *testing.T) {
 	b := NewLogBuffer(5)
 	for i := 1; i <= 7; i++ { // triggers wrap

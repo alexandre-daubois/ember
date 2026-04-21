@@ -6,7 +6,41 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
+
+// fitCellLeft truncates s to at most `cells` display columns, appends "…"
+// when truncation happens, and right-pads with spaces so the returned
+// string is exactly `cells` cells wide. Display-cell aware: an emoji counts
+// as 2 cells even though it's several bytes, which is what the terminal
+// actually renders; byte- or rune-length arithmetic would overflow the
+// column and wrap the row to a second line.
+func fitCellLeft(s string, cells int) string {
+	if cells <= 0 {
+		return ""
+	}
+	truncated := runewidth.Truncate(s, cells, "…")
+	pad := cells - runewidth.StringWidth(truncated)
+	if pad > 0 {
+		truncated += strings.Repeat(" ", pad)
+	}
+	return truncated
+}
+
+// fitCellRight is the right-aligned variant: pads on the left with spaces.
+// Used for the Duration column whose numeric value reads better hugging the
+// next column boundary.
+func fitCellRight(s string, cells int) string {
+	if cells <= 0 {
+		return ""
+	}
+	truncated := runewidth.Truncate(s, cells, "…")
+	pad := cells - runewidth.StringWidth(truncated)
+	if pad > 0 {
+		truncated = strings.Repeat(" ", pad) + truncated
+	}
+	return truncated
+}
 
 const (
 	colLogTime   = 13 // "HH:MM:SS.mmm "
@@ -21,6 +55,12 @@ const (
 	// by the slicer in logs.go so the cursor-visibility math matches what
 	// renderLogTable actually draws.
 	logHeaderHeight = 2
+
+	// Runtime log table uses Time + Level + Logger + Message; no request-
+	// specific fields (status, method, host, duration, URI) are meaningful.
+	colLogLevel     = 7  // "ERROR"
+	colLogLogger    = 24 // "http.log.access.srv0"
+	colRuntimeFixed = 1 + colLogTime + colLogLevel + colLogLogger
 )
 
 var logHeaderBorderStyle = lipgloss.NewStyle().
@@ -32,19 +72,79 @@ var logHeaderLabelsStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(subtle)
 
-func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, rightStatus, emptyHint string) string {
-	uriW := width - colLogFixed
+func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, rightStatus, emptyHint string, hideHost bool) string {
+	fixed := colLogFixed
+	if hideHost {
+		fixed -= colLogHost
+	}
+	uriW := width - fixed
 	if uriW < 10 {
 		uriW = 10
 	}
 
-	labels := fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s  %-*s",
+	var labels string
+	if hideHost {
+		labels = fmt.Sprintf(" %-*s%-*s%-*s%*s  %-*s",
+			colLogTime, "Time",
+			colLogStatus, "Code",
+			colLogMethod, "Method",
+			colLogDur, "Duration",
+			uriW-2, "URI",
+		)
+	} else {
+		labels = fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s  %-*s",
+			colLogTime, "Time",
+			colLogStatus, "Code",
+			colLogMethod, "Method",
+			colLogHost, "Host",
+			colLogDur, "Duration",
+			uriW-2, "URI",
+		)
+	}
+	headerLine := renderLogHeader(labels, rightStatus, width)
+
+	bodyHeight := height - lipgloss.Height(headerLine)
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+
+	var rows []string
+	if len(entries) == 0 {
+		rows = append(rows, greyStyle.Render(" "+emptyHint))
+	}
+
+	visible := entries
+	if len(visible) > bodyHeight {
+		visible = visible[:bodyHeight]
+	}
+
+	for i, e := range visible {
+		rows = append(rows, formatLogRow(e, width, uriW, i == cursor, hideHost))
+	}
+
+	for len(rows) < bodyHeight {
+		rows = append(rows, "")
+	}
+
+	body := strings.Join(rows, "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, headerLine, body)
+}
+
+// renderRuntimeLogTable draws the runtime (non-access) log view. Columns
+// differ from the access table because Status/Method/Host/URI/Duration are
+// meaningless for startup, reload, TLS or admin-API log lines; we show
+// Time + Level + Logger + Message instead.
+func renderRuntimeLogTable(entries []fetcher.LogEntry, cursor, width, height int, rightStatus, emptyHint string) string {
+	msgW := width - colRuntimeFixed
+	if msgW < 10 {
+		msgW = 10
+	}
+
+	labels := fmt.Sprintf(" %-*s%-*s%-*s%-*s",
 		colLogTime, "Time",
-		colLogStatus, "Code",
-		colLogMethod, "Method",
-		colLogHost, "Host",
-		colLogDur, "Duration",
-		uriW-2, "URI",
+		colLogLevel, "Level",
+		colLogLogger, "Logger",
+		msgW, "Message",
 	)
 	headerLine := renderLogHeader(labels, rightStatus, width)
 
@@ -64,7 +164,7 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, right
 	}
 
 	for i, e := range visible {
-		rows = append(rows, formatLogRow(e, width, uriW, i == cursor))
+		rows = append(rows, formatRuntimeLogRow(e, width, msgW, i == cursor))
 	}
 
 	for len(rows) < bodyHeight {
@@ -104,18 +204,17 @@ func renderLogHeader(labels, rightStatus string, width int) string {
 	return logHeaderBorderStyle.Width(width).Render(combined)
 }
 
-func formatLogRow(e fetcher.LogEntry, width, uriW int, selected bool) string {
+// formatRuntimeLogRow renders one runtime-log row. Level is colour-coded like
+// status codes in the access table: red for ERROR, amber for WARN, default
+// foreground for INFO/DEBUG. Malformed lines (ParseError) show the raw input.
+func formatRuntimeLogRow(e fetcher.LogEntry, width, msgW int, selected bool) string {
 	prefix := " "
 	if selected {
 		prefix = ">"
 	}
 
 	if e.ParseError {
-		raw := e.RawLine
-		maxLen := width - 2
-		if maxLen > 0 && len(raw) > maxLen {
-			raw = raw[:maxLen-1] + "…"
-		}
+		raw := fitCellLeft(e.RawLine, width-2)
 		line := prefix + " " + raw
 		if selected {
 			return selectedRowStyle.Width(width).Render(line)
@@ -124,9 +223,62 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected bool) string {
 	}
 
 	timeStr := e.Timestamp.Local().Format("15:04:05.000")
-	if len(timeStr) > colLogTime-1 {
-		timeStr = timeStr[:colLogTime-1]
+
+	level := strings.ToUpper(e.Level)
+	if level == "" {
+		level = "—"
 	}
+
+	logger := e.Logger
+	if logger == "" {
+		logger = "—"
+	}
+
+	message := e.Message
+	if message == "" {
+		message = "—"
+	}
+
+	// fitCellLeft handles both truncation (with "…") and padding by display
+	// cells, so emojis or CJK runes in message/logger stay inside the column
+	// even though they consume 2 cells per glyph.
+	timePart := prefix + fitCellLeft(timeStr, colLogTime)
+	levelPart := fitCellLeft(level, colLogLevel)
+	loggerPart := fitCellLeft(logger, colLogLogger)
+	msgPart := fitCellLeft(message, msgW)
+
+	if selected {
+		row := timePart + levelPart + loggerPart + msgPart
+		return selectedRowStyle.Width(width).Render(row)
+	}
+
+	styledLevel := levelPart
+	switch strings.ToUpper(e.Level) {
+	case "ERROR", "FATAL", "PANIC":
+		styledLevel = dangerStyle.Render(levelPart)
+	case "WARN", "WARNING":
+		styledLevel = warnStyle.Render(levelPart)
+	}
+
+	return timePart + styledLevel + loggerPart + msgPart
+}
+
+func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, hideHost bool) string {
+	prefix := " "
+	if selected {
+		prefix = ">"
+	}
+
+	if e.ParseError {
+		raw := fitCellLeft(e.RawLine, width-2)
+		line := prefix + " " + raw
+		if selected {
+			return selectedRowStyle.Width(width).Render(line)
+		}
+		return greyStyle.Width(width).Render(line)
+	}
+
+	timeStr := e.Timestamp.Local().Format("15:04:05.000")
 
 	statusStr := "—"
 	if e.Status > 0 {
@@ -137,16 +289,10 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected bool) string {
 	if method == "" {
 		method = "—"
 	}
-	if len(method) > colLogMethod-1 {
-		method = method[:colLogMethod-1]
-	}
 
 	host := e.Host
 	if host == "" {
 		host = "—"
-	}
-	if len(host) > colLogHost-1 {
-		host = host[:colLogHost-2] + "…"
 	}
 
 	durStr := "—"
@@ -158,19 +304,25 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected bool) string {
 	if uri == "" {
 		uri = "—"
 	}
-	if len(uri) > uriW-2 {
-		uri = uri[:uriW-3] + "…"
-	}
 
-	timePart := fmt.Sprintf("%s%-*s", prefix, colLogTime, timeStr)
-	statusPart := fmt.Sprintf("%-*s", colLogStatus, statusStr)
-	methodPart := fmt.Sprintf("%-*s", colLogMethod, method)
-	hostPart := fmt.Sprintf("%-*s", colLogHost, host)
-	durPart := fmt.Sprintf("%*s  ", colLogDur, durStr)
-	uriPart := fmt.Sprintf("%-*s", uriW-2, uri)
+	// fitCell* pad and truncate by display cells so emojis / CJK runes in
+	// host or URI don't overflow their column and wrap the row to a second
+	// line. Duration is right-aligned with a two-space gutter to keep the
+	// numeric column hugging the next cell.
+	timePart := prefix + fitCellLeft(timeStr, colLogTime)
+	statusPart := fitCellLeft(statusStr, colLogStatus)
+	methodPart := fitCellLeft(method, colLogMethod)
+	hostPart := fitCellLeft(host, colLogHost)
+	durPart := fitCellRight(durStr, colLogDur) + "  "
+	uriPart := fitCellLeft(uri, uriW-2)
 
 	if selected {
-		row := timePart + statusPart + methodPart + hostPart + durPart + uriPart
+		var row string
+		if hideHost {
+			row = timePart + statusPart + methodPart + durPart + uriPart
+		} else {
+			row = timePart + statusPart + methodPart + hostPart + durPart + uriPart
+		}
 		return selectedRowStyle.Width(width).Render(row)
 	}
 
@@ -184,5 +336,8 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected bool) string {
 		styledStatus = okStyle.Render(statusPart)
 	}
 
+	if hideHost {
+		return timePart + styledStatus + methodPart + durPart + uriPart
+	}
 	return timePart + styledStatus + methodPart + hostPart + durPart + uriPart
 }

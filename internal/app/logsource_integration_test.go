@@ -200,7 +200,7 @@ func TestSetupLogSource_AutoRegistersAndReceivesPushedLogs(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 
-	line := `{"level":"info","ts":1742472000.0,"msg":"handled","request":{"method":"GET","host":"a.com","uri":"/"},"status":200}` + "\n"
+	line := `{"level":"info","ts":1742472000.0,"logger":"http.log.access.log0","msg":"handled","request":{"method":"GET","host":"a.com","uri":"/"},"status":200}` + "\n"
 	_, err = conn.Write([]byte(line))
 	require.NoError(t, err)
 
@@ -221,11 +221,13 @@ func TestSetupLogSource_AutoRegistersAndReceivesPushedLogs(t *testing.T) {
 	// Since PUT on the sink endpoint is idempotent (Caddy replaces
 	// any existing sink), Register should run without a prior defensive
 	// DELETE: failing to register leaves the previous state untouched.
+	// Two sinks are registered (access + runtime), so the first two writes
+	// are PUTs; cleanup issues matching DELETEs.
 	api.callOrderMu.Lock()
 	defer api.callOrderMu.Unlock()
-	require.GreaterOrEqual(t, len(api.callOrder), 2)
+	require.GreaterOrEqual(t, len(api.callOrder), 4)
 	assert.Equal(t, "PUT", api.callOrder[0], "register must be the first admin API write")
-	assert.Equal(t, "DELETE", api.callOrder[1], "cleanup DELETE follows the register")
+	assert.Equal(t, "PUT", api.callOrder[1], "both sinks register before any cleanup happens")
 }
 
 func TestSetupLogSource_NoLogSourceForRemoteCaddyWithoutFlag(t *testing.T) {
@@ -300,19 +302,19 @@ func TestSetupLogSource_WatchdogReregistersAfterCaddyReload(t *testing.T) {
 	defer cleanup()
 
 	require.True(t, api.registered.Load())
-	require.Equal(t, 1, api.putCount(), "initial registration should be a single PUT")
+	require.Equal(t, 2, api.putCount(), "initial registration is two PUTs (access + runtime sinks)")
 
 	// Simulate a Caddy reload that wipes the runtime sink.
 	api.sinkGone.Store(true)
 
-	// Wait for the watchdog to re-register the sink AND re-enable access
+	// Wait for the watchdog to re-register both sinks AND re-enable access
 	// logs. The watchdog does them sequentially on each tick, so under -race
 	// the PUT can be observable before the POST completes.
 	deadline := time.Now().Add(2 * time.Second)
-	for (api.putCount() < 2 || api.serverPostCount("srv0") < 2) && time.Now().Before(deadline) {
+	for (api.putCount() < 4 || api.serverPostCount("srv0") < 2) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	assert.GreaterOrEqual(t, api.putCount(), 2, "watchdog should re-register the sink after it disappears")
+	assert.GreaterOrEqual(t, api.putCount(), 4, "watchdog should re-register both sinks after they disappear")
 	assert.False(t, api.sinkGone.Load(), "re-registration should clear the sinkGone flag")
 	assert.GreaterOrEqual(t, api.serverPostCount("srv0"), 2, "watchdog should re-enable access logs")
 }

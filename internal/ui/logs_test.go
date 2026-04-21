@@ -26,7 +26,21 @@ func newLogsApp(buf *model.LogBuffer) *App {
 		logSource: "/tmp/access.log",
 		width:     120,
 		height:    30,
+		logSel:    logSel{kind: logSelAccess},
 	}
+}
+
+// tableOnly extracts the table portion of a full Logs-tab render (right of
+// the sidepanel border). Pause/freeze tests assert on what's visible IN the
+// table, independent of the sidepanel tree which always reflects live state.
+func tableOnly(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if idx := strings.Index(line, "│"); idx >= 0 {
+			lines[i] = line[idx+len("│"):]
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func appendLog(t *testing.T, buf *model.LogBuffer, host, method string, status int, ts time.Time) {
@@ -104,15 +118,15 @@ func TestRenderLogsTab_SearchFiltersAcrossColumns(t *testing.T) {
 	// match against host...
 	app := newLogsApp(buf)
 	app.filter = "a.com"
-	out := stripANSI(app.renderLogsTab(120, 20))
-	assert.Contains(t, out, "a.com")
-	assert.NotContains(t, out, "b.com")
+	tbl := tableOnly(stripANSI(app.renderLogsTab(120, 20)))
+	assert.Contains(t, tbl, "a.com")
+	assert.NotContains(t, tbl, "b.com")
 
 	// ...and against method.
 	app.filter = "post"
-	out = stripANSI(app.renderLogsTab(120, 20))
-	assert.Contains(t, out, "b.com")
-	assert.NotContains(t, out, "a.com")
+	tbl = tableOnly(stripANSI(app.renderLogsTab(120, 20)))
+	assert.Contains(t, tbl, "b.com")
+	assert.NotContains(t, tbl, "a.com")
 }
 
 func TestRenderLogsTab_SearchFiltersByStatusCode(t *testing.T) {
@@ -124,9 +138,9 @@ func TestRenderLogsTab_SearchFiltersByStatusCode(t *testing.T) {
 	app := newLogsApp(buf)
 	app.filter = "503"
 
-	out := stripANSI(app.renderLogsTab(120, 20))
-	assert.Contains(t, out, "fail.com")
-	assert.NotContains(t, out, "ok.com")
+	tbl := tableOnly(stripANSI(app.renderLogsTab(120, 20)))
+	assert.Contains(t, tbl, "fail.com")
+	assert.NotContains(t, tbl, "ok.com")
 }
 
 func TestRenderLogsTab_FilterLabelShown(t *testing.T) {
@@ -163,18 +177,19 @@ func TestPause_FreezesRenderedEntries(t *testing.T) {
 	require.Len(t, app.logSnapshot, 2)
 
 	appendLog(t, buf, "after-pause.com", "GET", 200, now)
-	out := stripANSI(app.renderLogsTab(120, 20))
-	assert.Contains(t, out, "first.com")
-	assert.Contains(t, out, "second.com")
-	assert.NotContains(t, out, "after-pause.com")
-	assert.Contains(t, out, "PAUSED")
+	full := stripANSI(app.renderLogsTab(120, 20))
+	tbl := tableOnly(full)
+	assert.Contains(t, tbl, "first.com")
+	assert.Contains(t, tbl, "second.com")
+	assert.NotContains(t, tbl, "after-pause.com")
+	assert.Contains(t, full, "PAUSED")
 
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	require.False(t, app.logFrozen)
 	require.Nil(t, app.logSnapshot)
-	out = stripANSI(app.renderLogsTab(120, 20))
-	assert.Contains(t, out, "after-pause.com")
-	assert.NotContains(t, out, "PAUSED")
+	full = stripANSI(app.renderLogsTab(120, 20))
+	assert.Contains(t, tableOnly(full), "after-pause.com")
+	assert.NotContains(t, full, "PAUSED")
 }
 
 func TestPause_EmptyBuffer_StillBlocksLiveEntries(t *testing.T) {
@@ -187,7 +202,7 @@ func TestPause_EmptyBuffer_StillBlocksLiveEntries(t *testing.T) {
 	appendLog(t, buf, "late.com", "GET", 200, time.Now())
 
 	out := stripANSI(app.renderLogsTab(120, 20))
-	assert.NotContains(t, out, "late.com", "entries arriving after pause on empty buffer must not appear")
+	assert.NotContains(t, tableOnly(out), "late.com", "entries arriving after pause on empty buffer must not appear in the table")
 	assert.Contains(t, out, "PAUSED")
 }
 
@@ -203,9 +218,9 @@ func TestPause_FilterStillAppliesToFrozenWindow(t *testing.T) {
 	appendLog(t, buf, "late-5xx.com", "GET", 503, now)
 	app.filter = "500"
 
-	out := stripANSI(app.renderLogsTab(120, 20))
-	assert.Contains(t, out, "b.com")
-	assert.NotContains(t, out, "late-5xx.com")
+	tbl := tableOnly(stripANSI(app.renderLogsTab(120, 20)))
+	assert.Contains(t, tbl, "b.com")
+	assert.NotContains(t, tbl, "late-5xx.com")
 }
 
 func TestHandleLogsListKey_Clear(t *testing.T) {
@@ -268,9 +283,9 @@ func TestScroll_FrozenViewDoesNotShiftOnNewArrival(t *testing.T) {
 		appendLog(t, buf, "fresh.com", "GET", 200, now)
 	}
 
-	out := stripANSI(app.renderLogsTab(120, 20))
-	assert.NotContains(t, out, "fresh.com", "frozen view must hide live arrivals")
-	assert.Contains(t, out, "5 new", "banner must surface how many lines are hidden")
+	full := stripANSI(app.renderLogsTab(120, 20))
+	assert.NotContains(t, tableOnly(full), "fresh.com", "frozen view must hide live arrivals in the table")
+	assert.Contains(t, full, "5 new", "banner must surface how many lines are hidden")
 }
 
 func TestScroll_FollowKeyResumesWhenFrozen(t *testing.T) {
@@ -423,11 +438,12 @@ func TestHandleListKey_JumpFromCaddyToLogs_PreservesSelectedHost(t *testing.T) {
 	_, _ = app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 
 	assert.Equal(t, tabLogs, app.activeTab)
-	assert.Equal(t, "third.com", app.filter, "filter must be the host the cursor was on, not hosts[0]")
+	assert.Equal(t, logSelAccessHost, app.logSel.kind, "sidepanel must land on a host entry")
+	assert.Equal(t, "third.com", app.logSel.host, "selected host must be the cursor's, not hosts[0]")
 	assert.Equal(t, 0, app.cursor)
 }
 
-func TestHandleListKey_JumpFromCaddyToLogs_NoHostSelectedSwitchesWithoutFilter(t *testing.T) {
+func TestHandleListKey_JumpFromCaddyToLogs_NoHostLandsOnRuntimeDefault(t *testing.T) {
 	buf := model.NewLogBuffer(10)
 	app := newCaddyAppWithHosts(buf)
 	app.cursor = 0
@@ -435,7 +451,8 @@ func TestHandleListKey_JumpFromCaddyToLogs_NoHostSelectedSwitchesWithoutFilter(t
 	_, _ = app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 
 	assert.Equal(t, tabLogs, app.activeTab)
-	assert.Empty(t, app.filter, "no host to capture: filter must remain empty")
+	assert.Equal(t, logSelRuntime, app.logSel.kind, "switching to Logs without a host lands on the Runtime default")
+	assert.Empty(t, app.logSel.host)
 }
 
 func TestHandleListKey_JumpFromCaddyToLogs_NoBufferIsNoOp(t *testing.T) {

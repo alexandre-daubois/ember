@@ -41,6 +41,7 @@ type Config struct {
 	OnStateUpdate    func(model.State)
 	MetricsServerErr <-chan error
 	LogBuffer        *model.LogBuffer
+	RuntimeLogBuffer *model.LogBuffer
 	LogSource        string // path or description; empty when no source is known
 }
 
@@ -112,13 +113,17 @@ type App struct {
 	rpConfigs []fetcher.ReverseProxyConfig
 	downSince map[string]time.Time
 
-	logBuffer *model.LogBuffer
-	logSource string
+	logBuffer        *model.LogBuffer
+	runtimeLogBuffer *model.LogBuffer
+	logSource        string
 
 	logFrozen       bool
 	logSnapshot     []fetcher.LogEntry
 	logFrozenAt     int64
 	logScrollOffset int
+
+	logSel              logSel
+	logSidepanelFocused bool
 }
 
 func NewApp(f fetcher.Fetcher, cfg Config) *App {
@@ -139,17 +144,19 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 	}
 
 	return &App{
-		fetcher:       f,
-		config:        cfg,
-		tabs:          tabs,
-		activeTab:     activeTab,
-		tabStates:     ts,
-		hasFrankenPHP: cfg.HasFrankenPHP,
-		history:       newHistoryStore(),
-		viewTime:      time.Now(),
-		downSince:     make(map[string]time.Time),
-		logBuffer:     cfg.LogBuffer,
-		logSource:     cfg.LogSource,
+		fetcher:          f,
+		config:           cfg,
+		tabs:             tabs,
+		activeTab:        activeTab,
+		tabStates:        ts,
+		hasFrankenPHP:    cfg.HasFrankenPHP,
+		history:          newHistoryStore(),
+		viewTime:         time.Now(),
+		downSince:        make(map[string]time.Time),
+		logBuffer:        cfg.LogBuffer,
+		runtimeLogBuffer: cfg.RuntimeLogBuffer,
+		logSource:        cfg.LogSource,
+		logSel:           logSel{kind: logSelAccess},
 	}
 }
 
@@ -164,6 +171,16 @@ func (a *App) switchTab(target tab) {
 	a.filter = ts.filter
 	a.clampCursor()
 	a.mode = viewList
+
+	// Entering the Logs tab always lands on Runtime with the sidepanel
+	// focused, so the user never has to guess where the cursor is after
+	// coming back from another tab. Callers that want to land somewhere
+	// else (e.g. the Caddy tab's `l` shortcut) override this right after.
+	if target == tabLogs {
+		a.logSel = logSel{kind: logSelRuntime}
+		a.logSidepanelFocused = true
+		a.resumeLogs()
+	}
 }
 
 func (a *App) switchTabCmd() tea.Cmd {
@@ -434,11 +451,14 @@ func (a *App) View() string {
 	if a.hasUpstreams {
 		counts[tabUpstreams] = fmt.Sprintf("%d upstreams", len(a.state.UpstreamDerived))
 	}
-	if a.logBuffer != nil && a.logBuffer.Len() > 0 {
-		if a.logBuffer.Full() {
-			counts[tabLogs] = fmt.Sprintf("%d+", a.logBuffer.Len())
+	accessLen, accessFull := logBufferStats(a.logBuffer)
+	runtimeLen, runtimeFull := logBufferStats(a.runtimeLogBuffer)
+	total := accessLen + runtimeLen
+	if total > 0 {
+		if accessFull || runtimeFull {
+			counts[tabLogs] = fmt.Sprintf("%d+", total)
 		} else {
-			counts[tabLogs] = fmt.Sprintf("%d", a.logBuffer.Len())
+			counts[tabLogs] = fmt.Sprintf("%d", total)
 		}
 	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts)
@@ -753,7 +773,8 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			a.switchTab(tabLogs)
 			if host != "" {
-				a.filter = host
+				a.selectHost(host)
+				a.resumeLogs()
 				a.cursor = 0
 			}
 		}
