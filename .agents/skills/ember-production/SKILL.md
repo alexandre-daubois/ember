@@ -146,20 +146,20 @@ Use `/healthz` as a Kubernetes liveness probe to detect when Ember loses contact
 
 ## Docker Deployment
 
-The Ember image (`ghcr.io/alexandre-daubois/ember`) is built from scratch: no OS, no shell, just the static binary and CA certificates.
+The Ember image is published to Docker Hub as `alexandredaubois/ember` and mirrored on GHCR as `ghcr.io/alexandre-daubois/ember`. It is built from scratch: no OS, no shell, just the static binary and CA certificates.
 
 Default behavior: `--daemon --expose :9191`
 
 ### Host network (simplest)
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember
+docker run --rm --network host alexandredaubois/ember
 ```
 
 ### Custom address
 
 ```bash
-docker run --rm ghcr.io/alexandre-daubois/ember \
+docker run --rm alexandredaubois/ember \
   --daemon --expose :9191 --addr http://caddy:2019
 ```
 
@@ -176,7 +176,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
 
   ember:
-    image: ghcr.io/alexandre-daubois/ember
+    image: alexandredaubois/ember
     network_mode: "service:caddy"
     depends_on:
       - caddy
@@ -189,7 +189,7 @@ With `network_mode: "service:caddy"`, Ember shares Caddy's network namespace and
 Override the default CMD by appending flags:
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember \
+docker run --rm --network host alexandredaubois/ember \
   --daemon --expose :9191 --interval 2s --metrics-prefix myapp
 ```
 

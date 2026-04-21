@@ -44,8 +44,10 @@ go install github.com/alexandre-daubois/ember/cmd/ember@latest
 ### Docker
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember
+docker run --rm --network host alexandredaubois/ember
 ```
+
+The image is mirrored on GHCR as `ghcr.io/alexandre-daubois/ember`.
 
 > **Note:** The Docker image runs in daemon mode by default. See [Docker](docker.md) for details.
 

@@ -37,10 +37,10 @@ go install github.com/alexandre-daubois/ember/cmd/ember@latest
 ### Docker
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember
+docker run --rm --network host alexandredaubois/ember
 ```
 
-The Docker image runs in daemon mode by default (headless, Prometheus metrics on `:9191`). See the ember-production skill for Docker deployment details.
+The image is also available on GHCR as `ghcr.io/alexandre-daubois/ember`. The Docker image runs in daemon mode by default (headless, Prometheus metrics on `:9191`). See the ember-production skill for Docker deployment details.
 
 ## Step 2: Configure Caddy
 

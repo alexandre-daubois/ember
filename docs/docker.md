@@ -2,10 +2,17 @@
 
 Ember is available as a container image built from scratch (no OS, no shell: just the static binary and CA certificates).
 
+The image is published to both registries with identical content:
+
+- Docker Hub: `alexandredaubois/ember`
+- GitHub Container Registry: `ghcr.io/alexandre-daubois/ember`
+
+The examples below use the Docker Hub reference; substitute the GHCR one if you prefer.
+
 ## Quick Start
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember
+docker run --rm --network host alexandredaubois/ember
 ```
 
 ## Default Behavior
@@ -25,7 +32,7 @@ Ember needs to reach the Caddy admin API. Two options:
 Use `--network host` so the container shares the host's network stack:
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember
+docker run --rm --network host alexandredaubois/ember
 ```
 
 ### Custom Address
@@ -33,7 +40,7 @@ docker run --rm --network host ghcr.io/alexandre-daubois/ember
 Point Ember to the Caddy service by name or IP:
 
 ```bash
-docker run --rm ghcr.io/alexandre-daubois/ember --daemon --expose :9191 --addr http://caddy:2019
+docker run --rm alexandredaubois/ember --daemon --expose :9191 --addr http://caddy:2019
 ```
 
 ## Custom Flags
@@ -41,7 +48,7 @@ docker run --rm ghcr.io/alexandre-daubois/ember --daemon --expose :9191 --addr h
 Override the default `CMD` by appending flags:
 
 ```bash
-docker run --rm --network host ghcr.io/alexandre-daubois/ember \
+docker run --rm --network host alexandredaubois/ember \
   --daemon --expose :9191 --interval 2s --metrics-prefix myapp
 ```
 
@@ -60,7 +67,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
 
   ember:
-    image: ghcr.io/alexandre-daubois/ember
+    image: alexandredaubois/ember
     network_mode: "service:caddy"
     depends_on:
       - caddy
@@ -77,7 +84,7 @@ If Caddy's admin API is configured to listen on a Unix socket, mount the socket 
 ```bash
 docker run --rm \
   -v /run/caddy/admin.sock:/run/caddy/admin.sock \
-  ghcr.io/alexandre-daubois/ember \
+  alexandredaubois/ember \
   --daemon --expose :9191 --addr unix//run/caddy/admin.sock
 ```
 
@@ -92,7 +99,7 @@ services:
       - caddy-admin:/run/caddy
 
   ember:
-    image: ghcr.io/alexandre-daubois/ember
+    image: alexandredaubois/ember
     environment:
       EMBER_ADDR: unix//run/caddy/admin.sock
     volumes:
