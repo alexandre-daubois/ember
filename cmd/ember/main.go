@@ -10,8 +10,7 @@ import (
 var version = "dev"
 
 func main() {
-	ember.Version = version
-	if err := ember.Run(); err != nil {
+	if err := ember.RunWithVersion(version); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

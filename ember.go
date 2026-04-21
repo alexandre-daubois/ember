@@ -14,6 +14,9 @@
 //	func main() {
 //	    ember.Run()
 //	}
+//
+// To stamp a custom version string (e.g. from -ldflags), use
+// [RunWithVersion] instead of [Run].
 package ember
 
 import (
@@ -22,13 +25,22 @@ import (
 	"github.com/alexandre-daubois/ember/internal/app"
 )
 
-// Version is set at build time via -ldflags.
-// When empty, it defaults to "dev".
-var Version = "dev"
+// defaultVersion is reported when a binary calls [Run] without an
+// explicit version. Custom binaries should prefer [RunWithVersion].
+const defaultVersion = "dev"
 
 // Run starts Ember with command-line arguments from os.Args.
+// The reported version is "dev"; for a stamped build, use
+// [RunWithVersion].
 func Run() error {
-	return app.Run(os.Args[1:], Version)
+	return app.Run(os.Args[1:], defaultVersion)
+}
+
+// RunWithVersion starts Ember with command-line arguments from os.Args
+// and the given version string. Intended for custom binaries that set
+// their own version via -ldflags.
+func RunWithVersion(version string) error {
+	return app.Run(os.Args[1:], version)
 }
 
 // RunWithArgs starts Ember with the given arguments and version string.

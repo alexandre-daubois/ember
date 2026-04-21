@@ -452,6 +452,95 @@ type panicTabAvailPlugin struct{}
 
 func (p *panicTabAvailPlugin) TabAvailable(_ string) bool { panic("tab avail boom") }
 
+type panicTabsPlugin struct {
+	stubPlugin
+}
+
+func (p *panicTabsPlugin) Tabs() []plugin.TabDescriptor            { panic("tabs boom") }
+func (p *panicTabsPlugin) RendererForTab(_ string) plugin.Renderer { return &stubPlugin{} }
+
+type panicRendererForTabPlugin struct {
+	stubPlugin
+	tabs []plugin.TabDescriptor
+}
+
+func (p *panicRendererForTabPlugin) Tabs() []plugin.TabDescriptor { return p.tabs }
+func (p *panicRendererForTabPlugin) RendererForTab(_ string) plugin.Renderer {
+	panic("renderer boom")
+}
+
+type partialPanicRendererPlugin struct {
+	stubPlugin
+	tabs []plugin.TabDescriptor
+}
+
+func (p *partialPanicRendererPlugin) Tabs() []plugin.TabDescriptor { return p.tabs }
+func (p *partialPanicRendererPlugin) RendererForTab(key string) plugin.Renderer {
+	if key == "bad" {
+		panic("only this one boom")
+	}
+	return &stubPlugin{name: key}
+}
+
+func TestSafePluginTabs(t *testing.T) {
+	t.Run("normal call", func(t *testing.T) {
+		p := &multiRendererPlugin{
+			tabs: []plugin.TabDescriptor{{Key: "a", Name: "A"}},
+		}
+		assert.Len(t, safePluginTabs(p), 1)
+	})
+	t.Run("panic returns nil", func(t *testing.T) {
+		p := &panicTabsPlugin{}
+		assert.Nil(t, safePluginTabs(p))
+	})
+}
+
+func TestSafePluginRendererForTab(t *testing.T) {
+	t.Run("normal call", func(t *testing.T) {
+		p := &multiRendererPlugin{tabs: []plugin.TabDescriptor{{Key: "a"}}}
+		assert.NotNil(t, safePluginRendererForTab(p, "a"))
+	})
+	t.Run("panic returns nil", func(t *testing.T) {
+		p := &panicRendererForTabPlugin{tabs: []plugin.TabDescriptor{{Key: "a"}}}
+		assert.Nil(t, safePluginRendererForTab(p, "a"))
+	})
+}
+
+func TestNewPluginTabs_PanicInTabsDropsPlugin(t *testing.T) {
+	p := &panicTabsPlugin{stubPlugin: stubPlugin{name: "panicky"}}
+	pts, g := newPluginTabs(p, 100)
+
+	assert.Empty(t, pts, "plugin that panics in Tabs should produce no tabs")
+	assert.NotNil(t, g, "group is still created for exporter/fetcher wiring")
+}
+
+func TestNewPluginTabs_PanicInRendererForTabDropsAllTabs(t *testing.T) {
+	p := &panicRendererForTabPlugin{
+		stubPlugin: stubPlugin{name: "panicky"},
+		tabs: []plugin.TabDescriptor{
+			{Key: "a", Name: "A"},
+			{Key: "b", Name: "B"},
+		},
+	}
+	pts, _ := newPluginTabs(p, 100)
+	assert.Empty(t, pts, "every tab should be dropped when RendererForTab always panics")
+}
+
+func TestNewPluginTabs_PanicInRendererForOneTabKeepsOthers(t *testing.T) {
+	p := &partialPanicRendererPlugin{
+		stubPlugin: stubPlugin{name: "partial"},
+		tabs: []plugin.TabDescriptor{
+			{Key: "good", Name: "Good"},
+			{Key: "bad", Name: "Bad"},
+			{Key: "alsoGood", Name: "Also Good"},
+		},
+	}
+	pts, _ := newPluginTabs(p, 100)
+	require.Len(t, pts, 2, "bad tab is dropped, good ones survive")
+	assert.Equal(t, "good", pts[0].tabKey)
+	assert.Equal(t, "alsoGood", pts[1].tabKey)
+}
+
 func TestSafePluginTabAvailable(t *testing.T) {
 	t.Run("returns true", func(t *testing.T) {
 		ta := &tabAvailMultiPlugin{tabAvail: map[string]bool{"a": true}}

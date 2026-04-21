@@ -62,6 +62,14 @@ func normalizeName(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, "-", ""))
 }
 
+// EnvPrefix returns the environment variable prefix Ember uses to pass
+// per-plugin options to [Plugin.Provision]. For a plugin named "rate-limit",
+// the prefix is "EMBER_PLUGIN_RATELIMIT_", so EMBER_PLUGIN_RATELIMIT_MAX_RPS
+// becomes Options["max_rps"].
+func EnvPrefix(name string) string {
+	return "EMBER_PLUGIN_" + normalizeName(name) + "_"
+}
+
 // Reset clears the registry. Intended for testing only.
 func Reset() {
 	mu.Lock()

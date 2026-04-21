@@ -1,11 +1,13 @@
-package fetcher
+package metrics_test
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 )
 
-func FuzzParsePrometheusMetrics(f *testing.F) {
+func FuzzParsePrometheus(f *testing.F) {
 	f.Add(sampleMetrics)
 	f.Add(sampleCaddyMetrics)
 	f.Add(samplePerHostMetrics)
@@ -23,8 +25,7 @@ func FuzzParsePrometheusMetrics(f *testing.F) {
 	f.Add("# TYPE m histogram\nm_bucket{le=\"0.01\"} 0\nm_bucket{le=\"+Inf\"} 0\nm_sum 0\nm_count 0\n")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		// parsePrometheusMetrics must never panic, regardless of input
-		snap, err := parsePrometheusMetrics(strings.NewReader(input))
+		snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 		if err != nil {
 			return
 		}

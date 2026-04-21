@@ -295,3 +295,26 @@ func TestSafeFetch_RecoversPanic(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plugin panic during Fetch")
 }
+
+func TestEnvPrefix(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"ratelimit", "EMBER_PLUGIN_RATELIMIT_"},
+		{"my-plugin", "EMBER_PLUGIN_MYPLUGIN_"},
+		{"MixedCase", "EMBER_PLUGIN_MIXEDCASE_"},
+		{"a-b-c", "EMBER_PLUGIN_ABC_"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, plugin.EnvPrefix(tc.name))
+		})
+	}
+}
+
+func TestEnvPrefix_MatchesNormalizationCollision(t *testing.T) {
+	// A plugin name and its hyphen-stripped sibling must share the same
+	// prefix, which is exactly why Register rejects the collision.
+	assert.Equal(t, plugin.EnvPrefix("my-plugin"), plugin.EnvPrefix("myplugin"))
+}

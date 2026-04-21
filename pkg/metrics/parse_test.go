@@ -1,4 +1,4 @@
-package fetcher
+package metrics_test
 
 import (
 	"math"
@@ -9,6 +9,8 @@ import (
 	prommodel "github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 )
 
 const sampleMetrics = `# HELP frankenphp_total_threads Total number of PHP threads
@@ -54,8 +56,8 @@ frankenphp_worker_queue_depth{worker="/app/worker.php"} 1
 frankenphp_worker_queue_depth{worker="/app/api.php"} 0
 `
 
-func TestParsePrometheusMetrics_GlobalMetrics(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_GlobalMetrics(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(20), snap.TotalThreads, "TotalThreads")
@@ -66,8 +68,8 @@ func TestParsePrometheusMetrics_GlobalMetrics(t *testing.T) {
 	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessTimestamp, "ConfigLastReloadSuccessTimestamp default")
 }
 
-func TestParsePrometheusMetrics_WorkerMetrics(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_WorkerMetrics(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 	require.Len(t, snap.Workers, 2)
 
@@ -89,18 +91,18 @@ func TestParsePrometheusMetrics_WorkerMetrics(t *testing.T) {
 	assert.Equal(t, float64(0), api.Crashes, "api.Crashes")
 }
 
-func TestParsePrometheusMetrics_Empty(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(""))
+func TestParsePrometheus_Empty(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(""))
 	require.NoError(t, err)
 	assert.Equal(t, float64(0), snap.TotalThreads)
 	assert.Empty(t, snap.Workers)
 }
 
-func TestParsePrometheusMetrics_PartialData(t *testing.T) {
+func TestParsePrometheus_PartialData(t *testing.T) {
 	partial := `# TYPE frankenphp_busy_threads gauge
 frankenphp_busy_threads 7
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(partial))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(partial))
 	require.NoError(t, err)
 	assert.Equal(t, float64(7), snap.BusyThreads, "BusyThreads")
 	assert.Equal(t, float64(0), snap.TotalThreads, "TotalThreads")
@@ -131,8 +133,8 @@ caddy_config_last_reload_successful 1
 caddy_config_last_reload_success_timestamp_seconds 1.7120736e+09
 `
 
-func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
+func TestParsePrometheus_CaddyHTTP(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleCaddyMetrics))
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(160), snap.HTTPRequestsTotal, "HTTPRequestsTotal")
@@ -146,23 +148,23 @@ func TestParsePrometheusMetrics_CaddyHTTP(t *testing.T) {
 	assert.Equal(t, 1.7120736e+09, snap.ConfigLastReloadSuccessTimestamp, "ConfigLastReloadSuccessTimestamp")
 }
 
-func TestParsePrometheusMetrics_ReloadFailed(t *testing.T) {
-	metrics := `# HELP caddy_config_last_reload_successful Whether the last configuration reload was successful
+func TestParsePrometheus_ReloadFailed(t *testing.T) {
+	input := `# HELP caddy_config_last_reload_successful Whether the last configuration reload was successful
 # TYPE caddy_config_last_reload_successful gauge
 caddy_config_last_reload_successful 0
 # HELP caddy_config_last_reload_success_timestamp_seconds Timestamp of the last successful configuration reload
 # TYPE caddy_config_last_reload_success_timestamp_seconds gauge
 caddy_config_last_reload_success_timestamp_seconds 1.7120736e+09
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 	assert.True(t, snap.HasConfigReloadMetrics)
 	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessful)
 	assert.Equal(t, 1.7120736e+09, snap.ConfigLastReloadSuccessTimestamp)
 }
 
-func TestParsePrometheusMetrics_CaddyHistogramBuckets(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
+func TestParsePrometheus_CaddyHistogramBuckets(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleCaddyMetrics))
 	require.NoError(t, err)
 
 	require.Len(t, snap.DurationBuckets, 3, "should parse 3 histogram buckets")
@@ -177,21 +179,21 @@ func TestParsePrometheusMetrics_CaddyHistogramBuckets(t *testing.T) {
 	assert.Equal(t, float64(160), snap.DurationBuckets[2].CumulativeCount)
 }
 
-func TestParsePrometheusMetrics_NoBucketsWithoutHistogram(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_NoBucketsWithoutHistogram(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 	assert.Empty(t, snap.DurationBuckets)
 }
 
-func TestParsePrometheusMetrics_HasHTTPMetrics_False(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_HasHTTPMetrics_False(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 
 	assert.False(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be false when only FrankenPHP metrics are present")
 }
 
-func TestParsePrometheusMetrics_NoErrorMetrics(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_NoErrorMetrics(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(0), snap.HTTPRequestErrorsTotal, "HTTPRequestErrorsTotal should be 0 without error metrics")
@@ -226,7 +228,7 @@ caddy_http_requests_in_flight{host="api.example.com",handler="subroute",server="
 `
 
 func TestPerHostMetrics_GroupsByHost(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(samplePerHostMetrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(samplePerHostMetrics))
 	require.NoError(t, err)
 
 	require.Len(t, snap.Hosts, 2)
@@ -252,7 +254,7 @@ func TestPerHostMetrics_GroupsByHost(t *testing.T) {
 }
 
 func TestPerHostMetrics_GroupsByServerLabel(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleCaddyMetrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleCaddyMetrics))
 	require.NoError(t, err)
 
 	require.Len(t, snap.Hosts, 1, "should group by server label")
@@ -284,7 +286,7 @@ caddy_http_requests_in_flight{handler="subroute",server="srv0"} 5
 `
 
 func TestStatusCodesFromHistogram_ServerLabel(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleRealCaddyMetrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleRealCaddyMetrics))
 	require.NoError(t, err)
 
 	require.Len(t, snap.Hosts, 1)
@@ -321,7 +323,7 @@ caddy_http_request_duration_seconds_count{host="api.example.com",code="500"} 10
 `
 
 func TestPerHostMetrics_StatusCodesFromHistogram(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(samplePerHostNoCounterCodes))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(samplePerHostNoCounterCodes))
 	require.NoError(t, err)
 
 	require.Len(t, snap.Hosts, 2)
@@ -340,9 +342,8 @@ func TestPerHostMetrics_StatusCodesFromHistogram(t *testing.T) {
 }
 
 func TestStatusCodesFromHistogram_NoHistogram(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
-	// FrankenPHP-only metrics have no histogram -> nil
 	assert.Empty(t, snap.DurationBuckets)
 }
 
@@ -373,7 +374,7 @@ caddy_http_requests_in_flight{handler="subroute",server="api"} 0
 `
 
 func TestPerHostMetrics_FallbackToServerLabel(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleServerLabelMetrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleServerLabelMetrics))
 	require.NoError(t, err)
 
 	require.Len(t, snap.Hosts, 3, "should group by server label")
@@ -399,7 +400,7 @@ func TestPerHostMetrics_FallbackToServerLabel(t *testing.T) {
 }
 
 func TestAggregateStatusCodes_FallbackWithoutHostLabels(t *testing.T) {
-	metrics := `# HELP caddy_http_requests_total Counter.
+	input := `# HELP caddy_http_requests_total Counter.
 # TYPE caddy_http_requests_total counter
 caddy_http_requests_total{code="200"} 100
 caddy_http_requests_total{code="404"} 15
@@ -409,7 +410,7 @@ caddy_http_request_duration_seconds_bucket{le="+Inf"} 118
 caddy_http_request_duration_seconds_sum 10.0
 caddy_http_request_duration_seconds_count 118
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	require.Contains(t, snap.Hosts, "*", "should fall back to * when no host/server label")
@@ -420,7 +421,7 @@ caddy_http_request_duration_seconds_count 118
 }
 
 func TestStatusCodesFromHistogram_FallbackWithoutHostLabels(t *testing.T) {
-	metrics := `# HELP caddy_http_request_duration_seconds Histogram.
+	input := `# HELP caddy_http_request_duration_seconds Histogram.
 # TYPE caddy_http_request_duration_seconds histogram
 caddy_http_request_duration_seconds_bucket{code="200",le="0.1"} 50
 caddy_http_request_duration_seconds_bucket{code="200",le="+Inf"} 80
@@ -431,7 +432,7 @@ caddy_http_request_duration_seconds_bucket{code="500",le="+Inf"} 10
 caddy_http_request_duration_seconds_sum{code="500"} 1.0
 caddy_http_request_duration_seconds_count{code="500"} 10
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	require.Contains(t, snap.Hosts, "*", "should fall back to * when no host/server label")
@@ -441,7 +442,7 @@ caddy_http_request_duration_seconds_count{code="500"} 10
 }
 
 func TestAggregateStatusCodes_NoCodeLabel(t *testing.T) {
-	metrics := `# HELP caddy_http_requests_total Counter.
+	input := `# HELP caddy_http_requests_total Counter.
 # TYPE caddy_http_requests_total counter
 caddy_http_requests_total{handler="subroute"} 100
 # TYPE caddy_http_request_duration_seconds histogram
@@ -449,7 +450,7 @@ caddy_http_request_duration_seconds_bucket{le="+Inf"} 100
 caddy_http_request_duration_seconds_sum 5.0
 caddy_http_request_duration_seconds_count 100
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	require.Contains(t, snap.Hosts, "*")
@@ -458,12 +459,11 @@ caddy_http_request_duration_seconds_count 100
 }
 
 func TestPerHostMetrics_HostLabelTakesPriority(t *testing.T) {
-	// When both host and server labels exist, host should win
-	metrics := `# HELP caddy_http_requests_total Counter.
+	input := `# HELP caddy_http_requests_total Counter.
 # TYPE caddy_http_requests_total counter
 caddy_http_requests_total{host="example.com",handler="subroute",server="srv0"} 100
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	_, hasHost := snap.Hosts["example.com"]
@@ -473,7 +473,7 @@ caddy_http_requests_total{host="example.com",handler="subroute",server="srv0"} 1
 }
 
 func TestPerHostMetrics_MethodExtraction(t *testing.T) {
-	metrics := `# HELP caddy_http_requests_total Counter.
+	input := `# HELP caddy_http_requests_total Counter.
 # TYPE caddy_http_requests_total counter
 caddy_http_requests_total{server="main",code="200",method="GET"} 80
 caddy_http_requests_total{server="main",code="200",method="POST"} 15
@@ -488,12 +488,12 @@ caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
 caddy_http_request_duration_seconds_sum{server="api"} 2.0
 caddy_http_request_duration_seconds_count{server="api"} 40
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	main := snap.Hosts["main"]
 	require.NotNil(t, main)
-	assert.Equal(t, float64(85), main.Methods["GET"]) // 80 + 5
+	assert.Equal(t, float64(85), main.Methods["GET"])
 	assert.Equal(t, float64(15), main.Methods["POST"])
 
 	api := snap.Hosts["api"]
@@ -504,26 +504,26 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 
 func TestSortBuckets(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
-		var buckets []HistogramBucket
-		sortBuckets(buckets)
+		var buckets []metrics.HistogramBucket
+		metrics.SortBuckets(buckets)
 		assert.Empty(t, buckets)
 	})
 
 	t.Run("single element", func(t *testing.T) {
-		buckets := []HistogramBucket{{UpperBound: 0.5, CumulativeCount: 10}}
-		sortBuckets(buckets)
+		buckets := []metrics.HistogramBucket{{UpperBound: 0.5, CumulativeCount: 10}}
+		metrics.SortBuckets(buckets)
 		require.Len(t, buckets, 1)
 		assert.Equal(t, 0.5, buckets[0].UpperBound)
 	})
 
 	t.Run("already sorted", func(t *testing.T) {
-		buckets := []HistogramBucket{
+		buckets := []metrics.HistogramBucket{
 			{UpperBound: 0.005, CumulativeCount: 10},
 			{UpperBound: 0.01, CumulativeCount: 20},
 			{UpperBound: 0.1, CumulativeCount: 50},
 			{UpperBound: math.Inf(1), CumulativeCount: 100},
 		}
-		sortBuckets(buckets)
+		metrics.SortBuckets(buckets)
 		assert.Equal(t, 0.005, buckets[0].UpperBound)
 		assert.Equal(t, 0.01, buckets[1].UpperBound)
 		assert.Equal(t, 0.1, buckets[2].UpperBound)
@@ -531,13 +531,13 @@ func TestSortBuckets(t *testing.T) {
 	})
 
 	t.Run("unsorted", func(t *testing.T) {
-		buckets := []HistogramBucket{
+		buckets := []metrics.HistogramBucket{
 			{UpperBound: math.Inf(1), CumulativeCount: 100},
 			{UpperBound: 0.01, CumulativeCount: 20},
 			{UpperBound: 0.1, CumulativeCount: 50},
 			{UpperBound: 0.005, CumulativeCount: 10},
 		}
-		sortBuckets(buckets)
+		metrics.SortBuckets(buckets)
 		assert.Equal(t, 0.005, buckets[0].UpperBound)
 		assert.Equal(t, 0.01, buckets[1].UpperBound)
 		assert.Equal(t, 0.1, buckets[2].UpperBound)
@@ -546,21 +546,19 @@ func TestSortBuckets(t *testing.T) {
 }
 
 func TestSortBuckets_DuplicateUpperBounds(t *testing.T) {
-	buckets := []HistogramBucket{
+	buckets := []metrics.HistogramBucket{
 		{UpperBound: 0.1, CumulativeCount: 30},
 		{UpperBound: 0.01, CumulativeCount: 10},
 		{UpperBound: 0.1, CumulativeCount: 50},
 	}
-	sortBuckets(buckets)
+	metrics.SortBuckets(buckets)
 	assert.Equal(t, 0.01, buckets[0].UpperBound)
 	assert.Equal(t, 0.1, buckets[1].UpperBound)
 	assert.Equal(t, 0.1, buckets[2].UpperBound)
 }
 
-func TestMetricValue_HistogramReturnsZero(t *testing.T) {
-	// A histogram metric has no gauge/counter/untyped -> metricValue returns 0
-	// scalarValue on a histogram family falls through all three checks to return 0
-	metrics := `# HELP test_hist A histogram
+func TestScalarValue_HistogramReturnsZero(t *testing.T) {
+	input := `# HELP test_hist A histogram
 # TYPE test_hist histogram
 test_hist_bucket{le="0.1"} 10
 test_hist_bucket{le="+Inf"} 20
@@ -568,13 +566,13 @@ test_hist_sum 15.5
 test_hist_count 20
 `
 	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
-	families, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	families, err := parser.TextToMetricFamilies(strings.NewReader(input))
 	require.NoError(t, err)
-	assert.Equal(t, 0.0, scalarValue(families, "test_hist"))
+	assert.Equal(t, 0.0, metrics.ScalarValue(families, "test_hist"))
 }
 
 func TestPerHostMetrics_ResponseSizeExtraction(t *testing.T) {
-	metrics := `# HELP caddy_http_response_size_bytes Histogram of response sizes.
+	input := `# HELP caddy_http_response_size_bytes Histogram of response sizes.
 # TYPE caddy_http_response_size_bytes histogram
 caddy_http_response_size_bytes_bucket{server="main",le="1000"} 50
 caddy_http_response_size_bytes_bucket{server="main",le="+Inf"} 100
@@ -595,7 +593,7 @@ caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
 caddy_http_request_duration_seconds_sum{server="api"} 2.0
 caddy_http_request_duration_seconds_count{server="api"} 40
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	main := snap.Hosts["main"]
@@ -610,7 +608,7 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 }
 
 func TestPerHostMetrics_RequestSizeExtraction(t *testing.T) {
-	metrics := `# HELP caddy_http_request_size_bytes Histogram of request sizes.
+	input := `# HELP caddy_http_request_size_bytes Histogram of request sizes.
 # TYPE caddy_http_request_size_bytes histogram
 caddy_http_request_size_bytes_bucket{server="main",le="1000"} 80
 caddy_http_request_size_bytes_bucket{server="main",le="+Inf"} 100
@@ -631,7 +629,7 @@ caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
 caddy_http_request_duration_seconds_sum{server="api"} 2.0
 caddy_http_request_duration_seconds_count{server="api"} 40
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	main := snap.Hosts["main"]
@@ -646,7 +644,7 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 }
 
 func TestPerHostMetrics_TTFBExtraction(t *testing.T) {
-	metrics := `# HELP caddy_http_response_duration_seconds Histogram of time-to-first-byte.
+	input := `# HELP caddy_http_response_duration_seconds Histogram of time-to-first-byte.
 # TYPE caddy_http_response_duration_seconds histogram
 caddy_http_response_duration_seconds_bucket{server="main",code="200",le="0.005"} 30
 caddy_http_response_duration_seconds_bucket{server="main",code="200",le="0.01"} 60
@@ -669,7 +667,7 @@ caddy_http_request_duration_seconds_bucket{server="api",le="+Inf"} 40
 caddy_http_request_duration_seconds_sum{server="api"} 2.0
 caddy_http_request_duration_seconds_count{server="api"} 40
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(metrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	main := snap.Hosts["main"]
@@ -687,7 +685,7 @@ caddy_http_request_duration_seconds_count{server="api"} 40
 }
 
 func TestPerHostMetrics_NoTTFB(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(samplePerHostMetrics))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(samplePerHostMetrics))
 	require.NoError(t, err)
 
 	ex := snap.Hosts["example.com"]
@@ -696,9 +694,9 @@ func TestPerHostMetrics_NoTTFB(t *testing.T) {
 	assert.Equal(t, float64(0), ex.TTFBSum)
 }
 
-func TestParsePrometheusMetrics_Mixed(t *testing.T) {
+func TestParsePrometheus_Mixed(t *testing.T) {
 	mixed := sampleMetrics + sampleCaddyMetrics
-	snap, err := parsePrometheusMetrics(strings.NewReader(mixed))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(mixed))
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(20), snap.TotalThreads, "TotalThreads")
@@ -707,7 +705,7 @@ func TestParsePrometheusMetrics_Mixed(t *testing.T) {
 	assert.True(t, snap.HasHTTPMetrics, "HasHTTPMetrics should be true in mixed metrics")
 }
 
-func TestParsePrometheusMetrics_ProcessMetrics(t *testing.T) {
+func TestParsePrometheus_ProcessMetrics(t *testing.T) {
 	input := `# TYPE process_cpu_seconds_total counter
 process_cpu_seconds_total 42.5
 # TYPE process_resident_memory_bytes gauge
@@ -715,7 +713,7 @@ process_resident_memory_bytes 5.24288e+07
 # TYPE process_start_time_seconds gauge
 process_start_time_seconds 1.71e+09
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	assert.Equal(t, 42.5, snap.ProcessCPUSecondsTotal)
@@ -723,11 +721,11 @@ process_start_time_seconds 1.71e+09
 	assert.Equal(t, 1.71e+09, snap.ProcessStartTimeSeconds)
 }
 
-func TestParsePrometheusMetrics_NoProcessMetrics(t *testing.T) {
+func TestParsePrometheus_NoProcessMetrics(t *testing.T) {
 	input := `# TYPE frankenphp_busy_threads gauge
 frankenphp_busy_threads 5
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(0), snap.ProcessCPUSecondsTotal)
@@ -746,8 +744,8 @@ caddy_reverse_proxy_upstreams_healthy{upstream="10.0.0.3:8080"} 0
 caddy_reverse_proxy_upstreams_healthy{handler="reverse_proxy_1",upstream="api.internal:9090"} 1
 `
 
-func TestParsePrometheusMetrics_Upstreams(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleUpstreamMetrics))
+func TestParsePrometheus_Upstreams(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleUpstreamMetrics))
 	require.NoError(t, err)
 	require.Len(t, snap.Upstreams, 4)
 
@@ -768,18 +766,18 @@ func TestParsePrometheusMetrics_Upstreams(t *testing.T) {
 	assert.Equal(t, float64(1), api.Healthy)
 }
 
-func TestParsePrometheusMetrics_NoUpstreams(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_NoUpstreams(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 	assert.Nil(t, snap.Upstreams)
 }
 
-func TestParsePrometheusMetrics_UpstreamsWithHandlerLabel(t *testing.T) {
+func TestParsePrometheus_UpstreamsWithHandlerLabel(t *testing.T) {
 	input := `# TYPE caddy_reverse_proxy_upstreams_healthy gauge
 caddy_reverse_proxy_upstreams_healthy{handler="rp_0",upstream="a:80"} 1
 caddy_reverse_proxy_upstreams_healthy{handler="rp_1",upstream="a:80"} 0
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 	require.Len(t, snap.Upstreams, 2, "same address with different handlers should be distinct entries")
 
@@ -794,19 +792,19 @@ caddy_reverse_proxy_upstreams_healthy{handler="rp_1",upstream="a:80"} 0
 	assert.Equal(t, float64(0), u1.Healthy)
 }
 
-func TestParsePrometheusMetrics_UpstreamsEmptyLabel(t *testing.T) {
+func TestParsePrometheus_UpstreamsEmptyLabel(t *testing.T) {
 	input := `# HELP caddy_reverse_proxy_upstreams_healthy Health status
 # TYPE caddy_reverse_proxy_upstreams_healthy gauge
 caddy_reverse_proxy_upstreams_healthy{handler="rp",upstream=""} 1
 caddy_reverse_proxy_upstreams_healthy{handler="rp",upstream="valid:8080"} 1
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 	require.Len(t, snap.Upstreams, 1)
 	assert.Contains(t, snap.Upstreams, "valid:8080/rp")
 }
 
-func TestParsePrometheusMetrics_ExtraFamilies(t *testing.T) {
+func TestParsePrometheus_ExtraFamilies(t *testing.T) {
 	input := `# TYPE frankenphp_busy_threads gauge
 frankenphp_busy_threads 5
 # HELP acmeguard_decisions_total Total decisions
@@ -817,7 +815,7 @@ acmeguard_decisions_total{action="captcha"} 7
 # TYPE mymodule_cache_hits counter
 mymodule_cache_hits 1234
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	require.NotNil(t, snap.Extra)
@@ -830,20 +828,20 @@ mymodule_cache_hits 1234
 	assert.Len(t, fam.GetMetric(), 2)
 }
 
-func TestParsePrometheusMetrics_NoExtraWhenAllKnown(t *testing.T) {
-	snap, err := parsePrometheusMetrics(strings.NewReader(sampleMetrics))
+func TestParsePrometheus_NoExtraWhenAllKnown(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 
 	assert.Nil(t, snap.Extra)
 }
 
-func TestParsePrometheusMetrics_ExtraWithCoreMetrics(t *testing.T) {
+func TestParsePrometheus_ExtraWithCoreMetrics(t *testing.T) {
 	input := `# TYPE caddy_http_requests_total counter
 caddy_http_requests_total{host="example.com",code="200"} 100
 # TYPE custom_plugin_metric gauge
 custom_plugin_metric{instance="a"} 42
 `
-	snap, err := parsePrometheusMetrics(strings.NewReader(input))
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
 	require.NoError(t, err)
 
 	assert.True(t, snap.HasHTTPMetrics)

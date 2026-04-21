@@ -49,8 +49,8 @@ func newPluginTabs(p plugin.Plugin, startID tab) ([]*pluginTab, *pluginGroup) {
 			g.tabAvail = ta
 			g.wasTabAvail = make(map[string]bool)
 		}
-		for i, desc := range mr.Tabs() {
-			r := mr.RendererForTab(desc.Key)
+		for i, desc := range safePluginTabs(mr) {
+			r := safePluginRendererForTab(mr, desc.Key)
 			if r != nil {
 				tabs = append(tabs, &pluginTab{
 					group:    g,
@@ -157,4 +157,27 @@ func safePluginTabAvailable(ta plugin.TabAvailability, key string) (avail bool) 
 		}
 	}()
 	return ta.TabAvailable(key)
+}
+
+// safePluginTabs recovers from panics in MultiRenderer.Tabs. A panicking
+// plugin produces no tabs; other plugins keep running.
+func safePluginTabs(mr plugin.MultiRenderer) (descs []plugin.TabDescriptor) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			descs = nil
+		}
+	}()
+	return mr.Tabs()
+}
+
+// safePluginRendererForTab recovers from panics in MultiRenderer.RendererForTab.
+// A panic for one key drops that tab; the other tabs of the same plugin keep
+// working.
+func safePluginRendererForTab(mr plugin.MultiRenderer, key string) (r plugin.Renderer) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r = nil
+		}
+	}()
+	return mr.RendererForTab(key)
 }

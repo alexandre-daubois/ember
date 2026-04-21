@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -474,7 +475,7 @@ func (f *HTTPFetcher) fetchMetrics(ctx context.Context) (MetricsSnapshot, error)
 		return MetricsSnapshot{}, fmt.Errorf("fetch metrics: HTTP %d", resp.StatusCode)
 	}
 
-	return parsePrometheusMetrics(resp.Body)
+	return metrics.ParsePrometheus(resp.Body)
 }
 
 func (f *HTTPFetcher) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
