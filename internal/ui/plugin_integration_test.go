@@ -18,8 +18,8 @@ type lifecyclePlugin struct {
 	viewData   string
 }
 
-func (p *lifecyclePlugin) Name() string                                        { return p.name }
-func (p *lifecyclePlugin) Init(_ context.Context, _ plugin.PluginConfig) error { return nil }
+func (p *lifecyclePlugin) Name() string                                             { return p.name }
+func (p *lifecyclePlugin) Provision(_ context.Context, _ plugin.PluginConfig) error { return nil }
 
 func (p *lifecyclePlugin) Fetch(_ context.Context) (any, error) {
 	p.fetchCount++

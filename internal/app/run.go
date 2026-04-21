@@ -119,10 +119,7 @@ Keybindings:
 			hasFrankenPHP := f.DetectFrankenPHP(ctx)
 			f.FetchServerNames(ctx)
 
-			plugins, err := initPlugins(ctx, &cfg)
-			if err != nil {
-				return err
-			}
+			plugins := provisionPlugins(ctx, &cfg)
 			defer closePlugins(plugins)
 
 			switch {
@@ -289,25 +286,29 @@ func isValidMetricPrefix(s string) bool {
 	return true
 }
 
-func initPlugins(ctx context.Context, cfg *config) ([]plugin.Plugin, error) {
+// provisionPlugins runs Provision on every registered plugin and returns the
+// ones that succeeded. A plugin whose Provision returns an error is logged as
+// a warning and dropped; Ember continues without it instead of aborting.
+func provisionPlugins(ctx context.Context, cfg *config) []plugin.Plugin {
 	all := plugin.All()
 	if len(all) == 0 {
-		return nil, nil
+		return nil
 	}
 
-	var initialized []plugin.Plugin
+	var ready []plugin.Plugin
 	for _, p := range all {
 		pcfg := plugin.PluginConfig{
 			CaddyAddr: cfg.addr,
 			Options:   pluginEnvOptions(p.Name()),
 		}
-		if err := p.Init(ctx, pcfg); err != nil {
-			closePlugins(initialized)
-			return nil, fmt.Errorf("plugin %s: %w", p.Name(), err)
+		if err := p.Provision(ctx, pcfg); err != nil {
+			cfg.logger.Warn("plugin disabled: Provision failed",
+				"plugin", p.Name(), "error", err)
+			continue
 		}
-		initialized = append(initialized, p)
+		ready = append(ready, p)
 	}
-	return initialized, nil
+	return ready
 }
 
 func closePlugins(plugins []plugin.Plugin) {

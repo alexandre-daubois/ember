@@ -7,7 +7,7 @@
 // They are compiled into the binary using Go's blank import pattern (the same
 // approach used by Caddy). There is no runtime plugin loading.
 //
-// A plugin must implement [Plugin] (Name + Init). It can optionally implement
+// A plugin must implement [Plugin] (Name + Provision). It can optionally implement
 // any combination of [Fetcher], [Renderer]/[MultiRenderer], and [Exporter]:
 //
 //   - Fetcher + Renderer: custom TUI tab (data collection + visualization)
@@ -37,15 +37,15 @@ import (
 // Plugin is the minimal interface every plugin must implement.
 // Name returns a unique identifier used in the tab bar and for environment
 // variable configuration (EMBER_PLUGIN_{NAME}_{KEY}).
-// Init is called once before the TUI or daemon starts. Return an error
-// to abort startup; already-initialized plugins implementing [Closer]
-// will be closed automatically.
+// Provision is called once before the TUI or daemon starts. If it returns
+// an error, Ember logs a warning and disables the plugin, then continues
+// without it; the rest of Ember and any other plugins keep running.
 type Plugin interface {
 	Name() string
-	Init(ctx context.Context, cfg PluginConfig) error
+	Provision(ctx context.Context, cfg PluginConfig) error
 }
 
-// PluginConfig carries configuration passed to a plugin during Init.
+// PluginConfig carries configuration passed to a plugin during Provision.
 // CaddyAddr is the Caddy admin API address Ember is connected to.
 // Options contains environment variables matching the plugin's name
 // (e.g., EMBER_PLUGIN_RATELIMIT_MAX_RPS=1000 becomes Options["max_rps"]="1000").
@@ -121,8 +121,9 @@ type Exporter interface {
 // Closer is optionally implemented by plugins that hold resources
 // (connections, goroutines, file handles) requiring cleanup.
 // Ember calls Close in reverse registration order at shutdown.
-// If a plugin fails during Init, already-initialized plugins
-// implementing Closer are closed automatically.
+// If a plugin's Provision returns an error, Close is not called on it;
+// other already-provisioned plugins implementing Closer are closed
+// normally at shutdown.
 type Closer interface {
 	Close() error
 }

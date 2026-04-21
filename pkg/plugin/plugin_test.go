@@ -14,15 +14,15 @@ import (
 )
 
 type fakePlugin struct {
-	name    string
-	initErr error
-	initCfg plugin.PluginConfig
+	name         string
+	provisionErr error
+	provisionCfg plugin.PluginConfig
 }
 
 func (p *fakePlugin) Name() string { return p.name }
-func (p *fakePlugin) Init(_ context.Context, cfg plugin.PluginConfig) error {
-	p.initCfg = cfg
-	return p.initErr
+func (p *fakePlugin) Provision(_ context.Context, cfg plugin.PluginConfig) error {
+	p.provisionCfg = cfg
+	return p.provisionErr
 }
 
 type fakeFullPlugin struct {
@@ -113,22 +113,22 @@ func TestRegisterDifferentNamesOK(t *testing.T) {
 	assert.Len(t, plugin.All(), 2)
 }
 
-func TestPluginInit(t *testing.T) {
+func TestPluginProvision(t *testing.T) {
 	p := &fakePlugin{name: "test"}
 	cfg := plugin.PluginConfig{
 		CaddyAddr: "http://localhost:2019",
 		Options:   map[string]string{"key": "value"},
 	}
-	err := p.Init(context.Background(), cfg)
+	err := p.Provision(context.Background(), cfg)
 
 	assert.NoError(t, err)
-	assert.Equal(t, cfg, p.initCfg)
+	assert.Equal(t, cfg, p.provisionCfg)
 }
 
-func TestPluginInitError(t *testing.T) {
-	p := &fakePlugin{name: "broken", initErr: assert.AnError}
+func TestPluginProvisionError(t *testing.T) {
+	p := &fakePlugin{name: "broken", provisionErr: assert.AnError}
 
-	err := p.Init(context.Background(), plugin.PluginConfig{})
+	err := p.Provision(context.Background(), plugin.PluginConfig{})
 	assert.ErrorIs(t, err, assert.AnError)
 }
 

@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -10,6 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newTestConfig(addr string) *config {
+	return &config{
+		addr:   addr,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
 
 func TestValidate_DaemonRequiresExpose(t *testing.T) {
 	cfg := &config{daemon: true, expose: ""}
@@ -502,48 +511,49 @@ func TestRun_HelpContainsKeybindings(t *testing.T) {
 }
 
 type testPlugin struct {
-	name    string
-	initCfg plugin.PluginConfig
-	initErr error
+	name         string
+	provisionCfg plugin.PluginConfig
+	provisionErr error
 }
 
 func (p *testPlugin) Name() string { return p.name }
-func (p *testPlugin) Init(_ context.Context, cfg plugin.PluginConfig) error {
-	p.initCfg = cfg
-	return p.initErr
+func (p *testPlugin) Provision(_ context.Context, cfg plugin.PluginConfig) error {
+	p.provisionCfg = cfg
+	return p.provisionErr
 }
 
-func TestInitPlugins_Empty(t *testing.T) {
+func TestProvisionPlugins_Empty(t *testing.T) {
 	plugin.Reset()
-	cfg := &config{addr: "http://localhost:2019"}
+	cfg := newTestConfig("http://localhost:2019")
 
-	plugins, err := initPlugins(context.Background(), cfg)
-	assert.NoError(t, err)
+	plugins := provisionPlugins(context.Background(), cfg)
 	assert.Nil(t, plugins)
 }
 
-func TestInitPlugins_Success(t *testing.T) {
+func TestProvisionPlugins_Success(t *testing.T) {
 	plugin.Reset()
 	p := &testPlugin{name: "test"}
 	plugin.Register(p)
 
-	cfg := &config{addr: "http://localhost:2019"}
-	plugins, err := initPlugins(context.Background(), cfg)
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg)
 
-	assert.NoError(t, err)
 	require.Len(t, plugins, 1)
-	assert.Equal(t, "http://localhost:2019", p.initCfg.CaddyAddr)
+	assert.Equal(t, "http://localhost:2019", p.provisionCfg.CaddyAddr)
 }
 
-func TestInitPlugins_InitError(t *testing.T) {
+func TestProvisionPlugins_FailedPluginIsSkipped(t *testing.T) {
 	plugin.Reset()
-	plugin.Register(&testPlugin{name: "broken", initErr: assert.AnError})
+	good := &testPlugin{name: "good"}
+	bad := &testPlugin{name: "bad", provisionErr: assert.AnError}
+	plugin.Register(bad)
+	plugin.Register(good)
 
-	cfg := &config{addr: "http://localhost:2019"}
-	_, err := initPlugins(context.Background(), cfg)
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "plugin broken")
+	require.Len(t, plugins, 1, "failing plugin should be dropped, good plugin kept")
+	assert.Equal(t, "good", plugins[0].Name())
 }
 
 func TestPluginEnvOptions(t *testing.T) {
@@ -577,18 +587,17 @@ func TestPluginEnvOptions_ValueWithEquals(t *testing.T) {
 	assert.Equal(t, "postgres://user:pass@host/db?opt=val", opts["dsn"])
 }
 
-func TestInitPlugins_PassesEnvOptions(t *testing.T) {
+func TestProvisionPlugins_PassesEnvOptions(t *testing.T) {
 	plugin.Reset()
 	t.Setenv("EMBER_PLUGIN_MYPLUGIN_KEY", "val")
 
 	p := &testPlugin{name: "myplugin"}
 	plugin.Register(p)
 
-	cfg := &config{addr: "http://localhost:2019"}
-	_, err := initPlugins(context.Background(), cfg)
+	cfg := newTestConfig("http://localhost:2019")
+	provisionPlugins(context.Background(), cfg)
 
-	assert.NoError(t, err)
-	assert.Equal(t, "val", p.initCfg.Options["key"])
+	assert.Equal(t, "val", p.provisionCfg.Options["key"])
 }
 
 type closableTestPlugin struct {
@@ -611,20 +620,21 @@ func (p *closableTestPlugin) Close() error {
 	return nil
 }
 
-func TestInitPlugins_CleansUpOnFailure(t *testing.T) {
+func TestProvisionPlugins_GoodPluginsKeptDespiteFailure(t *testing.T) {
 	plugin.Reset()
 
 	good := &closableTestPlugin{testPlugin: testPlugin{name: "good"}}
-	bad := &testPlugin{name: "bad", initErr: assert.AnError}
+	bad := &testPlugin{name: "bad", provisionErr: assert.AnError}
 
 	plugin.Register(good)
 	plugin.Register(bad)
 
-	cfg := &config{addr: "http://localhost:2019"}
-	_, err := initPlugins(context.Background(), cfg)
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg)
 
-	require.Error(t, err)
-	assert.True(t, good.closed, "successfully initialized plugin should be closed on failure")
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "good", plugins[0].Name())
+	assert.False(t, good.closed, "good plugin must stay open; Close runs only at shutdown")
 }
 
 func TestClosePlugins_SkipsNonCloser(t *testing.T) {

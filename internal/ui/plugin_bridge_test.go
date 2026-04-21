@@ -16,15 +16,15 @@ type stubPlugin struct {
 	name string
 }
 
-func (p *stubPlugin) Name() string                                        { return p.name }
-func (p *stubPlugin) Init(_ context.Context, _ plugin.PluginConfig) error { return nil }
-func (p *stubPlugin) Fetch(_ context.Context) (any, error)                { return "data", nil }
-func (p *stubPlugin) Update(data any, _, _ int) plugin.Renderer           { return p }
-func (p *stubPlugin) View(w, _ int) string                                { return "rendered" }
-func (p *stubPlugin) HandleKey(_ tea.KeyMsg) bool                         { return false }
-func (p *stubPlugin) StatusCount() string                                 { return "5 items" }
-func (p *stubPlugin) HelpBindings() []plugin.HelpBinding                  { return nil }
-func (p *stubPlugin) WriteMetrics(_ io.Writer, _ any, _ string)           {}
+func (p *stubPlugin) Name() string                                             { return p.name }
+func (p *stubPlugin) Provision(_ context.Context, _ plugin.PluginConfig) error { return nil }
+func (p *stubPlugin) Fetch(_ context.Context) (any, error)                     { return "data", nil }
+func (p *stubPlugin) Update(data any, _, _ int) plugin.Renderer                { return p }
+func (p *stubPlugin) View(w, _ int) string                                     { return "rendered" }
+func (p *stubPlugin) HandleKey(_ tea.KeyMsg) bool                              { return false }
+func (p *stubPlugin) StatusCount() string                                      { return "5 items" }
+func (p *stubPlugin) HelpBindings() []plugin.HelpBinding                       { return nil }
+func (p *stubPlugin) WriteMetrics(_ io.Writer, _ any, _ string)                {}
 
 type panicPlugin struct {
 	stubPlugin
@@ -65,8 +65,8 @@ func TestNewPluginTabs_MinimalPlugin(t *testing.T) {
 
 type minimalPlugin struct{ name string }
 
-func (p *minimalPlugin) Name() string                                        { return p.name }
-func (p *minimalPlugin) Init(_ context.Context, _ plugin.PluginConfig) error { return nil }
+func (p *minimalPlugin) Name() string                                             { return p.name }
+func (p *minimalPlugin) Provision(_ context.Context, _ plugin.PluginConfig) error { return nil }
 
 func TestSafePluginFetch(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
@@ -178,10 +178,10 @@ type exporterOnlyStub struct {
 	name string
 }
 
-func (p *exporterOnlyStub) Name() string                                        { return p.name }
-func (p *exporterOnlyStub) Init(_ context.Context, _ plugin.PluginConfig) error { return nil }
-func (p *exporterOnlyStub) Fetch(_ context.Context) (any, error)                { return "metrics-data", nil }
-func (p *exporterOnlyStub) WriteMetrics(_ io.Writer, _ any, _ string)           {}
+func (p *exporterOnlyStub) Name() string                                             { return p.name }
+func (p *exporterOnlyStub) Provision(_ context.Context, _ plugin.PluginConfig) error { return nil }
+func (p *exporterOnlyStub) Fetch(_ context.Context) (any, error)                     { return "metrics-data", nil }
+func (p *exporterOnlyStub) WriteMetrics(_ io.Writer, _ any, _ string)                {}
 
 func TestNewPluginTabs_ExporterOnly(t *testing.T) {
 	p := &exporterOnlyStub{name: "exporter-only"}

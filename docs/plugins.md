@@ -38,7 +38,7 @@ type statsPlugin struct {
 
 func (p *statsPlugin) Name() string { return "stats" }
 
-func (p *statsPlugin) Init(_ context.Context, _ plugin.PluginConfig) error {
+func (p *statsPlugin) Provision(_ context.Context, _ plugin.PluginConfig) error {
 	return nil
 }
 
@@ -115,10 +115,10 @@ export EMBER_PLUGIN_RATELIMIT_MAX_RPS=1000
 export EMBER_PLUGIN_RATELIMIT_WINDOW=60s
 ```
 
-These are passed to `Init()` as `PluginConfig.Options` with lowercased keys:
+These are passed to `Provision()` as `PluginConfig.Options` with lowercased keys:
 
 ```go
-func (p *myPlugin) Init(ctx context.Context, cfg plugin.PluginConfig) error {
+func (p *myPlugin) Provision(ctx context.Context, cfg plugin.PluginConfig) error {
     maxRPS := cfg.Options["max_rps"]
     window := cfg.Options["window"]
     // ...
@@ -130,7 +130,7 @@ func (p *myPlugin) Init(ctx context.Context, cfg plugin.PluginConfig) error {
 ## Lifecycle
 
 1. **Registration**: `plugin.Register()` is called from `init()` at import time
-2. **Initialization**: `Init(ctx, cfg)` is called before the TUI or daemon starts. If it fails, already-initialized plugins that implement `Closer` are closed in reverse order
+2. **Provisioning**: `Provision(ctx, cfg)` is called before the TUI or daemon starts. A plugin whose `Provision` returns an error is logged as a warning and disabled for the rest of the session; Ember keeps running
 3. **Runtime**: `Fetch` is called on every tick with a cancellable context. In TUI mode, `Update`/`View`/`HandleKey` are called from the event loop. In daemon mode (`--daemon`), only `Fetch` and `WriteMetrics` are called
 4. **Shutdown**: `Close()` is called on plugins that implement the `Closer` interface, in reverse registration order
 
@@ -138,7 +138,7 @@ func (p *myPlugin) Init(ctx context.Context, cfg plugin.PluginConfig) error {
 
 Ember handles plugin errors at every stage:
 
-**`Init` returns an error**: startup aborts. Already-initialized plugins that implement `Closer` are closed in reverse order. The error is printed to stderr.
+**`Provision` returns an error**: the plugin is disabled for this session. Ember logs a warning identifying the plugin and the error, then continues with the remaining plugins. The plugin's `Close` (if any) is not called since no resources were confirmed to be held.
 
 **`Fetch` returns an error**: the previous data is preserved (Ember does not overwrite it with nil). In TUI mode, the error is displayed in the tab when `View` returns an empty string. In daemon mode, the error is logged and the previous data continues to be served on `/metrics`. Fetch will be retried on the next tick.
 
@@ -198,7 +198,7 @@ type cacheStats struct {
 
 func (p *cachePlugin) Name() string { return "cache" }
 
-func (p *cachePlugin) Init(_ context.Context, cfg plugin.PluginConfig) error {
+func (p *cachePlugin) Provision(_ context.Context, cfg plugin.PluginConfig) error {
 	p.endpoint = cfg.Options["endpoint"]
 	if p.endpoint == "" {
 		p.endpoint = "http://localhost:6379/stats"
@@ -297,7 +297,7 @@ All plugin interfaces live in `pkg/plugin/`.
 ```go
 type Plugin interface {
     Name() string
-    Init(ctx context.Context, cfg PluginConfig) error
+    Provision(ctx context.Context, cfg PluginConfig) error
 }
 ```
 
@@ -411,7 +411,7 @@ type MultiRenderer interface {
 }
 ```
 
-Implement `MultiRenderer` instead of `Renderer` when your plugin needs multiple TUI tabs. Each tab gets its own `Renderer`, but all tabs share a single `Fetch` call. `Tabs()` is called once after `Init()` to determine the number and order of tabs. `RendererForTab` is called once per tab to create its initial `Renderer`.
+Implement `MultiRenderer` instead of `Renderer` when your plugin needs multiple TUI tabs. Each tab gets its own `Renderer`, but all tabs share a single `Fetch` call. `Tabs()` is called once after `Provision()` to determine the number and order of tabs. `RendererForTab` is called once per tab to create its initial `Renderer`.
 
 If a plugin implements both `Renderer` and `MultiRenderer`, `MultiRenderer` takes priority.
 
