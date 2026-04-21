@@ -3,12 +3,22 @@ package app
 import (
 	"bytes"
 	"context"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func newTestConfig(addr string) *config {
+	return &config{
+		addr:   addr,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
 
 func TestValidate_DaemonRequiresExpose(t *testing.T) {
 	cfg := &config{daemon: true, expose: ""}
@@ -498,4 +508,156 @@ func TestRun_HelpContainsKeybindings(t *testing.T) {
 	assert.Contains(t, out, "--addr")
 	assert.Contains(t, out, "--expose")
 	assert.Contains(t, out, "Examples")
+}
+
+type testPlugin struct {
+	name         string
+	provisionCfg plugin.PluginConfig
+	provisionErr error
+}
+
+func (p *testPlugin) Name() string { return p.name }
+func (p *testPlugin) Provision(_ context.Context, cfg plugin.PluginConfig) error {
+	p.provisionCfg = cfg
+	return p.provisionErr
+}
+
+func TestProvisionPlugins_Empty(t *testing.T) {
+	plugin.Reset()
+	cfg := newTestConfig("http://localhost:2019")
+
+	plugins := provisionPlugins(context.Background(), cfg)
+	assert.Nil(t, plugins)
+}
+
+func TestProvisionPlugins_Success(t *testing.T) {
+	plugin.Reset()
+	p := &testPlugin{name: "test"}
+	plugin.Register(p)
+
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg)
+
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "http://localhost:2019", p.provisionCfg.CaddyAddr)
+}
+
+func TestProvisionPlugins_FailedPluginIsSkipped(t *testing.T) {
+	plugin.Reset()
+	good := &testPlugin{name: "good"}
+	bad := &testPlugin{name: "bad", provisionErr: assert.AnError}
+	plugin.Register(bad)
+	plugin.Register(good)
+
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg)
+
+	require.Len(t, plugins, 1, "failing plugin should be dropped, good plugin kept")
+	assert.Equal(t, "good", plugins[0].Name())
+}
+
+func TestPluginEnvOptions(t *testing.T) {
+	t.Setenv("EMBER_PLUGIN_RATELIMIT_API_KEY", "abc123")
+	t.Setenv("EMBER_PLUGIN_RATELIMIT_ENDPOINT", "http://localhost:8080")
+	t.Setenv("EMBER_OTHER_VAR", "ignored")
+
+	opts := pluginEnvOptions("ratelimit")
+
+	assert.Equal(t, "abc123", opts["api_key"])
+	assert.Equal(t, "http://localhost:8080", opts["endpoint"])
+	assert.NotContains(t, opts, "other_var")
+}
+
+func TestPluginEnvOptions_HyphenatedName(t *testing.T) {
+	t.Setenv("EMBER_PLUGIN_MYPLUGIN_FOO", "bar")
+
+	opts := pluginEnvOptions("my-plugin")
+	assert.Equal(t, "bar", opts["foo"])
+}
+
+func TestPluginEnvOptions_Empty(t *testing.T) {
+	opts := pluginEnvOptions("nonexistent")
+	assert.Empty(t, opts)
+}
+
+func TestPluginEnvOptions_ValueWithEquals(t *testing.T) {
+	t.Setenv("EMBER_PLUGIN_TEST_DSN", "postgres://user:pass@host/db?opt=val")
+
+	opts := pluginEnvOptions("test")
+	assert.Equal(t, "postgres://user:pass@host/db?opt=val", opts["dsn"])
+}
+
+func TestProvisionPlugins_PassesEnvOptions(t *testing.T) {
+	plugin.Reset()
+	t.Setenv("EMBER_PLUGIN_MYPLUGIN_KEY", "val")
+
+	p := &testPlugin{name: "myplugin"}
+	plugin.Register(p)
+
+	cfg := newTestConfig("http://localhost:2019")
+	provisionPlugins(context.Background(), cfg)
+
+	assert.Equal(t, "val", p.provisionCfg.Options["key"])
+}
+
+type closableTestPlugin struct {
+	testPlugin
+	closed bool
+}
+
+type closableOrderPlugin struct {
+	testPlugin
+	closeFn func()
+}
+
+func (p *closableOrderPlugin) Close() error {
+	p.closeFn()
+	return nil
+}
+
+func (p *closableTestPlugin) Close() error {
+	p.closed = true
+	return nil
+}
+
+func TestProvisionPlugins_GoodPluginsKeptDespiteFailure(t *testing.T) {
+	plugin.Reset()
+
+	good := &closableTestPlugin{testPlugin: testPlugin{name: "good"}}
+	bad := &testPlugin{name: "bad", provisionErr: assert.AnError}
+
+	plugin.Register(good)
+	plugin.Register(bad)
+
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg)
+
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "good", plugins[0].Name())
+	assert.False(t, good.closed, "good plugin must stay open; Close runs only at shutdown")
+}
+
+func TestClosePlugins_SkipsNonCloser(t *testing.T) {
+	p1 := &testPlugin{name: "first"}
+	p2 := &testPlugin{name: "second"}
+
+	assert.NotPanics(t, func() {
+		closePlugins([]plugin.Plugin{p1, p2})
+	})
+}
+
+func TestClosePlugins_ReverseOrder(t *testing.T) {
+	var order []string
+
+	p1 := &closableOrderPlugin{testPlugin: testPlugin{name: "first"}, closeFn: func() { order = append(order, "first") }}
+	p2 := &closableOrderPlugin{testPlugin: testPlugin{name: "second"}, closeFn: func() { order = append(order, "second") }}
+
+	closePlugins([]plugin.Plugin{p1, p2})
+	assert.Equal(t, []string{"second", "first"}, order)
+}
+
+func TestClosePlugins_Empty(t *testing.T) {
+	assert.NotPanics(t, func() {
+		closePlugins(nil)
+	})
 }

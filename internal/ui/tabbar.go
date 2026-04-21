@@ -18,7 +18,7 @@ var (
 	tabSeparatorStyle = lipgloss.NewStyle().Foreground(subtle)
 )
 
-func tabLabel(t tab) string {
+func tabLabel(t tab, pluginTabs []*pluginTab) string {
 	switch t {
 	case tabCaddy:
 		return "Caddy"
@@ -33,14 +33,19 @@ func tabLabel(t tab) string {
 	case tabFrankenPHP:
 		return "FrankenPHP"
 	default:
+		for _, pt := range pluginTabs {
+			if pt.tabID == t {
+				return pt.tabName
+			}
+		}
 		return "?"
 	}
 }
 
-func renderTabBar(tabs []tab, active tab, width int, counts map[tab]string) string {
+func renderTabBar(tabs []tab, active tab, width int, counts map[tab]string, pluginTabs []*pluginTab) string {
 	var parts []string
 	for _, t := range tabs {
-		label := tabLabel(t)
+		label := tabLabel(t, pluginTabs)
 		if c, ok := counts[t]; ok && c != "" {
 			label += " (" + c + ")"
 		}

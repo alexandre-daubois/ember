@@ -3,11 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -121,4 +123,160 @@ func TestReloadTLS_NonHTTPFetcher(t *testing.T) {
 	reloadTLS(&mockFetcher{}, &config{}, log)
 
 	assert.Contains(t, buf.String(), "not supported")
+}
+
+type daemonFetchPlugin struct {
+	testPlugin
+	fetchData any
+	fetchErr  error
+}
+
+func (p *daemonFetchPlugin) Fetch(_ context.Context) (any, error) {
+	return p.fetchData, p.fetchErr
+}
+
+type daemonExportPlugin struct {
+	daemonFetchPlugin
+}
+
+func (p *daemonExportPlugin) WriteMetrics(w io.Writer, _ any, _ string) {
+	_, _ = io.WriteString(w, "daemon_test_metric 1\n")
+}
+
+type daemonPanicFetchPlugin struct {
+	testPlugin
+}
+
+func (p *daemonPanicFetchPlugin) Fetch(_ context.Context) (any, error) {
+	panic("daemon fetch boom")
+}
+
+func TestNewDaemonPlugins_Empty(t *testing.T) {
+	dps := newDaemonPlugins(nil)
+	assert.Nil(t, dps)
+}
+
+func TestNewDaemonPlugins_SkipsBarePlugin(t *testing.T) {
+	bare := &testPlugin{name: "bare"}
+	dps := newDaemonPlugins([]plugin.Plugin{bare})
+	assert.Empty(t, dps)
+}
+
+func TestNewDaemonPlugins_IncludesFetcher(t *testing.T) {
+	p := &daemonFetchPlugin{testPlugin: testPlugin{name: "fetchy"}, fetchData: "data"}
+	dps := newDaemonPlugins([]plugin.Plugin{p})
+	require.Len(t, dps, 1)
+	assert.Equal(t, "fetchy", dps[0].name)
+	assert.NotNil(t, dps[0].fetcher)
+	assert.Nil(t, dps[0].exporter)
+}
+
+func TestNewDaemonPlugins_IncludesExporter(t *testing.T) {
+	p := &daemonExportPlugin{daemonFetchPlugin: daemonFetchPlugin{testPlugin: testPlugin{name: "exporty"}}}
+	dps := newDaemonPlugins([]plugin.Plugin{p})
+	require.Len(t, dps, 1)
+	assert.NotNil(t, dps[0].fetcher)
+	assert.NotNil(t, dps[0].exporter)
+}
+
+func TestSafeFetch_Normal(t *testing.T) {
+	p := &daemonFetchPlugin{testPlugin: testPlugin{name: "ok"}, fetchData: "hello"}
+	data, err := plugin.SafeFetch(context.Background(), p)
+	assert.NoError(t, err)
+	assert.Equal(t, "hello", data)
+}
+
+func TestSafeFetch_RecoversPanic(t *testing.T) {
+	p := &daemonPanicFetchPlugin{testPlugin: testPlugin{name: "panic"}}
+	data, err := plugin.SafeFetch(context.Background(), p)
+	assert.Nil(t, data)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "plugin panic during Fetch")
+}
+
+func TestFetchDaemonPlugins_UpdatesData(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	dps := []daemonPlugin{
+		{name: "a", fetcher: &daemonFetchPlugin{fetchData: "result"}},
+	}
+	fetchDaemonPlugins(context.Background(), dps, log)
+	assert.Equal(t, "result", dps[0].data)
+	assert.Empty(t, buf.String())
+}
+
+func TestFetchDaemonPlugins_LogsOnPanic(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	dps := []daemonPlugin{
+		{name: "panicky", fetcher: &daemonPanicFetchPlugin{testPlugin: testPlugin{name: "panicky"}}},
+	}
+	fetchDaemonPlugins(context.Background(), dps, log)
+	assert.Nil(t, dps[0].data)
+	assert.Contains(t, buf.String(), "plugin fetch failed")
+	assert.Contains(t, buf.String(), "panicky")
+}
+
+func TestFetchDaemonPlugins_SkipsNilFetcher(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	dps := []daemonPlugin{
+		{name: "no-fetch", fetcher: nil, data: "old"},
+	}
+	fetchDaemonPlugins(context.Background(), dps, log)
+	assert.Equal(t, "old", dps[0].data)
+}
+
+func TestDaemonPluginExports_IncludesOnlyExporters(t *testing.T) {
+	exp := &daemonExportPlugin{}
+	dps := []daemonPlugin{
+		{name: "no-export", fetcher: &daemonFetchPlugin{}, data: "x"},
+		{name: "has-export", exporter: exp, data: "y"},
+	}
+	exports := daemonPluginExports(dps)
+	require.Len(t, exports, 1)
+	assert.Equal(t, "y", exports[0].Data)
+}
+
+func TestDaemonPluginExports_Empty(t *testing.T) {
+	exports := daemonPluginExports(nil)
+	assert.Nil(t, exports)
+}
+
+type daemonMetricsSubPlugin struct {
+	testPlugin
+	called bool
+}
+
+func (p *daemonMetricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { p.called = true }
+
+type daemonPanicMetricsSubPlugin struct {
+	testPlugin
+}
+
+func (p *daemonPanicMetricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { panic("onmetrics boom") }
+
+func TestNotifyDaemonSubscribers_CallsOnMetrics(t *testing.T) {
+	sub := &daemonMetricsSubPlugin{testPlugin: testPlugin{name: "sub"}}
+	dps := []daemonPlugin{{p: sub, name: "sub"}}
+
+	notifyDaemonSubscribers(dps, &fetcher.Snapshot{})
+	assert.True(t, sub.called)
+}
+
+func TestNotifyDaemonSubscribers_PanicDoesNotCrash(t *testing.T) {
+	panicSub := &daemonPanicMetricsSubPlugin{testPlugin: testPlugin{name: "panic-sub"}}
+	normalSub := &daemonMetricsSubPlugin{testPlugin: testPlugin{name: "normal-sub"}}
+	dps := []daemonPlugin{
+		{p: panicSub, name: "panic-sub"},
+		{p: normalSub, name: "normal-sub"},
+	}
+
+	assert.NotPanics(t, func() {
+		notifyDaemonSubscribers(dps, &fetcher.Snapshot{})
+	})
+	assert.True(t, normalSub.called, "subscriber after panicking one should still be called")
 }

@@ -111,6 +111,27 @@ ember status
 
 Ember polls the Caddy admin API and Prometheus metrics endpoint at a regular interval (default: 1s), computes deltas and derived metrics (RPS, percentiles, error rates), and renders them through one of several output modes: an interactive [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI (default), streaming JSONL, a headless daemon with Prometheus export, or a one-shot `status` command.
 
+## Plugins (experimental)
+
+Ember supports a plugin system that lets third-party developers add custom tabs for visualizing metrics from additional Caddy modules (e.g., rate limiters, WAF modules, custom middleware). Plugins are compiled into the binary using Go's blank import pattern, the same approach used by Caddy itself.
+
+Building a custom Ember binary with plugins is simple:
+
+```go
+import (
+    "github.com/alexandre-daubois/ember"
+    _ "github.com/myorg/ember-myplugin"
+)
+
+func main() { ember.Run() }
+```
+
+Plugins can provide multiple tabs, subscribe to core metrics, conditionally hide their tabs, and reuse Ember's Prometheus parser via the `pkg/metrics` package.
+
+See the [Plugin Development Guide](docs/plugins.md) for details on building and integrating plugins.
+
+The plugin API is still evolving: feedback is very welcome. If something does not fit your use case or you wish an interface exposed more (or less), please [open an issue](https://github.com/alexandre-daubois/ember/issues) and tell us what you are trying to build.
+
 ## Documentation
 
 Full documentation is available in the [docs/](docs/index.md) directory:
@@ -125,6 +146,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode
 - [Docker](docs/docker.md): Container usage
 - [Agent Skills](docs/skills.md): Skills for AI coding agents
+- [Plugins](docs/plugins.md): Building custom plugins for Ember (experimental)
 - [Troubleshooting](docs/troubleshooting.md): Common issues and solutions
 
 ## Contributing

@@ -1,4 +1,4 @@
-package fetcher
+package metrics
 
 import (
 	"fmt"
@@ -11,7 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
+// ParsePrometheus parses Prometheus text-format metrics from r into a MetricsSnapshot.
+func ParsePrometheus(r io.Reader) (snap MetricsSnapshot, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			snap = MetricsSnapshot{}
@@ -30,9 +31,9 @@ func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
 		Hosts:   make(map[string]*HostMetrics),
 	}
 
-	snap.TotalThreads = scalarValue(families, "frankenphp_total_threads")
-	snap.BusyThreads = scalarValue(families, "frankenphp_busy_threads")
-	snap.QueueDepth = scalarValue(families, "frankenphp_queue_depth")
+	snap.TotalThreads = ScalarValue(families, "frankenphp_total_threads")
+	snap.BusyThreads = ScalarValue(families, "frankenphp_busy_threads")
+	snap.QueueDepth = ScalarValue(families, "frankenphp_queue_depth")
 
 	perWorker := []struct {
 		name   string
@@ -67,17 +68,17 @@ func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
 	snap.HTTPRequestErrorsTotal = sumCounter(families, "caddy_http_request_errors_total")
 	snap.HTTPRequestsTotal = sumCounter(families, "caddy_http_requests_total")
 	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount, snap.DurationBuckets = histogramData(families, "caddy_http_request_duration_seconds")
-	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
+	snap.HTTPRequestsInFlight = ScalarValue(families, "caddy_http_requests_in_flight")
 	snap.HasHTTPMetrics = snap.HTTPRequestsTotal > 0 || snap.HTTPRequestDurationCount > 0
 
-	snap.ProcessCPUSecondsTotal = scalarValue(families, "process_cpu_seconds_total")
-	snap.ProcessRSSBytes = scalarValue(families, "process_resident_memory_bytes")
-	snap.ProcessStartTimeSeconds = scalarValue(families, "process_start_time_seconds")
+	snap.ProcessCPUSecondsTotal = ScalarValue(families, "process_cpu_seconds_total")
+	snap.ProcessRSSBytes = ScalarValue(families, "process_resident_memory_bytes")
+	snap.ProcessStartTimeSeconds = ScalarValue(families, "process_start_time_seconds")
 
 	_, hasReload := families["caddy_config_last_reload_successful"]
 	snap.HasConfigReloadMetrics = hasReload
-	snap.ConfigLastReloadSuccessful = scalarValue(families, "caddy_config_last_reload_successful")
-	snap.ConfigLastReloadSuccessTimestamp = scalarValue(families, "caddy_config_last_reload_success_timestamp_seconds")
+	snap.ConfigLastReloadSuccessful = ScalarValue(families, "caddy_config_last_reload_successful")
+	snap.ConfigLastReloadSuccessTimestamp = ScalarValue(families, "caddy_config_last_reload_success_timestamp_seconds")
 
 	snap.Hosts = perHostMetrics(families)
 	snap.Upstreams = upstreamMetrics(families)
@@ -101,7 +102,60 @@ func parsePrometheusMetrics(r io.Reader) (snap MetricsSnapshot, err error) {
 		}
 	}
 
+	snap.Extra = extraFamilies(families)
+
 	return snap, nil
+}
+
+var coreMetricNames = map[string]struct{}{
+	"frankenphp_total_threads":        {},
+	"frankenphp_busy_threads":         {},
+	"frankenphp_queue_depth":          {},
+	"frankenphp_total_workers":        {},
+	"frankenphp_busy_workers":         {},
+	"frankenphp_ready_workers":        {},
+	"frankenphp_worker_request_time":  {},
+	"frankenphp_worker_request_count": {},
+	"frankenphp_worker_crashes":       {},
+	"frankenphp_worker_restarts":      {},
+	"frankenphp_worker_queue_depth":   {},
+
+	"caddy_http_request_errors_total":      {},
+	"caddy_http_requests_total":            {},
+	"caddy_http_request_duration_seconds":  {},
+	"caddy_http_requests_in_flight":        {},
+	"caddy_http_response_duration_seconds": {},
+	"caddy_http_response_size_bytes":       {},
+	"caddy_http_request_size_bytes":        {},
+
+	"process_cpu_seconds_total":     {},
+	"process_resident_memory_bytes": {},
+	"process_start_time_seconds":    {},
+
+	"caddy_config_last_reload_successful":                {},
+	"caddy_config_last_reload_success_timestamp_seconds": {},
+}
+
+func extraFamilies(families map[string]*dto.MetricFamily) map[string]*dto.MetricFamily {
+	var extra map[string]*dto.MetricFamily
+	for name, fam := range families {
+		if _, ok := coreMetricNames[name]; !ok {
+			if extra == nil {
+				extra = make(map[string]*dto.MetricFamily)
+			}
+			extra[name] = fam
+		}
+	}
+	return extra
+}
+
+func (s *MetricsSnapshot) getOrCreateWorker(name string) *WorkerMetrics {
+	wm, ok := s.Workers[name]
+	if !ok {
+		wm = &WorkerMetrics{Worker: name}
+		s.Workers[name] = wm
+	}
+	return wm
 }
 
 func sumCounter(families map[string]*dto.MetricFamily, name string) float64 {
@@ -137,12 +191,13 @@ func histogramData(families map[string]*dto.MetricFamily, name string) (float64,
 	for ub, count := range bucketMap {
 		buckets = append(buckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 	}
-	sortBuckets(buckets)
+	SortBuckets(buckets)
 
 	return sumTotal, countTotal, buckets
 }
 
-func sortBuckets(buckets []HistogramBucket) {
+// SortBuckets sorts histogram buckets by ascending upper bound.
+func SortBuckets(buckets []HistogramBucket) {
 	slices.SortFunc(buckets, func(a, b HistogramBucket) int {
 		if a.UpperBound < b.UpperBound {
 			return -1
@@ -154,7 +209,9 @@ func sortBuckets(buckets []HistogramBucket) {
 	})
 }
 
-func scalarValue(families map[string]*dto.MetricFamily, name string) float64 {
+// ScalarValue returns the first metric's gauge/counter/untyped value
+// for the named family. Returns 0 if the family is missing or empty.
+func ScalarValue(families map[string]*dto.MetricFamily, name string) float64 {
 	fam, ok := families[name]
 	if !ok || len(fam.GetMetric()) == 0 {
 		return 0
@@ -305,7 +362,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		for ub, count := range bm {
 			hm.DurationBuckets = append(hm.DurationBuckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 		}
-		sortBuckets(hm.DurationBuckets)
+		SortBuckets(hm.DurationBuckets)
 	}
 
 	ttfbBucketMaps := make(map[string]map[float64]float64)
@@ -338,7 +395,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		for ub, count := range bm {
 			hm.TTFBBuckets = append(hm.TTFBBuckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 		}
-		sortBuckets(hm.TTFBBuckets)
+		SortBuckets(hm.TTFBBuckets)
 	}
 
 	if fam, ok := families["caddy_http_response_size_bytes"]; ok {
@@ -424,13 +481,4 @@ func upstreamMetrics(families map[string]*dto.MetricFamily) map[string]*Upstream
 		return nil
 	}
 	return upstreams
-}
-
-func (s *MetricsSnapshot) getOrCreateWorker(name string) *WorkerMetrics {
-	wm, ok := s.Workers[name]
-	if !ok {
-		wm = &WorkerMetrics{Worker: name}
-		s.Workers[name] = wm
-	}
-	return wm
 }

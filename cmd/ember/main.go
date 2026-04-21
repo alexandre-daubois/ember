@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/alexandre-daubois/ember/internal/app"
+	"github.com/alexandre-daubois/ember"
 )
 
 var version = "dev"
 
 func main() {
-	if err := app.Run(os.Args[1:], version); err != nil {
+	if err := ember.RunWithVersion(version); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

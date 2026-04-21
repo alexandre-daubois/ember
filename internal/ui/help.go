@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -89,7 +90,7 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 	return helpStyle.Width(width).Render(content)
 }
 
-func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool) string {
+func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool, pluginTabs []*pluginTab, visibleTabs []tab) string {
 	tabCount := 4
 	if hasUpstreams {
 		tabCount++
@@ -145,6 +146,22 @@ func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool) stri
 	}
 
 	body := render("Navigation", nav) + "\n\n" + render("Actions", actions)
+
+	for _, pt := range pluginTabs {
+		if pt.renderer == nil || !slices.Contains(visibleTabs, pt.tabID) {
+			continue
+		}
+		hb, _ := safePluginHelpBindings(pt.renderer)
+		if len(hb) == 0 {
+			continue
+		}
+		var pluginBindings []binding
+		for _, b := range hb {
+			pluginBindings = append(pluginBindings, binding{b.Key, b.Desc})
+		}
+		body += "\n\n" + render(pt.tabName, pluginBindings)
+	}
+
 	popup := boxStyle.Render(body)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup)
 }
