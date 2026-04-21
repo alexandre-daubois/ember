@@ -1,6 +1,8 @@
 # Plugin Development Guide
 
 > **EXPERIMENTAL**: the plugin API is not yet stable. Interfaces, method signatures, and behavior may change in any future release.
+>
+> Feedback is very welcome: the plugin system will evolve to match real-world needs. If something does not fit your use case, feels clunky, or you wish an interface exposed more (or less), please [open an issue](https://github.com/alexandre-daubois/ember/issues) and tell us what you are trying to build.
 
 Ember supports compile-time plugins that let you:
 

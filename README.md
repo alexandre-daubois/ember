@@ -130,6 +130,8 @@ Plugins can provide multiple tabs, subscribe to core metrics, conditionally hide
 
 See the [Plugin Development Guide](docs/plugins.md) for details on building and integrating plugins.
 
+The plugin API is still evolving: feedback is very welcome. If something does not fit your use case or you wish an interface exposed more (or less), please [open an issue](https://github.com/alexandre-daubois/ember/issues) and tell us what you are trying to build.
+
 ## Documentation
 
 Full documentation is available in the [docs/](docs/index.md) directory:

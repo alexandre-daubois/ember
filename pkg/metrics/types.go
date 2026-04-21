@@ -3,7 +3,9 @@
 // to reuse Ember's metric structures and Prometheus parser.
 //
 // EXPERIMENTAL: this package is part of the plugin API and is not yet
-// stable. Types and fields may change in any future release.
+// stable. Types and fields may change in any future release. Feedback is
+// very welcome; please open an issue on the Ember repository if something
+// does not fit your use case so the API can evolve with real needs.
 package metrics
 
 import (

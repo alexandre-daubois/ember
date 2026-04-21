@@ -1,7 +1,9 @@
 // Package plugin defines the interfaces for building Ember plugins.
 //
 // EXPERIMENTAL: the plugin API is not yet stable. Interfaces, method
-// signatures, and behavior may change in any future release.
+// signatures, and behavior may change in any future release. Feedback is
+// very welcome; please open an issue on the Ember repository if something
+// does not fit your use case so the API can evolve with real needs.
 //
 // Plugins extend Ember with custom TUI tabs, Prometheus metrics, or both.
 // They are compiled into the binary using Go's blank import pattern (the same

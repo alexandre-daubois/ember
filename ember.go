@@ -2,7 +2,9 @@
 // a real-time monitoring tool for Caddy and FrankenPHP.
 //
 // EXPERIMENTAL: the plugin API (pkg/plugin, pkg/metrics) is not yet
-// stable and may change in any future release.
+// stable and may change in any future release. Feedback is very welcome;
+// please open an issue on the Ember repository if something does not fit
+// your use case so the plugin system can evolve with real needs.
 //
 // Plugin authors use this package to build custom Ember binaries:
 //
