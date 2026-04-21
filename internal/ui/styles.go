@@ -39,7 +39,4 @@ var (
 
 	green   = lipgloss.AdaptiveColor{Light: "#228B22", Dark: "#44CC44"}
 	okStyle = lipgloss.NewStyle().Foreground(green)
-
-	zebraBg    = lipgloss.AdaptiveColor{Light: "#F5F0EB", Dark: "#1A1410"}
-	zebraStyle = lipgloss.NewStyle().Background(zebraBg)
 )

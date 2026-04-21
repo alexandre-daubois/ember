@@ -15,14 +15,14 @@ func TestFormatLogRow_ParseError_Truncates(t *testing.T) {
 		ParseError: true,
 		RawLine:    strings.Repeat("x", 200),
 	}
-	row := stripANSI(formatLogRow(entry, 40, 20, false, false))
+	row := stripANSI(formatLogRow(entry, 40, 20, false))
 	assert.Contains(t, row, "…", "very long parse-error raw line must be ellipsised")
 	assert.LessOrEqual(t, lipgloss.Width(row), 40)
 }
 
 func TestFormatLogRow_ParseError_Selected(t *testing.T) {
 	entry := fetcher.LogEntry{ParseError: true, RawLine: "boom"}
-	row := stripANSI(formatLogRow(entry, 40, 20, true, false))
+	row := stripANSI(formatLogRow(entry, 40, 20, true))
 	assert.Contains(t, row, ">")
 	assert.Contains(t, row, "boom")
 }
@@ -47,23 +47,11 @@ func TestFormatLogRow_StatusColors(t *testing.T) {
 				Status:    c.status,
 				Duration:  0.005,
 			}
-			row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+			row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false))
 			assert.Contains(t, row, "h.com")
 			assert.Contains(t, row, "GET")
 		})
 	}
-}
-
-func TestFormatLogRow_ZebraStyle(t *testing.T) {
-	entry := fetcher.LogEntry{
-		Timestamp: time.Now(),
-		Method:    "GET",
-		Host:      "h.com",
-		URI:       "/x",
-		Status:    200,
-	}
-	row := formatLogRow(entry, 120, uriWidth(120), false, true)
-	assert.Contains(t, stripANSI(row), "h.com")
 }
 
 func TestFormatLogRow_LongHostTruncates(t *testing.T) {
@@ -75,7 +63,7 @@ func TestFormatLogRow_LongHostTruncates(t *testing.T) {
 		URI:       "/x",
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false))
 	assert.Contains(t, row, "…", "host longer than its column must be ellipsised")
 	assert.NotContains(t, row, longHost)
 }
@@ -89,14 +77,14 @@ func TestFormatLogRow_LongURITruncates(t *testing.T) {
 		URI:       longURI,
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false))
 	assert.Contains(t, row, "…")
 	assert.NotContains(t, row, longURI)
 }
 
 func TestFormatLogRow_MissingFieldsRenderDashes(t *testing.T) {
 	entry := fetcher.LogEntry{Timestamp: time.Now()}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false))
 	assert.Contains(t, row, "—")
 }
 
@@ -108,7 +96,7 @@ func TestFormatLogRow_LongMethodTruncates(t *testing.T) {
 		URI:       "/x",
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false))
 	assert.NotContains(t, row, "VERYLONGMETHOD")
 }
 
@@ -120,7 +108,7 @@ func TestFormatLogRow_SelectedShowsCursor(t *testing.T) {
 		URI:       "/",
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), true, false))
+	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), true))
 	assert.Contains(t, row, ">")
 }
 

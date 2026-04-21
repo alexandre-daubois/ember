@@ -71,7 +71,6 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor, wid
 	var rows []string
 	cursorDisplayRow := 0
 	lastGroup := ""
-	rowIdx := 0
 	for i, t := range threads {
 		group := threadGroup(t)
 		if group != lastGroup {
@@ -83,12 +82,11 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor, wid
 			rows = append(rows, greyStyle.Render(sep))
 			lastGroup = group
 		}
-		row := formatThreadRow(t, width, uriW, opts, i == cursor, rowIdx%2 == 1)
+		row := formatThreadRow(t, width, uriW, opts, i == cursor)
 		rows = append(rows, row)
 		if i == cursor {
 			cursorDisplayRow = len(rows) - 1
 		}
-		rowIdx++
 	}
 
 	bodyHeight := height - 1
@@ -120,7 +118,7 @@ func threadGroup(t fetcher.ThreadDebugState) string {
 	return "threads"
 }
 
-func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts renderOpts, selected bool, zebra bool) string {
+func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts renderOpts, selected bool) string {
 	var stateIcon string
 	var style lipgloss.Style
 
@@ -175,9 +173,6 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		prefix = ">"
 		style = style.Reverse(true)
 		timeStyle = timeStyle.Reverse(true)
-	} else if zebra {
-		style = style.Background(zebraBg)
-		timeStyle = timeStyle.Background(zebraBg)
 	}
 
 	methodStr := fmt.Sprintf("%-*s", colMethod, method)
@@ -192,12 +187,6 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		uriStr = selectedRowStyle.Render(uriStr)
 		memFmt = selectedRowStyle.Render(memFmt)
 		reqsFmt = selectedRowStyle.Render(reqsFmt)
-	} else if zebra {
-		indexPart = zebraStyle.Render(indexPart)
-		methodStr = zebraStyle.Render(methodStr)
-		uriStr = zebraStyle.Render(uriStr)
-		memFmt = zebraStyle.Render(memFmt)
-		reqsFmt = zebraStyle.Render(reqsFmt)
 	}
 
 	row := fmt.Sprintf("%s%s%s%s%s%s%s",
@@ -212,9 +201,6 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 
 	if selected {
 		return selectedRowStyle.Width(width).Render(row)
-	}
-	if zebra {
-		return zebraStyle.Width(width).Render(row)
 	}
 	return row
 }

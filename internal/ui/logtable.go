@@ -64,7 +64,7 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, right
 	}
 
 	for i, e := range visible {
-		rows = append(rows, formatLogRow(e, width, uriW, i == cursor, i%2 == 1))
+		rows = append(rows, formatLogRow(e, width, uriW, i == cursor))
 	}
 
 	for len(rows) < bodyHeight {
@@ -104,7 +104,7 @@ func renderLogHeader(labels, rightStatus string, width int) string {
 	return logHeaderBorderStyle.Width(width).Render(combined)
 }
 
-func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, zebra bool) string {
+func formatLogRow(e fetcher.LogEntry, width, uriW int, selected bool) string {
 	prefix := " "
 	if selected {
 		prefix = ">"
@@ -174,12 +174,7 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, zebra bool) str
 		return selectedRowStyle.Width(width).Render(row)
 	}
 
-	base := lipgloss.NewStyle()
-	if zebra {
-		base = zebraStyle
-	}
-
-	styledStatus := base.Render(statusPart)
+	styledStatus := statusPart
 	switch {
 	case e.Status >= 500:
 		styledStatus = dangerStyle.Render(statusPart)
@@ -189,15 +184,5 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, zebra bool) str
 		styledStatus = okStyle.Render(statusPart)
 	}
 
-	row := base.Render(timePart) +
-		styledStatus +
-		base.Render(methodPart) +
-		base.Render(hostPart) +
-		base.Render(durPart) +
-		base.Render(uriPart)
-
-	if zebra {
-		return zebraStyle.Width(width).Render(row)
-	}
-	return row
+	return timePart + styledStatus + methodPart + hostPart + durPart + uriPart
 }

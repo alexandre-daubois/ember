@@ -57,7 +57,7 @@ func renderHostTable(hosts []model.HostDerived, cursor, width, height int, sortB
 
 	var rows []string
 	for i, h := range hosts {
-		rows = append(rows, formatHostRow(h, width, hostW, i == cursor, i%2 == 1, hostRPS))
+		rows = append(rows, formatHostRow(h, width, hostW, i == cursor, hostRPS))
 	}
 
 	bodyHeight := height - lipgloss.Height(headerLine)
@@ -85,7 +85,7 @@ func renderHostTable(hosts []model.HostDerived, cursor, width, height int, sortB
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 
-func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, hostRPS map[string][]float64) string {
+func formatHostRow(h model.HostDerived, width, hostW int, selected bool, hostRPS map[string][]float64) string {
 	host := h.Host
 	if host == "*" {
 		host = "* (All traffic)"
@@ -131,11 +131,6 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 		return selectedRowStyle.Width(width).Render(row)
 	}
 
-	style := lipgloss.NewStyle()
-	if zebra {
-		style = zebraStyle
-	}
-
 	styled4xx := part4xx
 	styled5xx := part5xx
 	if sum4xx > 0 {
@@ -145,19 +140,7 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected, zebra bool, 
 		styled5xx = dangerStyle.Render(part5xx)
 	}
 
-	row := style.Render(hostPart) +
-		style.Render(rpsPart) +
-		greyStyle.Render(sparkRaw) +
-		style.Render(avgPart) +
-		style.Render(inflPart) +
-		style.Render(part2xx) +
-		styled4xx +
-		styled5xx
-
-	if zebra {
-		return zebraStyle.Width(width).Render(row)
-	}
-	return row
+	return hostPart + rpsPart + greyStyle.Render(sparkRaw) + avgPart + inflPart + part2xx + styled4xx + styled5xx
 }
 
 func statusCodeRange(codes map[int]float64, lo, hi int) float64 {

@@ -139,13 +139,13 @@ func TestRenderHostTable_ViewportCursorAtEnd(t *testing.T) {
 
 func TestFormatHostRow_StarRenamed(t *testing.T) {
 	h := model.HostDerived{Host: "*", StatusCodes: map[int]float64{}}
-	row := formatHostRow(h, 120, 30, false, false, nil)
+	row := formatHostRow(h, 120, 30, false, nil)
 	assert.Contains(t, row, "* (All traffic)")
 }
 
 func TestFormatHostRow_HostTruncation(t *testing.T) {
 	h := model.HostDerived{Host: "very-long-hostname-that-exceeds-width.example.com", StatusCodes: map[int]float64{}}
-	row := formatHostRow(h, 120, 15, false, false, nil)
+	row := formatHostRow(h, 120, 15, false, nil)
 	assert.Contains(t, row, "…")
 }
 
@@ -155,7 +155,7 @@ func TestFormatHostRow_AvgShown(t *testing.T) {
 		AvgTime:     45.0,
 		StatusCodes: map[int]float64{},
 	}
-	row := formatHostRow(h, 150, 30, false, false, nil)
+	row := formatHostRow(h, 150, 30, false, nil)
 	assert.Contains(t, row, "45.0ms")
 }
 
@@ -164,13 +164,13 @@ func TestFormatHostRow_NoDataDash(t *testing.T) {
 		Host:        "test.com",
 		StatusCodes: map[int]float64{},
 	}
-	row := formatHostRow(h, 120, 30, false, false, nil)
+	row := formatHostRow(h, 120, 30, false, nil)
 	assert.Contains(t, row, "—")
 }
 
 func TestFormatHostRow_SelectedPrefix(t *testing.T) {
 	h := model.HostDerived{Host: "test.com", StatusCodes: map[int]float64{}}
-	row := formatHostRow(h, 120, 30, true, false, nil)
+	row := formatHostRow(h, 120, 30, true, nil)
 	assert.Contains(t, row, ">")
 }
 

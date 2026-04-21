@@ -58,7 +58,7 @@ func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width, heig
 
 	var rows []string
 	for i, c := range certs {
-		rows = append(rows, formatCertRow(c, width, domW, i == cursor, i%2 == 1))
+		rows = append(rows, formatCertRow(c, width, domW, i == cursor))
 	}
 
 	bodyHeight := height - lipgloss.Height(headerLine)
@@ -86,7 +86,7 @@ func renderCertificateTable(certs []fetcher.CertificateInfo, cursor, width, heig
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 
-func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected, zebra bool) string {
+func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected bool) string {
 	domain := c.Subject
 	if len(c.DNSNames) > 0 {
 		domain = c.DNSNames[0]
@@ -130,24 +130,9 @@ func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected, zebra b
 		return selectedRowStyle.Width(width).Render(row)
 	}
 
-	style := lipgloss.NewStyle()
-	if zebra {
-		style = zebraStyle
-	}
-
 	styledDays := expiryStyle(days).Render(daysPart)
 
-	row := style.Render(domPart) +
-		style.Render(expPart) +
-		styledDays +
-		style.Render(srcPart) +
-		style.Render(issuerPart) +
-		style.Render(autoPart)
-
-	if zebra {
-		return zebraStyle.Width(width).Render(row)
-	}
-	return row
+	return domPart + expPart + styledDays + srcPart + issuerPart + autoPart
 }
 
 func daysUntilExpiry(notAfter time.Time) int {

@@ -377,7 +377,7 @@ func TestFormatCertRow_Truncation(t *testing.T) {
 		NotAfter: time.Now().Add(60 * 24 * time.Hour),
 		Source:   "tls",
 	}
-	row := stripANSI(formatCertRow(c, 100, 20, false, false))
+	row := stripANSI(formatCertRow(c, 100, 20, false))
 	assert.Contains(t, row, "…")
 }
 
@@ -388,7 +388,7 @@ func TestFormatCertRow_AutoRenew(t *testing.T) {
 		Source:    "tls",
 		AutoRenew: true,
 	}
-	row := stripANSI(formatCertRow(c, 120, 30, false, false))
+	row := stripANSI(formatCertRow(c, 120, 30, false))
 	assert.Contains(t, row, "yes")
 }
 
@@ -398,6 +398,6 @@ func TestFormatCertRow_Expired(t *testing.T) {
 		NotAfter: time.Now().Add(-48 * time.Hour),
 		Source:   "tls",
 	}
-	row := stripANSI(formatCertRow(c, 120, 30, false, false))
+	row := stripANSI(formatCertRow(c, 120, 30, false))
 	assert.Contains(t, row, "expired")
 }

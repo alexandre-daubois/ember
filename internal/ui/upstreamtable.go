@@ -61,7 +61,7 @@ func renderUpstreamTable(upstreams []model.UpstreamDerived, cursor, width, heigh
 
 	var rows []string
 	for i, u := range upstreams {
-		rows = append(rows, formatUpstreamRow(u, width, addrW, i == cursor, i%2 == 1, configMap, opts))
+		rows = append(rows, formatUpstreamRow(u, width, addrW, i == cursor, configMap, opts))
 	}
 
 	bodyHeight := height - lipgloss.Height(headerLine)
@@ -119,7 +119,7 @@ func buildUpstreamConfigMap(configs []fetcher.ReverseProxyConfig) map[string]ups
 	return m
 }
 
-func formatUpstreamRow(u model.UpstreamDerived, width, addrW int, selected, zebra bool, configMap map[string]upstreamConfigInfo, opts upstreamRenderOpts) string {
+func formatUpstreamRow(u model.UpstreamDerived, width, addrW int, selected bool, configMap map[string]upstreamConfigInfo, opts upstreamRenderOpts) string {
 	addr := u.Address
 	if len(addr) > addrW-1 {
 		addr = addr[:addrW-2] + "…"
@@ -182,28 +182,13 @@ func formatUpstreamRow(u model.UpstreamDerived, width, addrW int, selected, zebr
 	if !u.Healthy {
 		healthStyle = dangerStyle
 	}
-	downStyleFg := lipgloss.NewStyle()
+
+	styledDown := downPart
 	if !u.Healthy && downStr != "—" {
-		downStyleFg = dangerStyle
+		styledDown = dangerStyle.Render(downPart)
 	}
 
-	baseStyle := lipgloss.NewStyle()
-	if zebra {
-		baseStyle = zebraStyle
-		healthStyle = healthStyle.Background(zebraBg)
-		downStyleFg = downStyleFg.Background(zebraBg)
-	}
-
-	row := baseStyle.Render(addrPart) +
-		baseStyle.Render(checkPart) +
-		baseStyle.Render(lbPart) +
-		healthStyle.Render(healthPart) +
-		downStyleFg.Render(downPart)
-
-	if zebra {
-		return zebraStyle.Width(width).Render(row)
-	}
-	return row
+	return addrPart + checkPart + lbPart + healthStyle.Render(healthPart) + styledDown
 }
 
 func formatDownDuration(d time.Duration) string {

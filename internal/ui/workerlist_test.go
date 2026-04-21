@@ -68,7 +68,7 @@ func TestFormatThreadRow_BusyWithRequestInfo(t *testing.T) {
 		MemoryUsage:   18 * 1024 * 1024,
 		RequestCount:  4201,
 	}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
 
 	assert.Contains(t, row, "POST")
 	assert.Contains(t, row, "/api/v1/users")
@@ -81,7 +81,7 @@ func TestFormatThreadRow_IdleShowsDashes(t *testing.T) {
 		Index:     1,
 		IsWaiting: true,
 	}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
 
 	assert.Contains(t, row, "—", "idle row should contain dash placeholders")
 }
@@ -94,26 +94,10 @@ func TestFormatThreadRow_URITruncation(t *testing.T) {
 	}
 	// use narrow width so URI (42 chars) must truncate
 	narrow := 80
-	row := formatThreadRow(thread, narrow, uriWidth(narrow), renderOpts{}, false, false)
+	row := formatThreadRow(thread, narrow, uriWidth(narrow), renderOpts{}, false)
 
 	assert.NotContains(t, row, "exceeds/limit", "long URI should be truncated")
 	assert.Contains(t, row, "…", "truncated URI should end with ellipsis")
-}
-
-func TestFormatThreadRow_ZebraContainsData(t *testing.T) {
-	thread := fetcher.ThreadDebugState{
-		Index:         5,
-		IsBusy:        true,
-		CurrentMethod: "GET",
-		CurrentURI:    "/health",
-		MemoryUsage:   2 * 1024 * 1024,
-		RequestCount:  42,
-	}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, true)
-
-	assert.Contains(t, row, "GET")
-	assert.Contains(t, row, "/health")
-	assert.Contains(t, row, "2 MB")
 }
 
 func TestFormatThreadRow_MemoryDeltaUp(t *testing.T) {
@@ -123,7 +107,7 @@ func TestFormatThreadRow_MemoryDeltaUp(t *testing.T) {
 		MemoryUsage: 20 * 1024 * 1024,
 	}
 	prev := map[int]int64{0: 18 * 1024 * 1024}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false)
 	assert.Contains(t, row, "↑")
 }
 
@@ -134,7 +118,7 @@ func TestFormatThreadRow_MemoryDeltaDown(t *testing.T) {
 		MemoryUsage: 15 * 1024 * 1024,
 	}
 	prev := map[int]int64{0: 20 * 1024 * 1024}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false)
 	assert.Contains(t, row, "↓")
 }
 
@@ -145,7 +129,7 @@ func TestFormatThreadRow_MemoryDeltaBelowThreshold(t *testing.T) {
 		MemoryUsage: 18*1024*1024 + 50*1024,
 	}
 	prev := map[int]int64{0: 18 * 1024 * 1024}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{prevMemory: prev}, false)
 	assert.NotContains(t, row, "↑")
 	assert.NotContains(t, row, "↓")
 }
@@ -156,17 +140,17 @@ func TestFormatThreadRow_MemoryDeltaNoPrevious(t *testing.T) {
 		IsBusy:      true,
 		MemoryUsage: 18 * 1024 * 1024,
 	}
-	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false, false)
+	row := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, false)
 	assert.NotContains(t, row, "↑")
 	assert.NotContains(t, row, "↓")
 }
 
-func TestFormatThreadRow_SelectedOverridesZebra(t *testing.T) {
+func TestFormatThreadRow_SelectedShowsCursor(t *testing.T) {
 	thread := fetcher.ThreadDebugState{
 		Index:     0,
 		IsWaiting: true,
 	}
-	selected := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, true, true)
+	selected := formatThreadRow(thread, 120, uriWidth(120), renderOpts{}, true)
 	assert.Contains(t, selected, ">")
 }
 
