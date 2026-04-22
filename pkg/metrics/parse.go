@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -280,15 +281,44 @@ func statusCodesFromHistogram(families map[string]*dto.MetricFamily, name string
 	return codes
 }
 
-func hostOrServer(m *dto.Metric) string {
-	if h := labelValue(m, "host"); h != "" {
-		return h
+// hostLookup returns a label extractor tailored to whether Caddy is emitting
+// per-host metrics. When at least one caddy_http_* metric carries a "host"
+// label we assume `per_host` is active and ignore metrics that only carry
+// "server": those are pre-per_host series that Caddy keeps around in its
+// Prometheus registry across config reloads and would otherwise show up as a
+// phantom "srv0" bucket next to the real hosts. The scan is scoped to
+// caddy_http_* so a custom plugin metric with an unrelated "host" label
+// cannot flip the heuristic.
+func hostLookup(families map[string]*dto.MetricFamily) func(*dto.Metric) string {
+	perHost := false
+	for name, fam := range families {
+		if !strings.HasPrefix(name, "caddy_http_") {
+			continue
+		}
+		for _, m := range fam.GetMetric() {
+			if labelValue(m, "host") != "" {
+				perHost = true
+				break
+			}
+		}
+		if perHost {
+			break
+		}
 	}
-	return labelValue(m, "server")
+	return func(m *dto.Metric) string {
+		if h := labelValue(m, "host"); h != "" {
+			return h
+		}
+		if perHost {
+			return ""
+		}
+		return labelValue(m, "server")
+	}
 }
 
 func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetrics {
 	hosts := make(map[string]*HostMetrics)
+	hostOrServer := hostLookup(families)
 
 	getOrCreate := func(host string) *HostMetrics {
 		hm, ok := hosts[host]

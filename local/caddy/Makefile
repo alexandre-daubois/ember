@@ -11,7 +11,7 @@ up: ## Start docker compose via build & up in the local folder
 
 down: ## Clean docker compose in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
-	docker compose down
+	docker compose down --remove-orphans
 
 traffic: ## Generate traffic against the local Caddy (WORKERS=N, DURATION=S)
 	@./load.sh

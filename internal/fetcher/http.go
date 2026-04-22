@@ -57,6 +57,7 @@ type HTTPFetcher struct {
 	mu                     sync.Mutex
 	hasFrankenPHP          bool
 	serverNames            []string
+	hostNames              []string
 	lastPromCPU            float64
 	lastPromSample         time.Time
 	lastServerNamesRefresh time.Time
@@ -205,7 +206,8 @@ func (f *HTTPFetcher) HasFrankenPHP() bool {
 }
 
 // FetchServerNames queries the Caddy config API for HTTP server names
-// and caches them. Returns nil on failure.
+// and the host routes they expose, caching both. Returns the server names
+// on success, nil on failure. The host names are accessible via HostNames().
 func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -226,18 +228,43 @@ func (f *HTTPFetcher) FetchServerNames(ctx context.Context) []string {
 		return nil
 	}
 
-	var servers map[string]json.RawMessage
+	type route struct {
+		Match []struct {
+			Host []string `json:"host"`
+		} `json:"match"`
+	}
+	type server struct {
+		Routes []route `json:"routes"`
+	}
+	var servers map[string]server
 	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
 		return nil
 	}
 
 	names := make([]string, 0, len(servers))
-	for name := range servers {
+	hostSet := make(map[string]struct{})
+	for name, srv := range servers {
 		names = append(names, name)
+		for _, r := range srv.Routes {
+			for _, m := range r.Match {
+				for _, h := range m.Host {
+					if h != "" {
+						hostSet[h] = struct{}{}
+					}
+				}
+			}
+		}
 	}
 	slices.Sort(names)
+	hosts := make([]string, 0, len(hostSet))
+	for h := range hostSet {
+		hosts = append(hosts, h)
+	}
+	slices.Sort(hosts)
+
 	f.mu.Lock()
 	f.serverNames = names
+	f.hostNames = hosts
 	f.mu.Unlock()
 	return names
 }
@@ -348,15 +375,25 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 		}
 	}
 
-	// Seed known server names as empty host entries so they appear immediately
+	// Seed declared hosts as empty entries so they appear in the TUI before
+	// the first request. Prefer routes[].match[].host[] (the real hosts, e.g.
+	// "app.localhost"); fall back to server names (srv0, srv1...) only when
+	// the Caddyfile has no host matcher — typical of a bare `:8080 { ... }`
+	// block — so the table is not empty while traffic ramps up.
 	f.mu.Lock()
-	names := f.serverNames
+	seed := f.hostNames
+	if len(seed) == 0 {
+		seed = f.serverNames
+	}
 	f.mu.Unlock()
-	if len(names) > 0 && metrics.Hosts != nil {
-		for _, name := range names {
-			if _, ok := metrics.Hosts[name]; !ok {
-				metrics.Hosts[name] = &HostMetrics{
-					Host:        name,
+	if len(seed) > 0 {
+		if metrics.Hosts == nil {
+			metrics.Hosts = make(map[string]*HostMetrics, len(seed))
+		}
+		for _, h := range seed {
+			if _, ok := metrics.Hosts[h]; !ok {
+				metrics.Hosts[h] = &HostMetrics{
+					Host:        h,
 					StatusCodes: make(map[int]float64),
 					Methods:     make(map[string]float64),
 				}

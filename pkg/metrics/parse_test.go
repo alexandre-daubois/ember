@@ -253,6 +253,46 @@ func TestPerHostMetrics_GroupsByHost(t *testing.T) {
 	assert.Equal(t, float64(12), api.ErrorsTotal, "per-host ErrorsTotal")
 }
 
+func TestPerHostMetrics_IgnoresServerOnlyLeftoversWhenPerHostActive(t *testing.T) {
+	// Reproduces the "srv0 appears alongside real hosts" symptom users hit
+	// after enabling `per_host` on a running Caddy: the earlier server-only
+	// counter is still present in Caddy's Prometheus registry (reloads do
+	// not reset it), so we get both flavours in the same scrape. Ember
+	// should surface only the real hosts.
+	input := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{handler="subroute",server="srv0",code="200"} 999
+caddy_http_requests_total{host="kept.com",handler="subroute",server="srv0",code="200"} 10
+caddy_http_requests_total{host="other.com",handler="subroute",server="srv0",code="200"} 5
+# TYPE caddy_http_requests_in_flight gauge
+caddy_http_requests_in_flight{handler="subroute",server="srv0"} 42
+caddy_http_requests_in_flight{host="kept.com",handler="subroute",server="srv0"} 1
+`
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
+	require.NoError(t, err)
+
+	require.Len(t, snap.Hosts, 2, "srv0 leftover must be dropped once per_host labels are present")
+	assert.NotContains(t, snap.Hosts, "srv0")
+	assert.Contains(t, snap.Hosts, "kept.com")
+	assert.Contains(t, snap.Hosts, "other.com")
+}
+
+func TestPerHostMetrics_UnrelatedHostLabelDoesNotFlipHeuristic(t *testing.T) {
+	// A custom plugin metric with its own "host" label must not trick the
+	// per_host detection into dropping legitimate caddy_http_* metrics that
+	// carry only "server". The scan is scoped to caddy_http_* for that
+	// reason.
+	input := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{handler="subroute",server="srv0",code="200"} 42
+# TYPE my_plugin_metric gauge
+my_plugin_metric{host="plugin-internal"} 1
+`
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
+	require.NoError(t, err)
+
+	require.Len(t, snap.Hosts, 1, "server fallback must still kick in when no caddy_http_* carries a host label")
+	assert.Contains(t, snap.Hosts, "srv0")
+}
+
 func TestPerHostMetrics_GroupsByServerLabel(t *testing.T) {
 	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleCaddyMetrics))
 	require.NoError(t, err)

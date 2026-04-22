@@ -358,60 +358,97 @@ func TestFetchServerNames_Empty(t *testing.T) {
 	assert.Empty(t, names)
 }
 
-func TestFetch_SeedsServerNames(t *testing.T) {
+func TestFetch_SeedsHostNames(t *testing.T) {
 	metricsText := `# TYPE caddy_http_requests_total counter
-caddy_http_requests_total{server="main",code="200"} 50
+caddy_http_requests_total{host="main.example.com",code="200"} 50
 # TYPE caddy_http_request_duration_seconds histogram
-caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 50
-caddy_http_request_duration_seconds_sum{server="main"} 1.0
-caddy_http_request_duration_seconds_count{server="main"} 50
+caddy_http_request_duration_seconds_bucket{host="main.example.com",le="+Inf"} 50
+caddy_http_request_duration_seconds_sum{host="main.example.com"} 1.0
+caddy_http_request_duration_seconds_count{host="main.example.com"} 50
 `
 	srv := newTestServer(404, nil, 200, metricsText)
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	f.serverNames = []string{"main", "app", "api"}
+	f.hostNames = []string{"main.example.com", "app.example.com", "api.example.com"}
 
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, snap.Metrics.Hosts)
 
-	// "main" has real data from metrics
-	main := snap.Metrics.Hosts["main"]
+	main := snap.Metrics.Hosts["main.example.com"]
 	require.NotNil(t, main)
 	assert.Equal(t, float64(50), main.RequestsTotal)
 
-	// "app" and "api" should be seeded with empty entries
-	app := snap.Metrics.Hosts["app"]
-	require.NotNil(t, app, "app should be seeded")
-	assert.Equal(t, "app", app.Host)
+	app := snap.Metrics.Hosts["app.example.com"]
+	require.NotNil(t, app, "app.example.com should be seeded")
+	assert.Equal(t, "app.example.com", app.Host)
 	assert.Equal(t, float64(0), app.RequestsTotal)
 	assert.NotNil(t, app.StatusCodes)
 	assert.NotNil(t, app.Methods)
 
-	api := snap.Metrics.Hosts["api"]
-	require.NotNil(t, api, "api should be seeded")
-	assert.Equal(t, "api", api.Host)
+	api := snap.Metrics.Hosts["api.example.com"]
+	require.NotNil(t, api, "api.example.com should be seeded")
 }
 
-func TestFetch_SeedsDoNotOverwriteExisting(t *testing.T) {
+func TestFetch_FallsBackToServerNamesWhenNoHostRoute(t *testing.T) {
+	// Caddy configs without a host matcher (e.g. a bare `:8080 { ... }`
+	// frankenphp block) declare no hostNames. Fall back to server names so
+	// the Hosts table is not empty while waiting for traffic.
+	srv := newTestServer(404, nil, 200, "")
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	f.serverNames = []string{"srv0"}
+	f.hostNames = nil
+
+	snap, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, snap.Metrics.Hosts)
+	assert.Contains(t, snap.Metrics.Hosts, "srv0",
+		"server names must seed when no host route is declared")
+}
+
+func TestFetch_DoesNotSeedServerNames(t *testing.T) {
+	// Regression: Ember used to seed `serverNames` (srv0, srv1...) as hosts,
+	// which leaked Caddy-internal identifiers into the UI alongside real
+	// hosts. Only `hostNames` (from routes[].match[].host[]) should seed.
 	metricsText := `# TYPE caddy_http_requests_total counter
-caddy_http_requests_total{server="main",code="200"} 100
-# TYPE caddy_http_request_duration_seconds histogram
-caddy_http_request_duration_seconds_bucket{server="main",le="+Inf"} 100
-caddy_http_request_duration_seconds_sum{server="main"} 5.0
-caddy_http_request_duration_seconds_count{server="main"} 100
+caddy_http_requests_total{host="kept.com",server="srv0",code="200"} 10
 `
 	srv := newTestServer(404, nil, 200, metricsText)
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	f.serverNames = []string{"main"}
+	f.serverNames = []string{"srv0"}
+	f.hostNames = []string{"kept.com"}
 
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err)
 
-	main := snap.Metrics.Hosts["main"]
+	assert.Contains(t, snap.Metrics.Hosts, "kept.com")
+	assert.NotContains(t, snap.Metrics.Hosts, "srv0",
+		"Caddy server names must never leak into the host list")
+}
+
+func TestFetch_SeedsDoNotOverwriteExisting(t *testing.T) {
+	metricsText := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="main.example.com",code="200"} 100
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{host="main.example.com",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{host="main.example.com"} 5.0
+caddy_http_request_duration_seconds_count{host="main.example.com"} 100
+`
+	srv := newTestServer(404, nil, 200, metricsText)
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	f.hostNames = []string{"main.example.com"}
+
+	snap, err := f.Fetch(context.Background())
+	require.NoError(t, err)
+
+	main := snap.Metrics.Hosts["main.example.com"]
 	require.NotNil(t, main)
 	assert.Equal(t, float64(100), main.RequestsTotal, "seeding should not overwrite existing host data")
 }
@@ -503,7 +540,12 @@ func TestOnConnected_FetchesServerNames(t *testing.T) {
 			if serverNamesAvailable {
 				w.WriteHeader(200)
 				json.NewEncoder(w).Encode(map[string]any{
-					"main": map[string]any{"listen": []string{":443"}},
+					"main": map[string]any{
+						"listen": []string{":443"},
+						"routes": []map[string]any{
+							{"match": []map[string]any{{"host": []string{"main.example.com"}}}},
+						},
+					},
 				})
 			} else {
 				w.WriteHeader(404)
@@ -526,8 +568,12 @@ func TestOnConnected_FetchesServerNames(t *testing.T) {
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"main"}, f.ServerNames())
+	assert.Equal(t, []string{"main.example.com"}, f.hostNames)
 	require.NotNil(t, snap.Metrics.Hosts)
-	assert.Contains(t, snap.Metrics.Hosts, "main")
+	assert.Contains(t, snap.Metrics.Hosts, "main.example.com",
+		"host extracted from routes[].match[].host[] must be seeded")
+	assert.NotContains(t, snap.Metrics.Hosts, "main",
+		"server names must not leak as hosts")
 }
 
 func TestOnConnected_NoRetryWhenMetricsFail(t *testing.T) {
