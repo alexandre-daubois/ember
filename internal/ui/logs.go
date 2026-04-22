@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -90,47 +91,22 @@ func (a *App) logsEmptyHint(visibleCount int) string {
 // filter. When frozen, everything in the snapshot is available so the user
 // can scroll through full history; when live, only the newest pageSize()
 // entries are needed (cursor stays at 0). The host-specific selection is
-// applied on top of the search filter so both compose without the user
-// having to type the host into the search box.
+// folded into the LogFilter so the buffer walk applies both in one pass
+// instead of copying the whole ring and filtering on top.
 func (a *App) filteredLogEntries() []fetcher.LogEntry {
 	buf := a.currentLogBuffer()
 	if buf == nil {
 		return nil
 	}
-	search := a.activeLogFilter()
-	selFilter := a.selectionFilter()
-
-	limit := 0
-	if !a.logFrozen {
-		limit = a.pageSize()
+	filter := a.activeLogFilter()
+	if a.logSel.kind == logSelAccessHost {
+		filter.Host = a.logSel.host
 	}
 
-	if selFilter == nil {
-		if a.logFrozen {
-			return filterEntriesWithLimit(a.logSnapshot, search, 0)
-		}
-		return buf.Snapshot(search, limit)
+	if a.logFrozen {
+		return filterEntriesWithLimit(a.logSnapshot, filter, 0)
 	}
-
-	source := a.logSnapshot
-	if !a.logFrozen {
-		source = buf.Snapshot(model.LogFilter{}, 0)
-	}
-	capHint := len(source)
-	if limit > 0 {
-		capHint = min(capHint, limit)
-	}
-	out := make([]fetcher.LogEntry, 0, capHint)
-	for _, e := range source {
-		if !search.Matches(e) || !selFilter(e) {
-			continue
-		}
-		out = append(out, e)
-		if limit > 0 && len(out) >= limit {
-			break
-		}
-	}
-	return out
+	return buf.Snapshot(filter, a.pageSize())
 }
 
 // sliceLogViewport returns the rows to draw and the cursor position within
@@ -215,22 +191,32 @@ var pausedBadgeStyle = lipgloss.NewStyle().
 // buildLogsHeaderStatus returns the pre-styled right-aligned status chunk
 // for the column header. Empty when there's nothing to say.
 func (a *App) buildLogsHeaderStatus() string {
-	var pill string
+	var parts []string
+	if n := a.droppedLogCount(); n > 0 {
+		parts = append(parts, warnStyle.Render(fmt.Sprintf("dropped: %d", n)))
+	}
+	if a.filter != "" {
+		parts = append(parts, helpStyle.Render("filter: "+a.filter))
+	}
 	if a.logFrozen {
 		label := "● PAUSED"
 		if n := a.newLogsSinceFreeze(); n > 0 {
 			label += fmt.Sprintf(" · %d new", n)
 		}
-		pill = pausedBadgeStyle.Render(label)
+		parts = append(parts, pausedBadgeStyle.Render(label))
 	}
-	if a.filter == "" {
-		return pill
+	return strings.Join(parts, "  ")
+}
+
+// droppedLogCount reports how many entries have been evicted by the ring
+// buffer backing the currently-selected log scope. Surfaces a truth the UI
+// would otherwise hide: the tail window is sliding, not infinite.
+func (a *App) droppedLogCount() int64 {
+	buf := a.currentLogBuffer()
+	if buf == nil {
+		return 0
 	}
-	filterChip := helpStyle.Render("filter: " + a.filter)
-	if pill == "" {
-		return filterChip
-	}
-	return filterChip + "  " + pill
+	return buf.Dropped()
 }
 
 // newLogsSinceFreeze counts entries that have been appended to the buffer

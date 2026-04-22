@@ -64,6 +64,25 @@ func TestLogBuffer_Overflow(t *testing.T) {
 	assert.Equal(t, "/path/3", snap[2].URI)
 }
 
+func TestLogBuffer_Dropped(t *testing.T) {
+	b := NewLogBuffer(3)
+
+	assert.EqualValues(t, 0, b.Dropped(), "empty buffer drops nothing")
+
+	for i := 1; i <= 3; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+	assert.EqualValues(t, 0, b.Dropped(), "at capacity but not yet wrapped: no drops")
+
+	b.Append(makeEntry(4, "a", "GET", 200))
+	assert.EqualValues(t, 1, b.Dropped(), "first wrap evicts one entry")
+
+	for i := 5; i <= 10; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+	assert.EqualValues(t, 7, b.Dropped(), "writeCount (10) minus capacity (3)")
+}
+
 func TestLogBuffer_Snapshot_NewestFirst(t *testing.T) {
 	b := NewLogBuffer(10)
 	for i := 1; i <= 5; i++ {
@@ -112,6 +131,29 @@ func TestLogBuffer_Snapshot_FilterByStatusCode(t *testing.T) {
 	for _, e := range snap {
 		assert.Contains(t, []int{500, 502}, e.Status)
 	}
+}
+
+func TestLogBuffer_Snapshot_FilterByHost(t *testing.T) {
+	// Folding the per-host selection into the filter lets the buffer walk
+	// apply both Search and Host in a single pass, avoiding a full-buffer
+	// copy on every render when the user drills into one host.
+	b := NewLogBuffer(10)
+	b.Append(makeEntry(1, "kept.com", "GET", 200))
+	b.Append(makeEntry(2, "other.com", "GET", 200))
+	b.Append(makeEntry(3, "kept.com", "POST", 201))
+	b.Append(makeEntry(4, "other.com", "POST", 201))
+
+	snap := b.Snapshot(LogFilter{Host: "kept.com"}, 0)
+	require.Len(t, snap, 2)
+	for _, e := range snap {
+		assert.Equal(t, "kept.com", e.Host)
+	}
+
+	// Host composes with Search.
+	snap = b.Snapshot(LogFilter{Host: "kept.com", Search: "POST"}, 0)
+	require.Len(t, snap, 1)
+	assert.Equal(t, "POST", snap[0].Method)
+	assert.Equal(t, "kept.com", snap[0].Host)
 }
 
 func TestLogBuffer_Snapshot_FilterBySearch(t *testing.T) {

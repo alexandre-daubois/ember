@@ -18,7 +18,7 @@ func TestRegisterEmberRuntimeLogSink_PayloadUsesExclude(t *testing.T) {
 	var captured atomic.Pointer[string]
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/config/logging/logs/"+EmberRuntimeLogSinkName {
+		if r.URL.Path != "/config/logging/logs/"+emberRuntimeLogSinkName {
 			http.NotFound(w, r)
 			return
 		}
@@ -69,12 +69,12 @@ func TestUnregisterEmberRuntimeLogSink_OK(t *testing.T) {
 	require.NoError(t, f.UnregisterEmberRuntimeLogSink(context.Background()))
 
 	require.NotNil(t, path.Load())
-	assert.Contains(t, *path.Load(), EmberRuntimeLogSinkName)
+	assert.Contains(t, *path.Load(), emberRuntimeLogSinkName)
 }
 
 func TestCheckEmberRuntimeLogSink_Found(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.URL.Path, EmberRuntimeLogSinkName) {
+		if !strings.Contains(r.URL.Path, emberRuntimeLogSinkName) {
 			http.NotFound(w, r)
 			return
 		}

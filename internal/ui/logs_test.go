@@ -55,6 +55,24 @@ func appendLog(t *testing.T, buf *model.LogBuffer, host, method string, status i
 	})
 }
 
+func TestBuildLogsHeaderStatus_DroppedChip(t *testing.T) {
+	// Tiny buffer so the wrap happens deterministically; anything beyond
+	// capacity must be surfaced as a "dropped: N" chip so the user knows
+	// the tail window is sliding rather than infinite.
+	buf := model.NewLogBuffer(2)
+	app := newLogsApp(buf)
+
+	assert.NotContains(t, stripANSI(app.buildLogsHeaderStatus()), "dropped",
+		"no chip while the buffer has not wrapped")
+
+	now := time.Now()
+	for i := 0; i < 5; i++ {
+		appendLog(t, buf, "h.com", "GET", 200, now)
+	}
+	assert.Contains(t, stripANSI(app.buildLogsHeaderStatus()), "dropped: 3",
+		"wrapped buffer must surface the eviction count")
+}
+
 func TestRenderLogsTab_NoBuffer_ShowsHelp(t *testing.T) {
 	app := newLogsApp(nil)
 	out := stripANSI(app.renderLogsTab(120, 20))

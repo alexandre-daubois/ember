@@ -206,9 +206,19 @@ func renderLogHeader(labels, rightStatus string, width int) string {
 
 // formatRuntimeLogRow renders one runtime-log row. Level is colour-coded like
 // status codes in the access table: red for ERROR, amber for WARN, default
-// foreground for INFO/DEBUG. Malformed lines (ParseError) show the raw input.
+// foreground for INFO/DEBUG. The row prefix doubles as a severity cue so ERROR
+// ("!") and WARN ("*") rows remain scannable when NO_COLOR is set. Malformed
+// lines (ParseError) show the raw input.
 func formatRuntimeLogRow(e fetcher.LogEntry, width, msgW int, selected bool) string {
+	level := strings.ToUpper(e.Level)
+
 	prefix := " "
+	switch level {
+	case "ERROR", "FATAL", "PANIC":
+		prefix = "!"
+	case "WARN", "WARNING":
+		prefix = "*"
+	}
 	if selected {
 		prefix = ">"
 	}
@@ -224,7 +234,6 @@ func formatRuntimeLogRow(e fetcher.LogEntry, width, msgW int, selected bool) str
 
 	timeStr := e.Timestamp.Local().Format("15:04:05.000")
 
-	level := strings.ToUpper(e.Level)
 	if level == "" {
 		level = "—"
 	}
@@ -253,7 +262,7 @@ func formatRuntimeLogRow(e fetcher.LogEntry, width, msgW int, selected bool) str
 	}
 
 	styledLevel := levelPart
-	switch strings.ToUpper(e.Level) {
+	switch level {
 	case "ERROR", "FATAL", "PANIC":
 		styledLevel = dangerStyle.Render(levelPart)
 	case "WARN", "WARNING":

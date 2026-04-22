@@ -1,17 +1,20 @@
 .DEFAULT_GOAL := help
 
-.PHONY: local clean help
+.PHONY: local clean load help
 
-local: ## Start docker compose via build & up in the local folder
+up: ## Start docker compose via build & up in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
 	docker compose build && docker compose up -d
 	@echo ""
 	@echo "  Caddy sites : https://app.localhost, https://api.localhost, https://static.localhost"
 	@echo "  Caddy admin : http://localhost:2019"
 
-clean: ## Clean docker compose in the local folder
+down: ## Clean docker compose in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
 	docker compose down
+
+traffic: ## Generate traffic against the local Caddy (WORKERS=N, DURATION=S)
+	@./load.sh
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'

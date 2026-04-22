@@ -124,7 +124,7 @@ you drill in. The filter (typed with `/`) composes with the sidepanel: type
 | Column   | Description                                                  |
 |----------|--------------------------------------------------------------|
 | Time     | Local time the log entry was emitted, millisecond precision  |
-| Level    | Log level, color-coded (red ERROR/FATAL, orange WARN)        |
+| Level    | Log level, color-coded (red ERROR/FATAL, orange WARN). A textual prefix doubles the cue so ERROR rows start with `!` and WARN rows with `*`, keeping severity scannable when `NO_COLOR` is set |
 | Logger   | Caddy logger name (`tls.handshake`, `admin.api`, ...)        |
 | Message  | The log message                                              |
 
@@ -147,6 +147,11 @@ Entering Frozen mode happens either implicitly when you scroll (`↑`, `↓`,
 `PgUp`, `PgDn`, `End`) or explicitly by pressing `p`. Resume live follow with
 `f` (or `Home`, or `p` again). Switching sidepanel selection also resumes live
 mode so the frozen snapshot does not get out of sync with the visible buffer.
+
+The header also surfaces a `dropped: N` chip once the in-memory ring buffer
+wraps. It is a reminder that the tail window holds the most recent 10 000
+entries per scope, not the full history: any older lines have been evicted to
+keep the memory footprint bounded.
 
 ## Keybindings
 

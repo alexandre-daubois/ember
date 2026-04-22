@@ -648,10 +648,10 @@ func (f *HTTPFetcher) FetchFrankenPHPConfig(ctx context.Context) (*FrankenPHPCon
 // Ember session overwrite a stale entry left over from a prior crash.
 const EmberLogSinkName = "__ember__"
 
-// EmberRuntimeLogSinkName is the well-known name for the second sink Ember
+// emberRuntimeLogSinkName is the well-known name for the second sink Ember
 // registers to capture Caddy's runtime logs (startup, reloads, TLS, admin
 // API, plugins): anything that is not an access log.
-const EmberRuntimeLogSinkName = "__ember_runtime__"
+const emberRuntimeLogSinkName = "__ember_runtime__"
 
 // RegisterEmberLogSink hot-installs a Caddy logging sink that
 // pushes JSON access logs to the given listener address. The sink uses
@@ -672,7 +672,7 @@ func (f *HTTPFetcher) RegisterEmberLogSink(ctx context.Context, listenerAddr str
 // listener address. Uses `exclude` so the sink is a catch-all minus access
 // logs, which are handled by the primary __ember__ sink.
 func (f *HTTPFetcher) RegisterEmberRuntimeLogSink(ctx context.Context, listenerAddr string) error {
-	return f.registerLogSink(ctx, EmberRuntimeLogSinkName, logSinkPayload(listenerAddr, map[string]any{
+	return f.registerLogSink(ctx, emberRuntimeLogSinkName, logSinkPayload(listenerAddr, map[string]any{
 		"exclude": []string{"http.log.access"},
 	}))
 }
@@ -914,7 +914,7 @@ func (f *HTTPFetcher) CheckEmberLogSink(ctx context.Context) bool {
 
 // CheckEmberRuntimeLogSink is the runtime-sink counterpart of CheckEmberLogSink.
 func (f *HTTPFetcher) CheckEmberRuntimeLogSink(ctx context.Context) bool {
-	return f.checkLogSink(ctx, EmberRuntimeLogSinkName)
+	return f.checkLogSink(ctx, emberRuntimeLogSinkName)
 }
 
 func (f *HTTPFetcher) checkLogSink(ctx context.Context, name string) bool {
@@ -952,7 +952,7 @@ func (f *HTTPFetcher) UnregisterEmberLogSink(ctx context.Context) error {
 
 // UnregisterEmberRuntimeLogSink is the runtime-sink counterpart.
 func (f *HTTPFetcher) UnregisterEmberRuntimeLogSink(ctx context.Context) error {
-	return f.unregisterLogSink(ctx, EmberRuntimeLogSinkName)
+	return f.unregisterLogSink(ctx, emberRuntimeLogSinkName)
 }
 
 func (f *HTTPFetcher) unregisterLogSink(ctx context.Context, name string) error {

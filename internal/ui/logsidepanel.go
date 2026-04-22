@@ -3,7 +3,6 @@ package ui
 import (
 	"strings"
 
-	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -244,18 +243,4 @@ func logBufferStats(buf *model.LogBuffer) (int, bool) {
 		return 0, false
 	}
 	return buf.Len(), buf.Full()
-}
-
-// selectionFilter returns the filter applied on top of the search filter for
-// the active selection. Only meaningful for per-host access views; for the
-// aggregate Access / Runtime views the buffer itself already partitions the
-// entries.
-func (a *App) selectionFilter() func(fetcher.LogEntry) bool {
-	if a.logSel.kind == logSelAccessHost {
-		host := a.logSel.host
-		return func(e fetcher.LogEntry) bool {
-			return e.Host == host
-		}
-	}
-	return nil
 }

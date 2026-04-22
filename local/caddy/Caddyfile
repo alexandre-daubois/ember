@@ -1,6 +1,8 @@
 {
 	admin 0.0.0.0:2019
-	metrics
+	metrics {
+		per_host
+	}
 
 	local_certs
 }

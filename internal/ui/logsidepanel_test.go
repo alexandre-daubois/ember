@@ -162,25 +162,6 @@ func TestCurrentLogBuffer_RoutesByKind(t *testing.T) {
 	assert.Same(t, runtime, app.currentLogBuffer())
 }
 
-func TestSelectionFilter_NarrowsByHost(t *testing.T) {
-	app := newLogsApp(model.NewLogBuffer(10))
-	app.logSel = logSel{kind: logSelAccessHost, host: "only.com"}
-
-	f := app.selectionFilter()
-	require.NotNil(t, f)
-	assert.True(t, f(fetcher.LogEntry{Host: "only.com"}))
-	assert.False(t, f(fetcher.LogEntry{Host: "other.com"}))
-}
-
-func TestSelectionFilter_NilForAggregate(t *testing.T) {
-	app := newLogsApp(model.NewLogBuffer(10))
-	app.logSel = logSel{kind: logSelAccess}
-	assert.Nil(t, app.selectionFilter())
-
-	app.logSel = logSel{kind: logSelRuntime}
-	assert.Nil(t, app.selectionFilter())
-}
-
 func TestRenderLogsTab_HostSelectionHidesHostColumnAndFilters(t *testing.T) {
 	buf := model.NewLogBuffer(10)
 	now := time.Now()

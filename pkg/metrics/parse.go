@@ -31,9 +31,9 @@ func ParsePrometheus(r io.Reader) (snap MetricsSnapshot, err error) {
 		Hosts:   make(map[string]*HostMetrics),
 	}
 
-	snap.TotalThreads = ScalarValue(families, "frankenphp_total_threads")
-	snap.BusyThreads = ScalarValue(families, "frankenphp_busy_threads")
-	snap.QueueDepth = ScalarValue(families, "frankenphp_queue_depth")
+	snap.TotalThreads = scalarValue(families, "frankenphp_total_threads")
+	snap.BusyThreads = scalarValue(families, "frankenphp_busy_threads")
+	snap.QueueDepth = scalarValue(families, "frankenphp_queue_depth")
 
 	perWorker := []struct {
 		name   string
@@ -68,17 +68,17 @@ func ParsePrometheus(r io.Reader) (snap MetricsSnapshot, err error) {
 	snap.HTTPRequestErrorsTotal = sumCounter(families, "caddy_http_request_errors_total")
 	snap.HTTPRequestsTotal = sumCounter(families, "caddy_http_requests_total")
 	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount, snap.DurationBuckets = histogramData(families, "caddy_http_request_duration_seconds")
-	snap.HTTPRequestsInFlight = ScalarValue(families, "caddy_http_requests_in_flight")
+	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
 	snap.HasHTTPMetrics = snap.HTTPRequestsTotal > 0 || snap.HTTPRequestDurationCount > 0
 
-	snap.ProcessCPUSecondsTotal = ScalarValue(families, "process_cpu_seconds_total")
-	snap.ProcessRSSBytes = ScalarValue(families, "process_resident_memory_bytes")
-	snap.ProcessStartTimeSeconds = ScalarValue(families, "process_start_time_seconds")
+	snap.ProcessCPUSecondsTotal = scalarValue(families, "process_cpu_seconds_total")
+	snap.ProcessRSSBytes = scalarValue(families, "process_resident_memory_bytes")
+	snap.ProcessStartTimeSeconds = scalarValue(families, "process_start_time_seconds")
 
 	_, hasReload := families["caddy_config_last_reload_successful"]
 	snap.HasConfigReloadMetrics = hasReload
-	snap.ConfigLastReloadSuccessful = ScalarValue(families, "caddy_config_last_reload_successful")
-	snap.ConfigLastReloadSuccessTimestamp = ScalarValue(families, "caddy_config_last_reload_success_timestamp_seconds")
+	snap.ConfigLastReloadSuccessful = scalarValue(families, "caddy_config_last_reload_successful")
+	snap.ConfigLastReloadSuccessTimestamp = scalarValue(families, "caddy_config_last_reload_success_timestamp_seconds")
 
 	snap.Hosts = perHostMetrics(families)
 	snap.Upstreams = upstreamMetrics(families)
@@ -191,13 +191,12 @@ func histogramData(families map[string]*dto.MetricFamily, name string) (float64,
 	for ub, count := range bucketMap {
 		buckets = append(buckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 	}
-	SortBuckets(buckets)
+	sortBuckets(buckets)
 
 	return sumTotal, countTotal, buckets
 }
 
-// SortBuckets sorts histogram buckets by ascending upper bound.
-func SortBuckets(buckets []HistogramBucket) {
+func sortBuckets(buckets []HistogramBucket) {
 	slices.SortFunc(buckets, func(a, b HistogramBucket) int {
 		if a.UpperBound < b.UpperBound {
 			return -1
@@ -209,9 +208,7 @@ func SortBuckets(buckets []HistogramBucket) {
 	})
 }
 
-// ScalarValue returns the first metric's gauge/counter/untyped value
-// for the named family. Returns 0 if the family is missing or empty.
-func ScalarValue(families map[string]*dto.MetricFamily, name string) float64 {
+func scalarValue(families map[string]*dto.MetricFamily, name string) float64 {
 	fam, ok := families[name]
 	if !ok || len(fam.GetMetric()) == 0 {
 		return 0
@@ -362,7 +359,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		for ub, count := range bm {
 			hm.DurationBuckets = append(hm.DurationBuckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 		}
-		SortBuckets(hm.DurationBuckets)
+		sortBuckets(hm.DurationBuckets)
 	}
 
 	ttfbBucketMaps := make(map[string]map[float64]float64)
@@ -395,7 +392,7 @@ func perHostMetrics(families map[string]*dto.MetricFamily) map[string]*HostMetri
 		for ub, count := range bm {
 			hm.TTFBBuckets = append(hm.TTFBBuckets, HistogramBucket{UpperBound: ub, CumulativeCount: count})
 		}
-		SortBuckets(hm.TTFBBuckets)
+		sortBuckets(hm.TTFBBuckets)
 	}
 
 	if fam, ok := families["caddy_http_response_size_bytes"]; ok {

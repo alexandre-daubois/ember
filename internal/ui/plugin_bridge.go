@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -132,13 +131,6 @@ func safePluginHelpBindings(r plugin.Renderer) (_ []plugin.HelpBinding, err erro
 		}
 	}()
 	return r.HelpBindings(), nil
-}
-
-func safeOnMetrics(sub plugin.MetricsSubscriber, snap *fetcher.Snapshot) {
-	defer func() {
-		recover() //nolint:errcheck // fire-and-forget: don't crash Ember if a subscriber panics
-	}()
-	sub.OnMetrics(snap)
 }
 
 func safePluginAvailable(a plugin.Availability) (avail bool) {

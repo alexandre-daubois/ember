@@ -208,3 +208,13 @@ func SafeFetch(ctx context.Context, f Fetcher) (data any, err error) {
 	}()
 	return f.Fetch(ctx)
 }
+
+// SafeOnMetrics calls sub.OnMetrics and swallows any panic so a misbehaving
+// subscriber cannot take Ember down. Errors are intentionally dropped because
+// OnMetrics has no return value: the contract is fire-and-forget.
+func SafeOnMetrics(sub MetricsSubscriber, snap *metrics.Snapshot) {
+	defer func() {
+		_ = recover()
+	}()
+	sub.OnMetrics(snap)
+}

@@ -76,6 +76,17 @@ func (b *LogBuffer) Full() bool {
 	return b.full
 }
 
+// Dropped returns the number of entries that have been evicted by the ring
+// buffer wrapping. Stays zero until the buffer wraps for the first time.
+func (b *LogBuffer) Dropped() int64 {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if !b.full {
+		return 0
+	}
+	return b.writeCount - int64(b.capacity)
+}
+
 // Capacity returns the maximum number of entries the buffer can hold.
 func (b *LogBuffer) Capacity() int {
 	return b.capacity
@@ -91,9 +102,12 @@ func (b *LogBuffer) Clear() {
 
 // LogFilter restricts the entries returned by Snapshot. Search is matched
 // case-insensitively against every visible column (status code, method, host,
-// URI, message, raw line).
+// URI, message, raw line). Host, when non-empty, further restricts results to
+// that exact host — folding the per-host selection into the buffer walk so
+// narrow views do not pay for a full-buffer copy + filter pass.
 type LogFilter struct {
 	Search string
+	Host   string
 }
 
 // Matches reports whether entry passes the filter. Exposed so callers can
@@ -104,6 +118,9 @@ func (f LogFilter) Matches(e fetcher.LogEntry) bool {
 }
 
 func (f LogFilter) matches(e fetcher.LogEntry) bool {
+	if f.Host != "" && e.Host != f.Host {
+		return false
+	}
 	if f.Search != "" {
 		needle := strings.ToLower(f.Search)
 		if !strings.Contains(strconv.Itoa(e.Status), needle) &&

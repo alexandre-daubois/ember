@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 )
 
@@ -294,6 +295,30 @@ func TestSafeFetch_RecoversPanic(t *testing.T) {
 	assert.Nil(t, data)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plugin panic during Fetch")
+}
+
+type metricsSubSpy struct {
+	called bool
+}
+
+func (m *metricsSubSpy) OnMetrics(_ *metrics.Snapshot) { m.called = true }
+
+type panicMetricsSub struct{}
+
+func (p *panicMetricsSub) OnMetrics(_ *metrics.Snapshot) { panic("boom") }
+
+func TestSafeOnMetrics(t *testing.T) {
+	t.Run("normal call", func(t *testing.T) {
+		sub := &metricsSubSpy{}
+		plugin.SafeOnMetrics(sub, &metrics.Snapshot{})
+		assert.True(t, sub.called)
+	})
+
+	t.Run("panic recovery", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			plugin.SafeOnMetrics(&panicMetricsSub{}, &metrics.Snapshot{})
+		})
+	})
 }
 
 func TestEnvPrefix(t *testing.T) {

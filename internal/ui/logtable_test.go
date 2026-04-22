@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatLogRow_ParseError_Truncates(t *testing.T) {
@@ -215,6 +217,45 @@ func TestFormatRuntimeLogRow_EmojiFitsColumnWidth(t *testing.T) {
 			}
 			assert.LessOrEqual(t, lipgloss.Width(row), width,
 				"rendered display width must not exceed the terminal width, or the row wraps")
+		})
+	}
+}
+
+func TestFormatRuntimeLogRow_SeverityPrefix(t *testing.T) {
+	// The prefix character doubles as a severity cue so ERROR/WARN rows
+	// remain scannable when colours are off (NO_COLOR). Selection overrides
+	// the severity prefix because the cursor marker is more important.
+	cases := []struct {
+		level    string
+		selected bool
+		want     string
+	}{
+		{"ERROR", false, "!"},
+		{"FATAL", false, "!"},
+		{"PANIC", false, "!"},
+		{"WARN", false, "*"},
+		{"WARNING", false, "*"},
+		{"INFO", false, " "},
+		{"DEBUG", false, " "},
+		{"", false, " "},
+		{"ERROR", true, ">"},
+		{"WARN", true, ">"},
+		{"INFO", true, ">"},
+	}
+	width := 120
+	msgW := width - colRuntimeFixed
+	for _, tc := range cases {
+		t.Run(tc.level+"_sel="+strconv.FormatBool(tc.selected), func(t *testing.T) {
+			entry := fetcher.LogEntry{
+				Timestamp: time.Now(),
+				Level:     tc.level,
+				Logger:    "caddy",
+				Message:   "hello",
+			}
+			row := stripANSI(formatRuntimeLogRow(entry, width, msgW, tc.selected))
+			require.NotEmpty(t, row)
+			assert.Equal(t, tc.want, string(row[0]),
+				"first char of the row must be the severity/selection prefix")
 		})
 	}
 }

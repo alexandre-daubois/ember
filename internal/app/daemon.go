@@ -198,16 +198,9 @@ func fetchDaemonPlugins(ctx context.Context, dps []daemonPlugin, log *slog.Logge
 func notifyDaemonSubscribers(dps []daemonPlugin, snap *fetcher.Snapshot) {
 	for _, dp := range dps {
 		if sub, ok := dp.p.(plugin.MetricsSubscriber); ok {
-			safeOnMetrics(sub, snap)
+			plugin.SafeOnMetrics(sub, snap)
 		}
 	}
-}
-
-func safeOnMetrics(sub plugin.MetricsSubscriber, snap *fetcher.Snapshot) {
-	defer func() {
-		recover() //nolint:errcheck // fire-and-forget: don't crash Ember if a subscriber panics
-	}()
-	sub.OnMetrics(snap)
 }
 
 func daemonPluginExports(dps []daemonPlugin) []plugin.PluginExport {

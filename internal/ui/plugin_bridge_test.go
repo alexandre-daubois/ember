@@ -5,7 +5,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
@@ -375,31 +374,6 @@ type availRendererPlugin struct {
 }
 
 func (p *availRendererPlugin) Available() bool { return p.available }
-
-func TestSafeOnMetrics(t *testing.T) {
-	t.Run("normal call", func(t *testing.T) {
-		sub := &metricsSubPlugin{}
-		snap := &fetcher.Snapshot{}
-		assert.NotPanics(t, func() { safeOnMetrics(sub, snap) })
-		assert.True(t, sub.called)
-	})
-
-	t.Run("panic recovery", func(t *testing.T) {
-		sub := &panicMetricsSubPlugin{}
-		snap := &fetcher.Snapshot{}
-		assert.NotPanics(t, func() { safeOnMetrics(sub, snap) })
-	})
-}
-
-type metricsSubPlugin struct {
-	called bool
-}
-
-func (p *metricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { p.called = true }
-
-type panicMetricsSubPlugin struct{}
-
-func (p *panicMetricsSubPlugin) OnMetrics(_ *fetcher.Snapshot) { panic("onmetrics boom") }
 
 func TestNewPluginTabs_SingleRenderer_EmptyTabKey(t *testing.T) {
 	p := &stubPlugin{name: "single"}

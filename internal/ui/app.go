@@ -1300,7 +1300,7 @@ func (a *App) pluginExports() []plugin.PluginExport {
 func (a *App) notifyMetricsSubscribers(snap *fetcher.Snapshot) {
 	for _, g := range a.pluginGroups {
 		if sub, ok := g.p.(plugin.MetricsSubscriber); ok {
-			safeOnMetrics(sub, snap)
+			plugin.SafeOnMetrics(sub, snap)
 		}
 	}
 }
