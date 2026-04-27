@@ -26,7 +26,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Certificates tab: TLS certificate monitoring with expiry tracking, color-coded warnings, and likely auto-renewal indication
 - Upstreams tab: reverse proxy upstream health monitoring with per-upstream status, auto-detected when `reverse_proxy` is configured
-- Logs tab: live access and runtime log streaming in a single view, with a sidepanel tree (Runtime, Access, per-host children) and a free-text filter. Zero-config: Ember hot-registers two transient sinks in Caddy via the admin API (`__ember__` for access logs, `__ember_runtime__` for everything else) and receives logs over TCP with no Caddyfile changes
+- Logs tab: live access and runtime log streaming in a single view, with a sidepanel tree (Runtime, Access, per-host children, By Route) and a free-text filter. The "By Route" entry aggregates access logs into a sortable table grouped by `(method, normalized URI pattern)`: UUIDs, long hex strings, and numeric IDs are collapsed to `:uuid` / `:hash` / `:id`. Zero-config: Ember hot-registers two transient sinks in Caddy via the admin API (`__ember__` for access logs, `__ember_runtime__` for everything else) and receives logs over TCP with no Caddyfile changes
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**
@@ -140,7 +140,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [Caddy Configuration](docs/caddy-configuration.md): Caddyfile requirements
 - [Caddy Dashboard](docs/caddy-dashboard.md): Per-host traffic and latency
 - [FrankenPHP Dashboard](docs/frankenphp-dashboard.md): Thread introspection and workers
-- [Logs](docs/logs.md): Live tailing of access and runtime logs, with a sidepanel to drill into a specific host
+- [Logs](docs/logs.md): Live tailing of access and runtime logs, per-host drill-down, and a By Route view that aggregates traffic by normalized URI pattern
 - [CLI Reference](docs/cli-reference.md): Flags, keybindings, shell completions
 - [JSON Output](docs/json-output.md): Streaming JSONL for scripting
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode

@@ -46,6 +46,7 @@ type Config struct {
 	MetricsServerErr <-chan error
 	LogBuffer        *model.LogBuffer
 	RuntimeLogBuffer *model.LogBuffer
+	RouteAggregator  *model.RouteAggregator
 	LogSource        string // path or description; empty when no source is known
 }
 
@@ -119,6 +120,7 @@ type App struct {
 
 	logBuffer        *model.LogBuffer
 	runtimeLogBuffer *model.LogBuffer
+	routeAggregator  *model.RouteAggregator
 	logSource        string
 
 	logFrozen       bool
@@ -128,6 +130,7 @@ type App struct {
 
 	logSel              logSel
 	logSidepanelFocused bool
+	routeSortBy         model.RouteSortField
 
 	pluginTabs   []*pluginTab
 	pluginGroups []*pluginGroup
@@ -185,6 +188,7 @@ func NewApp(f fetcher.Fetcher, cfg Config) *App {
 		downSince:        make(map[string]time.Time),
 		logBuffer:        cfg.LogBuffer,
 		runtimeLogBuffer: cfg.RuntimeLogBuffer,
+		routeAggregator:  cfg.RouteAggregator,
 		logSource:        cfg.LogSource,
 		logSel:           logSel{kind: logSelAccess},
 		pluginTabs:       pluginTabs,
@@ -564,7 +568,7 @@ func (a *App) View() string {
 		}
 	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts, a.pluginTabs)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.paused, listWidth, a.activeTab, a.logFrozen)
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.routeSortBy, a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView())
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived

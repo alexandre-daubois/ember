@@ -2,8 +2,9 @@
 
 The Logs tab streams Caddy's logs into the Ember TUI in real time. A left
 sidepanel lets you switch between **Runtime** logs (startup, reloads, TLS,
-admin API, modules) and **Access** logs (HTTP requests), and drill into a
-specific host within the access view.
+admin API, modules), **Access** logs (HTTP requests), drill into a specific
+host within the access view, or pivot to **By Route**: an aggregated table
+that groups requests by their normalized URI pattern.
 
 Each line is parsed on the fly and kept in an in-memory ring buffer of the
 last 10 000 entries per stream (access and runtime are held in separate
@@ -93,6 +94,7 @@ Access
   api.example.com
   static.example.com
   ...
+By Route
 ```
 
 - **Runtime** shows everything Caddy logs that is not an HTTP access entry:
@@ -101,6 +103,10 @@ Access
 - The children under Access are the hosts actually seen in recent traffic,
   sorted alphabetically. Selecting one narrows the table to that host and
   drops the Host column so URIs get more room.
+- **By Route** swaps the log table for an aggregated view: one row per
+  `(host, method, normalized URI pattern)` bucket. See the dedicated section
+  below. Like Access, "By Route" has per-host children so you can drill
+  into a single virtual host.
 
 Selecting an entry resumes live-follow mode so you always see fresh data when
 you drill in. The filter (typed with `/`) composes with the sidepanel: type
@@ -130,6 +136,57 @@ you drill in. The filter (typed with `/`) composes with the sidepanel: type
 
 Lines that fail to parse as JSON are still shown in grey in the runtime view,
 so corrupt or mid-write lines never silently disappear.
+
+## By Route view
+
+Selecting **By Route** in the sidepanel replaces the log table with an
+aggregated view of every request Ember has seen this session (the counts
+are kept independently of the access ring buffer, so they keep climbing
+even after the 10 000-entry cap is reached). Each row is one
+`(host, method, pattern)` bucket: `GET /users/:id` on `api.localhost` and
+`GET /users/:id` on `app.localhost` are different rows because they hit
+different handlers and have different latency profiles.
+
+On the root **By Route** view, the host is folded into the Pattern column
+as a soft prefix (`api.localhost /users/:id`) so the two are
+distinguishable at a glance. Drilling into a per-host child filters the
+table on that host and drops the prefix.
+
+| Column     | Description                                                              |
+|------------|--------------------------------------------------------------------------|
+| Count      | Number of requests in the bucket                                         |
+| Method     | HTTP method                                                              |
+| Pattern    | The normalized URI pattern (see below)                                   |
+| 2xx / 3xx  | Counters per status class; `2xx` is rendered green                       |
+| 4xx / 5xx  | Counters per status class; coloured (orange / red) and suffixed with `*` (4xx) or `!` (5xx) so error rows stay scannable when `NO_COLOR` is set |
+| Avg        | Mean latency over the bucket                                             |
+| Max        | Slowest single request                                                   |
+
+Press `s` / `S` to cycle the sort field (Count → Pattern → Avg → Max),
+following the visual column order. The active column is marked with `▼`
+in the header, the same glyph the host and upstream tables use, so the
+cue is consistent across the app. `/` filters on method or pattern.
+
+### URL normalization
+
+To keep the bucket count manageable, segments that look like dynamic
+identifiers are collapsed:
+
+| Segment shape                                       | Becomes |
+|-----------------------------------------------------|---------|
+| `550e8400-e29b-41d4-a716-446655440000` (UUID)       | `:uuid` |
+| `0123456789abcdef0123…` (16+ hex chars, sha-like)   | `:hash` |
+| `12345` (all digits)                                | `:id`   |
+
+Query strings and fragments are dropped before normalization (they belong on
+the request, not on the route).
+
+The rules are intentionally narrow: anything that does not match leaves the
+segment alone (slugs, words, short hex strings…). A custom segment that
+collides with one of the rules, for example `/dunning/{1,2,3,4}`, will
+appear as `:id`, which is a known limitation of pattern-free heuristics. If
+you hit a case worth handling, open an issue with a representative URL and
+we will look into adding a rule or making the set configurable.
 
 ## Scroll modes
 
@@ -168,6 +225,7 @@ Focus is on the sidepanel by default when entering the tab.
 | `f`             | Resume live follow (table focus)                         |
 | `/`             | Filter: matches case-insensitively across all visible columns |
 | `p`             | Toggle pause: freezes or resumes the table               |
+| `s` / `S`       | Cycle sort field (By Route view only)                    |
 | `c`             | Clear the current buffer (also resumes live follow)      |
 | `Tab`           | Switch tab                                               |
 | `?`             | Help overlay                                             |
