@@ -16,6 +16,8 @@ const (
 	logSelAccess logSelKind = iota
 	logSelAccessHost
 	logSelRuntime
+	logSelRoutes
+	logSelRoutesHost
 )
 
 // logSel is the persistent sidepanel selection. We persist kind+host rather
@@ -71,6 +73,17 @@ func (a *App) sidepanelItems() []sidepanelItem {
 	for _, h := range accessLogHosts(a.logBuffer) {
 		items = append(items, sidepanelItem{kind: logSelAccessHost, label: h, host: h, indent: 1})
 	}
+	// "By Route" only makes sense when the aggregator is wired up: clicking
+	// it without one would show a perpetual "waiting…" hint with no path
+	// forward. Per-host children come from the aggregator itself (not the
+	// access buffer), so the sidepanel keeps offering the same drill-down
+	// even after the 10 000-entry buffer wraps on a busy server.
+	if a.routeAggregator != nil {
+		items = append(items, sidepanelItem{kind: logSelRoutes, label: "By Route"})
+		for _, h := range a.routeAggregator.Hosts() {
+			items = append(items, sidepanelItem{kind: logSelRoutesHost, label: h, host: h, indent: 1})
+		}
+	}
 	return items
 }
 
@@ -92,7 +105,7 @@ func sidepanelIndex(items []sidepanelItem, sel logSel) int {
 		if item.kind != sel.kind {
 			continue
 		}
-		if sel.kind == logSelAccessHost && item.host != sel.host {
+		if (sel.kind == logSelAccessHost || sel.kind == logSelRoutesHost) && item.host != sel.host {
 			continue
 		}
 		return i
@@ -101,17 +114,23 @@ func sidepanelIndex(items []sidepanelItem, sel logSel) int {
 }
 
 // normalizeLogSel repairs a selection that no longer exists in the item
-// list, falling back to the Access aggregate. Called before every render
-// and navigation so downstream code can assume a valid selection.
+// list. A stale per-host drill-down falls back to its parent aggregate
+// (logSelRoutesHost → logSelRoutes, logSelAccessHost → logSelAccess) so the
+// user stays in the same view; everything else falls back to Access. Called
+// before every render and navigation so downstream code can assume a valid
+// selection.
 func normalizeLogSel(items []sidepanelItem, sel logSel) logSel {
 	for _, item := range items {
 		if item.kind != sel.kind {
 			continue
 		}
-		if sel.kind == logSelAccessHost && item.host != sel.host {
+		if (sel.kind == logSelAccessHost || sel.kind == logSelRoutesHost) && item.host != sel.host {
 			continue
 		}
 		return sel
+	}
+	if sel.kind == logSelRoutesHost {
+		return logSel{kind: logSelRoutes}
 	}
 	return logSel{kind: logSelAccess}
 }

@@ -15,18 +15,23 @@ import (
 )
 
 func newLogsApp(buf *model.LogBuffer) *App {
+	// Mirror the production wiring: startNetListener always creates the
+	// access buffer and the route aggregator together. Tests that need a
+	// nil aggregator (to exercise that branch) override the field on the
+	// returned App, see newRoutesApp.
 	return &App{
 		activeTab: tabLogs,
 		tabs:      []tab{tabCaddy, tabConfig, tabCertificates, tabLogs},
 		tabStates: map[tab]*tabState{
 			tabCaddy: {}, tabConfig: {}, tabCertificates: {}, tabLogs: {},
 		},
-		history:   newHistoryStore(),
-		logBuffer: buf,
-		logSource: "/tmp/access.log",
-		width:     120,
-		height:    30,
-		logSel:    logSel{kind: logSelAccess},
+		history:         newHistoryStore(),
+		logBuffer:       buf,
+		routeAggregator: model.NewRouteAggregator(),
+		logSource:       "/tmp/access.log",
+		width:           120,
+		height:          30,
+		logSel:          logSel{kind: logSelAccess},
 	}
 }
 
@@ -397,12 +402,12 @@ func TestHeader_FrozenShowsPausedPill(t *testing.T) {
 
 func TestHeader_FollowBindingAppearsOnlyWhenFrozen(t *testing.T) {
 	// Live: help shows pause, no follow.
-	help := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabLogs, false))
+	help := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, false, false))
 	assert.Contains(t, help, "pause")
 	assert.NotContains(t, help, "follow")
 
 	// Frozen: help shows resume + follow hint.
-	help = stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabLogs, true))
+	help = stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, true, false))
 	assert.Contains(t, help, "resume")
 	assert.Contains(t, help, "follow")
 }

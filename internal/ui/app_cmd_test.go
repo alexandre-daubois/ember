@@ -55,7 +55,7 @@ func TestNewApp_DefaultsCaddyOnly(t *testing.T) {
 	app := NewApp(noOpFetcher{}, Config{Interval: time.Second})
 
 	require.NotNil(t, app)
-	assert.Equal(t, []tab{tabCaddy, tabConfig, tabCertificates, tabLogs}, app.tabs,
+	assert.Equal(t, []tab{tabCaddy, tabLogs, tabConfig, tabCertificates}, app.tabs,
 		"a Caddy-only setup must not surface FrankenPHP or Upstreams tabs")
 	assert.Equal(t, tabCaddy, app.activeTab)
 	assert.NotNil(t, app.history)

@@ -53,11 +53,29 @@ func TestSidepanelItems_HostChildrenAreIndented(t *testing.T) {
 	app := newLogsApp(buf)
 
 	items := app.sidepanelItems()
-	require.Len(t, items, 4)
+	require.Len(t, items, 5)
 	assert.Equal(t, logSelAccessHost, items[2].kind)
 	assert.Equal(t, 1, items[2].indent)
 	assert.Equal(t, "one.com", items[2].host)
 	assert.Equal(t, "two.com", items[3].host)
+	assert.Equal(t, logSelRoutes, items[4].kind, "By Route entry sits at the bottom")
+	assert.Equal(t, 0, items[4].indent)
+}
+
+func TestSidepanelItems_HidesByRouteWhenNoAggregator(t *testing.T) {
+	// "By Route" only exists when the aggregator is wired up. Showing the
+	// entry without one would lead to a perpetual "waiting…" hint with no
+	// path forward.
+	buf := model.NewLogBuffer(10)
+	appendLog(t, buf, "a.com", "GET", 200, time.Now())
+	app := newLogsApp(buf)
+	app.routeAggregator = nil
+
+	items := app.sidepanelItems()
+	for _, it := range items {
+		assert.NotEqual(t, logSelRoutes, it.kind, "By Route must not appear without an aggregator")
+		assert.NotEqual(t, logSelRoutesHost, it.kind)
+	}
 }
 
 func TestNormalizeLogSel_StaleHostFallsBackToAccess(t *testing.T) {
@@ -88,12 +106,11 @@ func TestMoveSidepanel_ClampsAtBounds(t *testing.T) {
 	app.moveSidepanel(-10) // already at top
 	assert.Equal(t, logSelRuntime, app.logSel.kind)
 
-	app.moveSidepanel(+10) // walk to bottom (last host)
-	assert.Equal(t, logSelAccessHost, app.logSel.kind)
-	assert.Equal(t, "a.com", app.logSel.host)
+	app.moveSidepanel(+10) // walk to bottom (now "By Route")
+	assert.Equal(t, logSelRoutes, app.logSel.kind)
 
 	app.moveSidepanel(+10) // clamp at bottom
-	assert.Equal(t, logSelAccessHost, app.logSel.kind)
+	assert.Equal(t, logSelRoutes, app.logSel.kind)
 }
 
 func TestHandleLogsListKey_LeftResumesLiveFollow(t *testing.T) {
