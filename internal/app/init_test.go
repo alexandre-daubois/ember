@@ -369,3 +369,113 @@ func TestRunInit_Quiet(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestRunInitMulti_AllReachable(t *testing.T) {
+	is1 := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	is2 := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	srv1 := newInitTestServer(is1)
+	defer srv1.Close()
+	srv2 := newInitTestServer(is2)
+	defer srv2.Close()
+
+	cfg := &config{addrs: []addrSpec{
+		{name: "web2", url: srv2.URL},
+		{name: "web1", url: srv1.URL},
+	}}
+	var buf bytes.Buffer
+	require.NoError(t, runInitMulti(context.Background(), &buf, cfg))
+
+	out := buf.String()
+	assert.Contains(t, out, "--- web1 ---")
+	assert.Contains(t, out, "--- web2 ---")
+	assert.Less(t, strings.Index(out, "--- web1 ---"), strings.Index(out, "--- web2 ---"),
+		"blocks must be sorted by instance name regardless of --addr order")
+	assert.Equal(t, 2, strings.Count(out, "Ember is ready"))
+}
+
+func TestRunInitMulti_PartialFailure(t *testing.T) {
+	is := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	healthy := newInitTestServer(is)
+	defer healthy.Close()
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	dead.Close()
+
+	cfg := &config{addrs: []addrSpec{
+		{name: "alpha", url: healthy.URL},
+		{name: "bravo", url: dead.URL},
+	}}
+	var buf bytes.Buffer
+	err := runInitMulti(context.Background(), &buf, cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bravo")
+	out := buf.String()
+	assert.Contains(t, out, "--- alpha ---", "healthy instance block must still appear when another fails")
+	assert.Contains(t, out, "--- bravo ---")
+	assert.Contains(t, out, "Ember is ready", "alpha's pipeline must finish despite bravo's failure")
+}
+
+func TestRun_InitCmd_MultiRequiresYes(t *testing.T) {
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"init", "--addr", "web1=http://a:2019", "--addr", "web2=http://b:2019"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--yes")
+}
+
+func TestRun_InitCmd_MultiRunsBothInstances(t *testing.T) {
+	is1 := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	is2 := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	srv1 := newInitTestServer(is1)
+	defer srv1.Close()
+	srv2 := newInitTestServer(is2)
+	defer srv2.Close()
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"init", "-y", "--addr", "web1=" + srv1.URL, "--addr", "web2=" + srv2.URL})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+	out := buf.String()
+	assert.Contains(t, out, "--- web1 ---")
+	assert.Contains(t, out, "--- web2 ---")
+}
+
+func TestRunInitMulti_TLSError(t *testing.T) {
+	cfg := &config{
+		addrs:  []addrSpec{{name: "secure", url: "https://example.invalid:2019"}},
+		caCert: "/nonexistent/ca.pem",
+	}
+	var buf bytes.Buffer
+	err := runInitMulti(context.Background(), &buf, cfg)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "secure")
+	out := buf.String()
+	assert.Contains(t, out, "--- secure ---")
+	assert.Contains(t, out, "TLS configuration failed")
+}
+
+func TestRun_InitCmd_MultiQuietSilent(t *testing.T) {
+	is1 := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	is2 := &initServer{metricsEnabled: true, hasHTTPMetrics: true, servers: map[string]any{"srv0": nil}}
+	srv1 := newInitTestServer(is1)
+	defer srv1.Close()
+	srv2 := newInitTestServer(is2)
+	defer srv2.Close()
+
+	cmd := newRootCmd("test")
+	cmd.SetArgs([]string{"init", "-yq", "--addr", "web1=" + srv1.URL, "--addr", "web2=" + srv2.URL})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+	assert.Empty(t, buf.String(), "-q must keep stdout silent in multi-instance mode, headers included")
+}

@@ -136,11 +136,14 @@ ember init
 ember init --addr https://prod:2019 --ca-cert ca.pem
 ember init -y    # skip confirmation prompts
 ember init -yq   # skip prompts, suppress output
+ember init -y --addr web1=https://a --addr web2=https://b   # multi-instance
 ```
+
+With multiple `--addr` values, the checklist is run against every instance, output is grouped per instance under a `--- <name> ---` header sorted by name, and the exit code is non-zero if any instance fails. Interactive prompts are disabled in multi-instance mode: `--yes` (`-y`) is required, otherwise the command errors out.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `-y`, `--yes` | bool | `false` | Skip confirmation prompts |
+| `-y`, `--yes` | bool | `false` | Skip confirmation prompts (required when multiple `--addr` are provided) |
 | `-q`, `--quiet` | bool | `false` | Suppress output (errors still reported via exit code) |
 
 ### `ember version`
