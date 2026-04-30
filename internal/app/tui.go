@@ -180,8 +180,10 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 
 	accessBuf := model.NewLogBuffer(0)
 	runtimeBuf := model.NewLogBuffer(0)
+	routeAgg := model.NewRouteAggregator()
 	uiCfg.LogBuffer = accessBuf
 	uiCfg.RuntimeLogBuffer = runtimeBuf
+	uiCfg.RouteAggregator = routeAgg
 	uiCfg.LogSource = "net " + advertiseAddr
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -189,6 +191,10 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 		for _, e := range batch {
 			if e.IsAccessLog() {
 				accessBuf.Append(e)
+				// Track in the aggregator too so route counts survive ring-
+				// buffer wraparound: the buffer caps at 10 000 entries, but
+				// the By Route view should reflect the full session.
+				routeAgg.Track(e)
 			} else {
 				runtimeBuf.Append(e)
 			}

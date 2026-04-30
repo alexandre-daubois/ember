@@ -35,35 +35,170 @@ func (a *App) renderLogsTab(width, height int) string {
 		tableW = 20
 	}
 
-	all := a.filteredLogEntries()
 	rightStatus := a.buildLogsHeaderStatus()
 
-	bodyHeight := height - logHeaderHeight
-	if bodyHeight < 1 {
-		bodyHeight = 1
-	}
-	visible, localCursor := a.sliceLogViewport(all, bodyHeight)
-	// When the sidepanel owns keyboard focus, suppress the table row
-	// highlight: seeing both the sidepanel selection and a reversed row
-	// at the same time makes it unclear which panel the next keypress
-	// will drive. -1 is never matched by `i == cursor` in the renderer.
-	if a.logSidepanelFocused {
-		localCursor = -1
-	}
-
-	emptyHint := a.logsEmptyHint(len(visible))
-
 	var table string
-	if a.logSel.kind == logSelRuntime {
-		table = renderRuntimeLogTable(visible, localCursor, tableW, height, rightStatus, emptyHint)
+	if a.isRoutesView() {
+		table = a.renderRoutesView(tableW, height, rightStatus)
 	} else {
-		hideHost := a.logSel.kind == logSelAccessHost
-		table = renderLogTable(visible, localCursor, tableW, height, rightStatus, emptyHint, hideHost)
+		all := a.filteredLogEntries()
+		bodyHeight := height - logHeaderHeight
+		if bodyHeight < 1 {
+			bodyHeight = 1
+		}
+		visible, localCursor := a.sliceLogViewport(all, bodyHeight)
+		// When the sidepanel owns keyboard focus, suppress the table row
+		// highlight: seeing both the sidepanel selection and a reversed row
+		// at the same time makes it unclear which panel the next keypress
+		// will drive. -1 is never matched by `i == cursor` in the renderer.
+		if a.logSidepanelFocused {
+			localCursor = -1
+		}
+		emptyHint := a.logsEmptyHint(len(visible))
+		if a.logSel.kind == logSelRuntime {
+			table = renderRuntimeLogTable(visible, localCursor, tableW, height, rightStatus, emptyHint)
+		} else {
+			hideHost := a.logSel.kind == logSelAccessHost
+			table = renderLogTable(visible, localCursor, tableW, height, rightStatus, emptyHint, hideHost)
+		}
 	}
 
 	selIdx := sidepanelIndex(items, a.logSel)
 	sidepanel := renderSidepanel(items, selIdx, a.logSidepanelFocused, sidepanelW, height)
 	return lipgloss.JoinHorizontal(lipgloss.Top, sidepanel, table)
+}
+
+// renderRoutesView aggregates access logs into per-route stats and slices
+// them through the cursor/scroll state shared with the log views. The host
+// column is folded into Pattern as a soft prefix at the root view (showHost)
+// so two hosts on the same path stay distinguishable; per-host drill-downs
+// drop it because the sidepanel already encodes the scope.
+func (a *App) renderRoutesView(width, height int, rightStatus string) string {
+	stats := a.currentRouteStats()
+	bodyHeight := height - logHeaderHeight
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+	visible, localCursor := a.sliceRoutesViewport(stats, bodyHeight)
+	if a.logSidepanelFocused {
+		localCursor = -1
+	}
+	hint := a.routesEmptyHint(len(visible))
+	showHost := a.logSel.kind == logSelRoutes
+	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, rightStatus, hint)
+}
+
+func (a *App) isRoutesView() bool {
+	return a.logSel.kind == logSelRoutes || a.logSel.kind == logSelRoutesHost
+}
+
+// currentRouteStats returns the route table the UI should display. The
+// aggregator counts every access log Ember has seen this session, so the
+// numbers are not capped by the access buffer's ring capacity — that
+// matters as soon as a busy server wraps the 10 000-entry buffer.
+func (a *App) currentRouteStats() []model.RouteStat {
+	if a.routeAggregator == nil {
+		return nil
+	}
+	stats := a.routeAggregator.Snapshot()
+	if a.logSel.kind == logSelRoutesHost {
+		stats = filterRouteStatsByHost(stats, a.logSel.host)
+	}
+	if a.filter != "" {
+		stats = filterRouteStats(stats, a.filter)
+	}
+	model.SortRoutes(stats, a.routeSortBy)
+	return stats
+}
+
+// filterRouteStatsByHost reuses the slice header in place: the snapshot
+// from the aggregator is already a fresh copy the caller owns.
+func filterRouteStatsByHost(stats []model.RouteStat, host string) []model.RouteStat {
+	out := stats[:0]
+	for _, s := range stats {
+		if s.Key.Host == host {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// filterRouteStats matches against host, method, or normalized pattern
+// (what the user sees on the root view, where the host is folded into the
+// Pattern cell as a soft prefix), not the underlying URIs.
+func filterRouteStats(stats []model.RouteStat, query string) []model.RouteStat {
+	q := strings.ToLower(query)
+	out := stats[:0]
+	for _, s := range stats {
+		if strings.Contains(strings.ToLower(s.Key.Host), q) ||
+			strings.Contains(strings.ToLower(s.Key.Method), q) ||
+			strings.Contains(strings.ToLower(s.Key.Pattern), q) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// sliceRoutesViewport always honours a.cursor / a.logScrollOffset, regardless
+// of freeze state — the By Route view is a scrollable list, not a tail, so
+// the cursor must drive the viewport even in live mode (otherwise the user
+// would press ↓ and watch nothing happen because the slice was clipped to
+// the first bodyHeight rows).
+func (a *App) sliceRoutesViewport(all []model.RouteStat, bodyHeight int) ([]model.RouteStat, int) {
+	if bodyHeight <= 0 || len(all) == 0 {
+		return all, 0
+	}
+	offset := a.logScrollOffset
+	if a.cursor < offset {
+		offset = a.cursor
+	} else if a.cursor >= offset+bodyHeight {
+		offset = a.cursor - bodyHeight + 1
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	maxOffset := len(all) - bodyHeight
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	end := offset + bodyHeight
+	if end > len(all) {
+		end = len(all)
+	}
+	visible := all[offset:end]
+	local := a.cursor - offset
+	if local < 0 {
+		local = 0
+	}
+	if local >= len(visible) && len(visible) > 0 {
+		local = len(visible) - 1
+	}
+	return visible, local
+}
+
+// routesEmptyHint distinguishes "no traffic at all" from "filter matched
+// nothing" so the user knows whether to wait or relax their query.
+func (a *App) routesEmptyHint(visibleCount int) string {
+	if visibleCount > 0 {
+		return ""
+	}
+	totalBuckets := 0
+	if a.routeAggregator != nil {
+		totalBuckets = a.routeAggregator.BucketCount()
+	}
+	if a.filter != "" && totalBuckets > 0 {
+		return "No matching routes (filter: " + a.filter + ")"
+	}
+	if totalBuckets == 0 {
+		if a.logSource != "" {
+			return "Listening on " + a.logSource + " — waiting for access logs (it can take up to 30s)..."
+		}
+		return "Waiting for access logs (it can take up to 30s for the first lines to appear)..."
+	}
+	return "No access logs to aggregate yet"
 }
 
 // logsEmptyHint picks the message shown when the table body is empty: a
@@ -192,13 +327,19 @@ var pausedBadgeStyle = lipgloss.NewStyle().
 // for the column header. Empty when there's nothing to say.
 func (a *App) buildLogsHeaderStatus() string {
 	var parts []string
-	if n := a.droppedLogCount(); n > 0 {
-		parts = append(parts, warnStyle.Render(fmt.Sprintf("dropped: %d", n)))
+	// "dropped" and "PAUSED" only make sense for ring-buffered log views:
+	// the By Route aggregator keeps counters for the whole session, so the
+	// table is never lossy and never frozen — surfacing those indicators
+	// here would just confuse users.
+	if !a.isRoutesView() {
+		if n := a.droppedLogCount(); n > 0 {
+			parts = append(parts, warnStyle.Render(fmt.Sprintf("dropped: %d", n)))
+		}
 	}
 	if a.filter != "" {
 		parts = append(parts, helpStyle.Render("filter: "+a.filter))
 	}
-	if a.logFrozen {
+	if a.logFrozen && !a.isRoutesView() {
 		label := "● PAUSED"
 		if n := a.newLogsSinceFreeze(); n > 0 {
 			label += fmt.Sprintf(" · %d new", n)
@@ -268,7 +409,11 @@ func (a *App) resumeLogs() {
 // after every cursor mutation; render re-clamps against the true viewport
 // height so any drift is self-correcting.
 func (a *App) clampLogScrollOffset(total int) {
-	if !a.logFrozen {
+	// In live mode the log table pins the newest entry at row 0, so any
+	// scroll offset is meaningless. The By Route view is different: it is
+	// a scrollable list whose viewport must follow the cursor, frozen or
+	// not, otherwise ↓ would silently no-op past the visible window.
+	if !a.logFrozen && !a.isRoutesView() {
 		a.logScrollOffset = 0
 		return
 	}
@@ -325,7 +470,7 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// navigate over there, and the visible state (focused sidepanel,
 			// empty viewport) would be indistinguishable from "focus moved
 			// but nothing happened". Keep focus here until traffic arrives.
-			if len(a.filteredLogEntries()) == 0 {
+			if a.currentLogsListLen() == 0 {
 				return a, nil
 			}
 			a.logSidepanelFocused = false
@@ -354,18 +499,32 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 	case "up", "down", "pgup", "pgdown", "end", "j", "k":
-		if !a.logFrozen && a.currentLogBuffer() != nil && a.currentLogBuffer().Len() > 0 {
+		// Auto-freeze stops the *log tail* from sliding under the cursor.
+		// The By Route view is an aggregation, not a tail: rows can shift
+		// position when counts update but nothing is being scrolled past,
+		// so freezing would only confuse the affordance.
+		if !a.isRoutesView() && !a.logFrozen && a.currentLogBuffer() != nil && a.currentLogBuffer().Len() > 0 {
 			a.freezeLogs()
+		}
+	case "s":
+		if a.isRoutesView() {
+			a.routeSortBy = a.routeSortBy.Next()
+			return a, nil
+		}
+	case "S":
+		if a.isRoutesView() {
+			a.routeSortBy = a.routeSortBy.Prev()
+			return a, nil
 		}
 	}
 
-	all := a.filteredLogEntries()
-	maxIdx := len(all) - 1
+	total := a.currentLogsListLen()
+	maxIdx := total - 1
 	if maxIdx < 0 {
 		maxIdx = 0
 	}
 	moveCursor(key, &a.cursor, maxIdx, a.pageSize())
-	a.clampLogScrollOffset(len(all))
+	a.clampLogScrollOffset(total)
 
 	switch key {
 	case "q", "ctrl+c":
@@ -374,13 +533,25 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.mode = viewFilter
 		a.filter = ""
 	case "p":
+		// Pause is meaningless in the By Route view (the aggregator never
+		// loses data and nothing scrolls), so we skip the toggle there.
+		if a.isRoutesView() {
+			break
+		}
 		if a.logFrozen {
 			a.resumeLogs()
 		} else {
 			a.freezeLogs()
 		}
 	case "c":
-		if buf := a.currentLogBuffer(); buf != nil {
+		if a.isRoutesView() {
+			if a.routeAggregator != nil {
+				a.routeAggregator.Reset()
+				a.cursor = 0
+				a.logScrollOffset = 0
+				a.status = "route stats cleared"
+			}
+		} else if buf := a.currentLogBuffer(); buf != nil {
 			buf.Clear()
 			a.resumeLogs()
 			a.status = "log buffer cleared"
@@ -392,20 +563,34 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// logsHelpBindings returns the bindings shown at the bottom of the Logs tab.
-func logsHelpBindings(frozen bool) []binding {
-	pauseLabel := "pause"
-	if frozen {
-		pauseLabel = "resume"
+func (a *App) currentLogsListLen() int {
+	if a.isRoutesView() {
+		return len(a.currentRouteStats())
 	}
+	return len(a.filteredLogEntries())
+}
+
+// logsHelpBindings returns the bindings shown at the bottom of the Logs tab.
+// routesView swaps in the s/S sort cue and drops pause/follow because the
+// aggregated view is never lossy and never scrolls — there is nothing to
+// freeze. The plain log views keep p/f because their ring buffer slides.
+func logsHelpBindings(frozen, routesView bool, routeSort string) []binding {
 	bindings := []binding{
 		{"↑/↓", "navigate"},
 		{"←/→", "panel"},
 		{"/", "filter"},
-		{"p", pauseLabel},
 	}
-	if frozen {
-		bindings = append(bindings, binding{"f", "follow"})
+	if routesView {
+		bindings = append(bindings, binding{"s/S", "sort(" + routeSort + ")"})
+	} else {
+		pauseLabel := "pause"
+		if frozen {
+			pauseLabel = "resume"
+		}
+		bindings = append(bindings, binding{"p", pauseLabel})
+		if frozen {
+			bindings = append(bindings, binding{"f", "follow"})
+		}
 	}
 	bindings = append(bindings,
 		binding{"c", "clear"},

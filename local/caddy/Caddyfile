@@ -29,6 +29,23 @@ api.localhost {
 		respond "Not Found" 404
 	}
 
+	# Dynamic-segment endpoints to exercise Ember's "By Route" normalization
+	# (UUIDs collapse to :uuid, all-digit segments to :id, 16+ hex chars to
+	# :hash). Wildcards make Caddy match every value while load.sh varies the
+	# concrete segment on every request.
+	handle /users/* {
+		respond "User" 200
+	}
+	handle /orders/* {
+		respond "Order" 200
+	}
+	handle /sessions/* {
+		respond "Session" 200
+	}
+	handle /artifacts/* {
+		respond "Artifact" 200
+	}
+
 	handle {
 		respond "Hello API" 200
 	}

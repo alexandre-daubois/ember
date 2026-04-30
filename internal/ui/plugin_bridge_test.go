@@ -205,9 +205,9 @@ func TestNewApp_IncludesExporterOnlyPlugins(t *testing.T) {
 	assert.Len(t, app.pluginGroups, 2, "both plugins should be in pluginGroups")
 	assert.Len(t, app.tabs, 5, "Caddy + Config + Certificates + Logs + renderer plugin should be in tabs")
 	assert.Equal(t, tabCaddy, app.tabs[0])
-	assert.Equal(t, tabConfig, app.tabs[1])
-	assert.Equal(t, tabCertificates, app.tabs[2])
-	assert.Equal(t, tabLogs, app.tabs[3])
+	assert.Equal(t, tabLogs, app.tabs[1])
+	assert.Equal(t, tabConfig, app.tabs[2])
+	assert.Equal(t, tabCertificates, app.tabs[3])
 	assert.Equal(t, tabPluginBase, app.tabs[4])
 }
 

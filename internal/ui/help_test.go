@@ -9,7 +9,7 @@ import (
 )
 
 func TestRenderHelp_ContainsAllBindings(t *testing.T) {
-	out := renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabFrankenPHP, false)
+	out := renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabFrankenPHP, false, false)
 	plain := stripANSI(out)
 
 	assert.Contains(t, plain, "navigate")
@@ -21,23 +21,33 @@ func TestRenderHelp_ContainsAllBindings(t *testing.T) {
 }
 
 func TestRenderHelp_ShowsCurrentSortField(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByMemory, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabFrankenPHP, false))
+	out := stripANSI(renderHelp(model.SortByMemory, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabFrankenPHP, false, false))
 	assert.Contains(t, out, "sort(memory)")
 }
 
+func TestRenderHelp_LogsTab_RoutesViewShowsSort(t *testing.T) {
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteAvg, false, 120, tabLogs, false, true))
+	assert.Contains(t, out, "sort(avg)")
+}
+
+func TestRenderHelp_LogsTab_LogsViewHidesSort(t *testing.T) {
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, false, false))
+	assert.NotContains(t, out, "sort(")
+}
+
 func TestRenderHelp_PausedShowsResume(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, true, 120, tabFrankenPHP, false))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, true, 120, tabFrankenPHP, false, false))
 	assert.Contains(t, out, "resume")
 	assert.NotContains(t, out, "pause")
 }
 
 func TestRenderHelp_RespectsWidth(t *testing.T) {
-	out := renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 200, tabFrankenPHP, false)
+	out := renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 200, tabFrankenPHP, false, false)
 	assert.Equal(t, 200, lipgloss.Width(out))
 }
 
 func TestRenderHelp_CaddyTab(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabCaddy, false))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabCaddy, false, false))
 	assert.Contains(t, out, "sort(host)")
 	assert.NotContains(t, out, "restart")
 	assert.Contains(t, out, "navigate")
@@ -46,7 +56,7 @@ func TestRenderHelp_CaddyTab(t *testing.T) {
 }
 
 func TestRenderHelp_ConfigTab(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabConfig, false))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabConfig, false, false))
 	assert.Contains(t, out, "navigate")
 	assert.Contains(t, out, "expand")
 	assert.Contains(t, out, "collapse")
@@ -61,7 +71,7 @@ func TestRenderHelp_ConfigTab(t *testing.T) {
 }
 
 func TestRenderHelp_CertificatesTab(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabCertificates, false))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabCertificates, false, false))
 	assert.Contains(t, out, "sort(domain)")
 	assert.Contains(t, out, "refresh")
 	assert.Contains(t, out, "filter")
@@ -71,7 +81,7 @@ func TestRenderHelp_CertificatesTab(t *testing.T) {
 }
 
 func TestRenderHelp_LogsTab(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabLogs, false))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, false, false))
 	assert.Contains(t, out, "navigate")
 	assert.Contains(t, out, "filter")
 	assert.Contains(t, out, "pause")
@@ -82,12 +92,12 @@ func TestRenderHelp_LogsTab(t *testing.T) {
 }
 
 func TestRenderHelp_LogsTab_PausedShowsResume(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabLogs, true))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, true, false))
 	assert.Contains(t, out, "resume")
 }
 
 func TestRenderHelp_SeparatorsPresent(t *testing.T) {
-	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, false, 120, tabFrankenPHP, false))
+	out := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabFrankenPHP, false, false))
 	assert.Contains(t, out, "·")
 }
 

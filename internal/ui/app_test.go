@@ -1433,10 +1433,10 @@ func TestEnableFrankenPHP_WithPlugins(t *testing.T) {
 	cfg := Config{Plugins: []plugin.Plugin{p}}
 	app := NewApp(nil, cfg)
 
-	assert.Equal(t, []tab{tabCaddy, tabConfig, tabCertificates, tabLogs, tabPluginBase}, app.tabs)
+	assert.Equal(t, []tab{tabCaddy, tabLogs, tabConfig, tabCertificates, tabPluginBase}, app.tabs)
 
 	app.enableFrankenPHP()
 
-	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabConfig, tabCertificates, tabLogs, tabPluginBase}, app.tabs,
+	assert.Equal(t, []tab{tabCaddy, tabFrankenPHP, tabLogs, tabConfig, tabCertificates, tabPluginBase}, app.tabs,
 		"FrankenPHP should be inserted between Caddy and plugin tabs")
 }
