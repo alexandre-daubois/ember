@@ -88,10 +88,14 @@ func TestRun_MultiAddr_InitRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "ember init")
 }
 
-func TestRun_MultiAddr_DiffRefused(t *testing.T) {
-	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "diff", "a.json", "b.json"}, "0.0.0")
+// TestRun_MultiAddr_DiffAllowed verifies that diff no longer rejects
+// repeated --addr at the routing layer. The two missing files cause a
+// "load" error, never the "does not support" error.
+func TestRun_MultiAddr_DiffAllowed(t *testing.T) {
+	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "diff", "missing-a.json", "missing-b.json"}, "0.0.0")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ember diff")
+	assert.NotContains(t, err.Error(), "does not support multiple --addr")
+	assert.Contains(t, err.Error(), "load")
 }
 
 // TestRun_MultiAddr_StatusAllowed verifies that status no longer rejects

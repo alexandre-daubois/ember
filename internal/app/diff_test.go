@@ -22,6 +22,19 @@ func writeSnapshot(t *testing.T, dir, name string, out jsonOutput) string {
 	return path
 }
 
+func writeJSONL(t *testing.T, dir, name string, lines []jsonOutput) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	enc := json.NewEncoder(f)
+	for _, l := range lines {
+		require.NoError(t, enc.Encode(l))
+	}
+	require.NoError(t, f.Close())
+	return path
+}
+
 func pf(v float64) *float64 { return &v }
 
 func TestRunDiff_NoRegressions(t *testing.T) {
@@ -404,4 +417,127 @@ func TestRun_DiffHelp(t *testing.T) {
 func TestRun_DiffRequiresTwoArgs(t *testing.T) {
 	err := Run([]string{"diff"}, "0.0.0")
 	require.Error(t, err)
+}
+
+func TestRunDiff_JSONLMultiInstance_PerInstanceBlocks(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeJSONL(t, dir, "before.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 100, AvgTime: 20}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web2", Derived: &jsonDerived{RPS: 200, AvgTime: 15}, Process: fetcher.ProcessMetrics{}},
+	})
+	after := writeJSONL(t, dir, "after.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 105, AvgTime: 19}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web2", Derived: &jsonDerived{RPS: 210, AvgTime: 14}, Process: fetcher.ProcessMetrics{}},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.NoError(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "== web1 ==")
+	assert.Contains(t, out, "== web2 ==")
+	assert.Contains(t, out, "No regressions detected")
+}
+
+func TestRunDiff_JSONLMultiInstance_SingleInstanceRegresses(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeJSONL(t, dir, "before.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 100, AvgTime: 20}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web2", Derived: &jsonDerived{RPS: 200, AvgTime: 15}, Process: fetcher.ProcessMetrics{}},
+	})
+	after := writeJSONL(t, dir, "after.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 105, AvgTime: 19}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web2", Derived: &jsonDerived{RPS: 200, AvgTime: 60}, Process: fetcher.ProcessMetrics{}},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.Error(t, err, "regression on web2 must surface as exit error")
+	out := buf.String()
+	assert.Contains(t, out, "== web1 ==")
+	assert.Contains(t, out, "== web2 ==")
+	assert.Contains(t, out, "Regressions detected")
+}
+
+func TestRunDiff_JSONLMultiInstance_LastEntryWinsPerInstance(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeJSONL(t, dir, "before.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 50, AvgTime: 100}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web1", Derived: &jsonDerived{RPS: 100, AvgTime: 20}, Process: fetcher.ProcessMetrics{}},
+	})
+	after := writeJSONL(t, dir, "after.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 80, AvgTime: 30}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web1", Derived: &jsonDerived{RPS: 105, AvgTime: 19}, Process: fetcher.ProcessMetrics{}},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.NoError(t, err, "diff between last entries (RPS 100→105, latency 20→19) must not regress")
+	assert.Contains(t, buf.String(), "No regressions detected")
+}
+
+func TestRunDiff_JSONLMultiInstance_NewInstanceAdded(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeJSONL(t, dir, "before.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 100}, Process: fetcher.ProcessMetrics{}},
+	})
+	after := writeJSONL(t, dir, "after.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 105}, Process: fetcher.ProcessMetrics{}},
+		{Instance: "web2", Derived: &jsonDerived{RPS: 50}, Process: fetcher.ProcessMetrics{}},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.NoError(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "== web1 ==")
+	assert.Contains(t, out, "== web2 ==")
+}
+
+func TestRunDiff_SingleInstanceJSON_NoHeader(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeSnapshot(t, dir, "before.json", jsonOutput{
+		Derived: &jsonDerived{RPS: 100, AvgTime: 20},
+		Process: fetcher.ProcessMetrics{},
+	})
+	after := writeSnapshot(t, dir, "after.json", jsonOutput{
+		Derived: &jsonDerived{RPS: 105, AvgTime: 19},
+		Process: fetcher.ProcessMetrics{},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.NoError(t, err)
+	out := buf.String()
+	assert.NotContains(t, out, "==", "single-instance diff must not emit instance headers")
+	assert.Contains(t, out, "Global")
+}
+
+func TestRunDiff_SingleInstanceJSONL_WithInstanceField(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeJSONL(t, dir, "before.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 100, AvgTime: 20}, Process: fetcher.ProcessMetrics{}},
+	})
+	after := writeJSONL(t, dir, "after.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 50, AvgTime: 50}, Process: fetcher.ProcessMetrics{}},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.Error(t, err)
+	out := buf.String()
+	assert.Contains(t, out, "== web1 ==", "named instance must surface as a header even when alone")
+	assert.Contains(t, out, "Regressions detected")
 }

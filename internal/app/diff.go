@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -12,68 +13,133 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newDiffCmd(cfg *config) *cobra.Command {
+func newDiffCmd(_ *config) *cobra.Command {
 	return &cobra.Command{
-		Use:   "diff <before.json> <after.json>",
-		Short: "Compare two JSON snapshots",
-		Long: `Compares two JSON snapshots produced by "ember --json --once" and
-shows the deltas for key metrics: RPS, latency, error rate, CPU, RSS,
-and per-host breakdowns.
+		Use:   "diff <before> <after>",
+		Short: "Compare two JSON or JSONL snapshots",
+		Long: `Compares two snapshots produced by "ember --json --once" and shows
+the deltas for key metrics: RPS, latency, error rate, CPU, RSS, and
+per-host breakdowns.
 
-Exit code 0 means no regressions detected, 1 means regressions found.`,
+Both single-instance JSON and multi-instance JSONL snapshots are
+accepted. With multi-instance input, lines are grouped by the
+"instance" field (last entry per instance wins) and one diff block is
+emitted per instance.
+
+Exit code 0 means no regressions detected, 1 means regressions found
+on at least one instance.`,
 		Example: `  ember --json --once > before.json
   # ... deploy ...
   ember --json --once > after.json
-  ember diff before.json after.json`,
+  ember diff before.json after.json
+
+  ember --json --once --addr web1=… --addr web2=… > before.jsonl
+  # ... deploy ...
+  ember --json --once --addr web1=… --addr web2=… > after.jsonl
+  ember diff before.jsonl after.jsonl`,
 		Args:          cobra.ExactArgs(2),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(cfg.addrs) >= 2 {
-				return errMultiNotSupported("`ember diff`")
-			}
 			return runDiff(cmd.OutOrStdout(), args[0], args[1])
 		},
 	}
 }
 
 func runDiff(w io.Writer, beforePath, afterPath string) error {
-	before, err := loadSnapshot(beforePath)
+	before, err := loadSnapshots(beforePath)
 	if err != nil {
 		return fmt.Errorf("load %s: %w", beforePath, err)
 	}
-	after, err := loadSnapshot(afterPath)
+	after, err := loadSnapshots(afterPath)
 	if err != nil {
 		return fmt.Errorf("load %s: %w", afterPath, err)
 	}
 
-	d := computeDiff(before, after)
-	fmt.Fprint(w, formatDiff(d))
+	hasRegressions := false
+	if isSingleInstance(before) && isSingleInstance(after) {
+		d := computeDiff(before[""], after[""])
+		fmt.Fprint(w, formatDiffBody(d))
+		hasRegressions = d.hasRegressions
+	} else {
+		seen := make(map[string]bool, len(before)+len(after))
+		names := make([]string, 0, len(before)+len(after))
+		for name := range before {
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+		for name := range after {
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
 
-	if d.hasRegressions {
+		for i, name := range names {
+			if i > 0 {
+				fmt.Fprintln(w)
+			}
+			label := name
+			if label == "" {
+				label = "(unnamed)"
+			}
+			fmt.Fprintf(w, "== %s ==\n", label)
+			d := computeDiff(before[name], after[name])
+			fmt.Fprint(w, formatDiffBody(d))
+			if d.hasRegressions {
+				hasRegressions = true
+			}
+		}
+	}
+
+	if hasRegressions {
+		fmt.Fprint(w, "\n!! Regressions detected\n")
 		return fmt.Errorf("regressions detected")
 	}
+	fmt.Fprint(w, "\nNo regressions detected\n")
 	return nil
 }
 
-func loadSnapshot(path string) (jsonOutput, error) {
+func isSingleInstance(snaps map[string]jsonOutput) bool {
+	if len(snaps) != 1 {
+		return false
+	}
+	_, ok := snaps[""]
+	return ok
+}
+
+func loadSnapshots(path string) (map[string]jsonOutput, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return jsonOutput{}, err
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
-		return jsonOutput{}, err
+		return nil, err
 	}
 	if info.Size() == 0 {
-		return jsonOutput{}, fmt.Errorf("file is empty (did the snapshot command succeed?)")
+		return nil, fmt.Errorf("file is empty (did the snapshot command succeed?)")
 	}
 
-	var out jsonOutput
-	if err := json.NewDecoder(f).Decode(&out); err != nil {
-		return jsonOutput{}, fmt.Errorf("invalid JSON: %w", err)
+	out := make(map[string]jsonOutput)
+	dec := json.NewDecoder(f)
+	for {
+		var o jsonOutput
+		if err := dec.Decode(&o); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("invalid JSON: %w", err)
+		}
+		out[o.Instance] = o
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no JSON object found")
 	}
 	return out, nil
 }
@@ -239,7 +305,7 @@ func formatVal(v float64, unit string) string {
 	return fmt.Sprintf("%.1f%s", v, unit)
 }
 
-func formatDiff(d diffResult) string {
+func formatDiffBody(d diffResult) string {
 	var b strings.Builder
 
 	b.WriteString("Global\n")
@@ -251,12 +317,6 @@ func formatDiff(d diffResult) string {
 			fmt.Fprintf(&b, "\n  %s\n", h.host)
 			writeDiffLines(&b, h.lines)
 		}
-	}
-
-	if d.hasRegressions {
-		b.WriteString("\n!! Regressions detected\n")
-	} else {
-		b.WriteString("\nNo regressions detected\n")
 	}
 
 	return b.String()

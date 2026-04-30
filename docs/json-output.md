@@ -149,6 +149,8 @@ Instances are emitted in alphabetical order by name within a tick, so downstream
 
 When only a single `--addr` is provided, the `instance` field is omitted: the output is byte-for-byte identical to the pre-multi-instance format.
 
+Multi-instance JSONL snapshots can be diffed with [`ember diff`](cli-reference.md#ember-diff): lines are grouped by `instance`, the last entry per instance wins, and one diff block is emitted per alias.
+
 ## See Also
 
 - [CLI Reference](cli-reference.md)

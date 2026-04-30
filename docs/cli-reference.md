@@ -105,7 +105,7 @@ When two or more `--addr` values are supplied, every emitted Prometheus metric (
 
 Constraints:
 
-- `--daemon`, `--json`, `status`, and `wait` accept repeated `--addr`. The TUI default mode and the `init`, `diff` subcommands refuse it with an explicit error.
+- `--daemon`, `--json`, `status`, `wait`, and `diff` accept multi-instance input. The TUI default mode and the `init` subcommand refuse repeated `--addr` with an explicit error.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
 - TLS flags (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`) are global and applied uniformly. If you need distinct PKIs per instance, run one Ember process per group.
 - `--frankenphp-pid` is ignored when `--addr` is repeated; only the `process_*` metrics exposed by Caddy are used.
@@ -266,7 +266,7 @@ The `--addr`, `--interval`, and `--timeout` flags are also available. `--addr` m
 
 ### `ember diff`
 
-Compares two JSON snapshots produced by `ember --json --once` and shows the deltas for key metrics. Useful for validating deployments and benchmarks.
+Compares two JSON or JSONL snapshots produced by `ember --json --once` and shows the deltas for key metrics. Useful for validating deployments and benchmarks.
 
 Exit code 0 means no regressions detected, 1 means regressions found (>10% degradation on latency, error rate, or CPU; >10% drop on RPS).
 
@@ -297,6 +297,33 @@ Per-host changes
 
   app
     In-flight             1.0 -> 0           -100.0%
+
+No regressions detected
+```
+
+**Multi-instance input:**
+
+When a snapshot was produced with repeated `--addr` (multi-instance JSONL with one line per instance per tick), `ember diff` groups lines by the `instance` field, keeps the last entry per instance in each file, and emits one diff block per instance. The exit code is non-zero if any single instance regresses.
+
+```bash
+ember --json --once --addr web1=https://web1.fr --addr web2=https://web2.fr > before.jsonl
+# ... deploy ...
+ember --json --once --addr web1=https://web1.fr --addr web2=https://web2.fr > after.jsonl
+ember diff before.jsonl after.jsonl
+```
+
+```
+== web1 ==
+Global
+    RPS                 100/s -> 105/s        +5.0%
+    Avg latency        20.0ms -> 19.0ms       -5.0%
+    ...
+
+== web2 ==
+Global
+    RPS                 200/s -> 210/s        +5.0%
+    Avg latency        15.0ms -> 14.0ms       -6.7%
+    ...
 
 No regressions detected
 ```
