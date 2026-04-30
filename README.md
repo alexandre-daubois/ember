@@ -45,7 +45,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - JSON output mode for scripting, with `--once` for single snapshots
 - Quick health check: `ember status` (text or `--json`) for a one-line Caddy summary
 - Readiness gate: `ember wait` blocks until Caddy is up (`-q` for silent scripting; supports repeated `--addr` with `--any` for first-ready semantics)
-- Deployment validation: `ember diff before.json after.json` compares snapshots
+- Deployment validation: `ember diff before.json after.json` compares snapshots (single-instance JSON or multi-instance JSONL, with one diff block per instance)
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`
 - TLS and mTLS support for secured Caddy admin APIs
