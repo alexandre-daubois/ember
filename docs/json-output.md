@@ -129,6 +129,26 @@ ember --json --interval 5s >> ember.log
 
 > **Tip:** Combine `--json` with `--interval` to control the output rate. For example, `ember --json --interval 5s` outputs one line every 5 seconds.
 
+## Multi-instance output
+
+When `--addr` is repeated, Ember polls every instance per tick and emits one JSONL line per instance, prefixed with an `instance` field:
+
+```bash
+ember --json \
+  --addr web1=https://web1.fr \
+  --addr web2=https://web2.fr
+```
+
+```jsonl
+{"instance":"web1","threads":{...},"metrics":{...},"hosts":[...],"fetchedAt":"..."}
+{"instance":"web2","threads":{...},"metrics":{...},"hosts":[...],"fetchedAt":"..."}
+{"instance":"web1","threads":{...},"metrics":{...},"hosts":[...],"fetchedAt":"..."}
+```
+
+Instances are emitted in alphabetical order by name within a tick, so downstream consumers can rely on deterministic grouping. With `--once`, exactly one line per instance is produced before exit.
+
+When only a single `--addr` is provided, the `instance` field is omitted: the output is byte-for-byte identical to the pre-multi-instance format.
+
 ## See Also
 
 - [CLI Reference](cli-reference.md)

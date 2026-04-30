@@ -5,9 +5,12 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/stretchr/testify/assert"
@@ -265,6 +268,97 @@ func TestNotifyDaemonSubscribers_CallsOnMetrics(t *testing.T) {
 
 	notifyDaemonSubscribers(dps, &fetcher.Snapshot{})
 	assert.True(t, sub.called)
+}
+
+func TestPollAll_MultiInstance_OneDownStillExportsOther(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/metrics":
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{host=\"test.com\",code=\"200\"} 1\n"))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer good.Close()
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer bad.Close()
+
+	holder := &exporter.StateHolder{}
+	holder.SetMulti(true)
+
+	instances := []*instance{
+		{name: "alive", addr: good.URL, fetcher: fetcher.NewHTTPFetcher(good.URL, 0)},
+		{name: "broken", addr: bad.URL, fetcher: fetcher.NewHTTPFetcher(bad.URL, 0)},
+	}
+
+	pollAll(context.Background(), instances, holder, nil, log)
+
+	rec := httptest.NewRecorder()
+	exporter.Handler(holder, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	// the "alive" instance was reachable so its label must appear; the "broken"
+	// one populated nothing, so no panic and no broken metrics.
+	assert.Contains(t, body, `ember_instance="alive"`)
+}
+
+func TestPollAll_MultiInstance_CounterResetIsolated(t *testing.T) {
+	// Each instance owns its own model.State, so a counter reset on one must
+	// not wipe the percentiles already computed on the other.
+	now := time.Now()
+	bucket := func(count float64) []fetcher.HistogramBucket {
+		return []fetcher.HistogramBucket{
+			{UpperBound: 0.01, CumulativeCount: count / 2},
+			{UpperBound: 0.05, CumulativeCount: count * 9 / 10},
+			{UpperBound: 0.1, CumulativeCount: count},
+		}
+	}
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets:          bucket(0),
+			HTTPRequestDurationCount: 0,
+		},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets:          bucket(100),
+			HTTPRequestDurationCount: 100,
+		},
+	}
+	stable := &instance{name: "stable"}
+	stable.state.Update(prev)
+	stable.state.Update(curr)
+	require.True(t, stable.state.Derived.HasPercentiles, "stable instance should have percentiles after two snapshots")
+
+	// Drive a counter reset on a sibling instance: cumulative count drops.
+	resetSnap := &fetcher.Snapshot{
+		FetchedAt: now.Add(time.Second),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			DurationBuckets:          bucket(5),
+			HTTPRequestDurationCount: 5,
+		},
+	}
+	resetting := &instance{name: "resetting"}
+	resetting.state.Update(prev)
+	resetting.state.Update(curr)
+	resetting.state.Update(resetSnap)
+	assert.False(t, resetting.state.Derived.HasPercentiles, "reset instance should clear its own percentiles")
+
+	// The stable instance's derived state must remain intact.
+	assert.True(t, stable.state.Derived.HasPercentiles, "stable instance percentiles must survive sibling reset")
+	assert.Greater(t, stable.state.Derived.P99, 0.0)
 }
 
 func TestNotifyDaemonSubscribers_PanicDoesNotCrash(t *testing.T) {

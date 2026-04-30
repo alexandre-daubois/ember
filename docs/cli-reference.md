@@ -10,7 +10,7 @@ ember [flags]
 
 | Flag               | Type | Default | Description |
 |--------------------|------|---------|-------------|
-| `--addr`           | string | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`) |
+| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon` and `--json` modes to monitor multiple instances. Supports `name=url` aliases (see [Multi-instance](#multi-instance-monitoring)). |
 | `-i`, `--interval` | duration | `1s` | Polling interval |
 | `--timeout`        | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
@@ -36,7 +36,7 @@ Some flags can be set via environment variables. Explicit flags always take prec
 
 | Variable | Flag | Example |
 |----------|------|---------|
-| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019` or `EMBER_ADDR=unix//run/caddy/admin.sock` |
+| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019`, `EMBER_ADDR=unix//run/caddy/admin.sock`, or comma-separated for multi-instance: `EMBER_ADDR=web1=https://a,web2=https://b` |
 | `EMBER_INTERVAL` | `--interval` | `EMBER_INTERVAL=5s` |
 | `EMBER_EXPOSE` | `--expose` | `EMBER_EXPOSE=:9191` |
 | `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
@@ -81,6 +81,37 @@ ember --expose :9191 --metrics-prefix myapp
 # Explicitly specify a FrankenPHP PID
 ember --frankenphp-pid 42
 ```
+
+## Multi-instance monitoring
+
+A single `ember --daemon` (or `ember --json`) process can poll several Caddy instances and aggregate their metrics behind one Prometheus endpoint. This keeps the sidecar count low when running a fleet of small services.
+
+```bash
+# Explicit aliases
+ember --daemon --expose :9191 \
+  --addr web1=https://web1.fr \
+  --addr web2=https://web2.fr
+
+# Without aliases the host is slugified (web1.fr -> web1_fr)
+ember --daemon --expose :9191 \
+  --addr https://web1.fr \
+  --addr https://web2.fr
+
+# Comma-separated env var
+EMBER_ADDR=web1=https://a,web2=https://b ember --daemon --expose :9191
+```
+
+When two or more `--addr` values are supplied, every emitted Prometheus metric (except `ember_build_info`) gains an `ember_instance="<name>"` label. With a single `--addr` the output is unchanged: no extra label.
+
+Constraints:
+
+- Only `--daemon` and `--json` accept repeated `--addr`. The TUI default mode and the `status`, `wait`, `init`, `diff` subcommands refuse it with an explicit error.
+- Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
+- TLS flags (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`) are global and applied uniformly. If you need distinct PKIs per instance, run one Ember process per group.
+- `--frankenphp-pid` is ignored when `--addr` is repeated; only the `process_*` metrics exposed by Caddy are used.
+- Plugins are skipped in multi-instance mode (a startup warning is logged).
+
+See [Prometheus Export](prometheus-export.md) for the resulting metric labels and `/healthz` body.
 
 ## Subcommands
 

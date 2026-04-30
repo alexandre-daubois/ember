@@ -109,7 +109,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string, 
 func setupLogSource(cfg *config, f fetcher.Fetcher, uiCfg *ui.Config) func() {
 	addr := cfg.logListen
 	if addr == "" {
-		if !isLocalAdminAddr(cfg.addr) {
+		if !isLocalAdminAddr(cfg.addrs[0].url) {
 			return func() {}
 		}
 		addr = "127.0.0.1:0"

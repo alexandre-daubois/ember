@@ -115,6 +115,26 @@ Common alerts:
 - `time() - ember_last_successful_scrape_timestamp_seconds{stage="metrics"} > 60`: no fresh metrics for over a minute.
 - `ember_scrape_duration_seconds{stage="metrics"} > 1`: scrape latency degraded.
 
+## Multi-instance label
+
+When `--addr` is supplied more than once (only valid in `--daemon` and `--json` modes), every metric above gains an `ember_instance="<name>"` label. The instance name is either the explicit alias from `name=url`, or a slug derived from the host (`web1.fr` -> `web1_fr`). With a single instance no extra label is emitted, so existing dashboards and alerts keep working unchanged.
+
+`ember_build_info` is the only metric that stays unlabelled even in multi-instance mode: there is one Ember binary regardless of how many Caddy instances it polls.
+
+Example scrape config that promotes `ember_instance` to a regular Prometheus target label so PromQL filters look natural:
+
+```yaml
+scrape_configs:
+  - job_name: ember
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["ember:9191"]
+    metric_relabel_configs:
+      - source_labels: [ember_instance]
+        target_label: instance
+        action: replace
+```
+
 ## Custom Metric Prefix
 
 Use `--metrics-prefix` to add a prefix to all metric names:
@@ -147,6 +167,18 @@ The prefix must be a legal Prometheus metric name segment: letters, digits and u
 
 ```json
 { "status": "no data yet" }
+```
+
+In multi-instance mode the body switches to an aggregated form. The top-level `status` is the worst across instances (`ok` < `stale` < `no data yet`). The endpoint returns `200` only when every instance is `ok`:
+
+```json
+{
+  "status": "stale",
+  "instances": [
+    { "name": "web1", "addr": "https://web1.fr", "status": "ok",    "last_fetch": "2026-03-16T10:00:00Z", "age_seconds": 1.2 },
+    { "name": "web2", "addr": "https://web2.fr", "status": "stale", "last_fetch": "2026-03-16T09:58:00Z", "age_seconds": 120 }
+  ]
+}
 ```
 
 > **Tip:** Use `/healthz` as a Kubernetes liveness probe to detect when Ember loses contact with Caddy.

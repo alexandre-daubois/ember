@@ -35,7 +35,8 @@ Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
 			defer tCancel()
 
-			f := fetcher.NewHTTPFetcher(cfg.addr, 0)
+			addr := cfg.addrs[0].url
+			f := fetcher.NewHTTPFetcher(addr, 0)
 			if err := configureTLS(f, cfg); err != nil {
 				return err
 			}
@@ -44,7 +45,7 @@ Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 			if quiet {
 				w = io.Discard
 			}
-			return runWait(ctx, w, f, cfg.addr, cfg.interval)
+			return runWait(ctx, w, f, addr, cfg.interval)
 		},
 	}
 

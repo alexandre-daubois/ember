@@ -247,7 +247,13 @@ caddy_http_requests_total{host="test.com",code="200"} 100
 	os.Stdout = w
 
 	ctx := context.Background()
-	runJSON(ctx, f, time.Second, true, slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	cfg := &config{
+		interval: time.Second,
+		once:     true,
+		logger:   slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	inst := &instance{name: "test", addr: srv.URL, fetcher: f}
+	_ = runJSON(ctx, []*instance{inst}, cfg)
 
 	w.Close()
 	os.Stdout = origStdout
@@ -263,4 +269,49 @@ caddy_http_requests_total{host="test.com",code="200"} 100
 	require.NoError(t, json.Unmarshal(lines[0], &parsed))
 	assert.NotZero(t, parsed.FetchedAt)
 	assert.Contains(t, output, "test.com")
+	assert.Empty(t, parsed.Instance, "single-instance JSON must omit the instance field")
+}
+
+func TestRunJSON_Multi_Once(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/metrics":
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{host=\"test.com\",code=\"200\"} 1\n"))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	r, w, _ := os.Pipe()
+	origStdout := os.Stdout
+	os.Stdout = w
+
+	ctx := context.Background()
+	cfg := &config{
+		interval: time.Second,
+		once:     true,
+		logger:   slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	instances := []*instance{
+		{name: "web1", addr: srv.URL, fetcher: fetcher.NewHTTPFetcher(srv.URL, 0)},
+		{name: "web2", addr: srv.URL, fetcher: fetcher.NewHTTPFetcher(srv.URL, 0)},
+	}
+	_ = runJSON(ctx, instances, cfg)
+
+	w.Close()
+	os.Stdout = origStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	require.Len(t, lines, 2, "multi-instance once mode should emit 1 line per instance")
+
+	var first, second jsonOutput
+	require.NoError(t, json.Unmarshal(lines[0], &first))
+	require.NoError(t, json.Unmarshal(lines[1], &second))
+	assert.Equal(t, "web1", first.Instance, "ordering must be stable by name")
+	assert.Equal(t, "web2", second.Instance)
 }

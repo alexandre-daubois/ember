@@ -17,7 +17,8 @@ import (
 )
 
 type config struct {
-	addr          string
+	addrsRaw      []string
+	addrs         []addrSpec
 	interval      time.Duration
 	timeout       time.Duration
 	slowThreshold int
@@ -77,7 +78,10 @@ Keybindings:
   ember --json                            # pipe-friendly JSON output
   ember --json --once                     # single JSON snapshot and exit
   ember --expose :9191                    # TUI + Prometheus endpoint
-  ember --expose :9191 --daemon           # headless metrics exporter`,
+  ember --expose :9191 --daemon           # headless metrics exporter
+  ember --daemon --expose :9191 \
+        --addr web1=https://web1.fr \
+        --addr web2=https://web2.fr     # multi-instance daemon`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -94,51 +98,36 @@ Keybindings:
 			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
 			defer tCancel()
 
-			pid := int32(cfg.frankenphpPID)
-			if pid == 0 {
-				detected, err := fetcher.FindFrankenPHPProcess(ctx)
-				if err != nil {
-					detected, err = fetcher.FindCaddyProcess(ctx)
-					if err != nil && (cfg.jsonMode || cfg.daemon) {
-						fmt.Fprintf(os.Stderr, "warning: no frankenphp or caddy process found\n")
-					}
-				}
-				if err == nil {
-					pid = detected
-				}
-			}
+			multi := len(cfg.addrs) >= 2
+			warnMultiLimitations(&cfg, multi)
 
-			f := fetcher.NewHTTPFetcher(cfg.addr, pid)
-			if err := configureTLS(f, &cfg); err != nil {
+			instances, err := newInstances(ctx, &cfg, cmd.Version)
+			if err != nil {
 				return err
 			}
-			if cfg.expose != "" {
-				cfg.recorder = instrumentation.New(version)
-				f.SetRecorder(cfg.recorder)
-			}
-			hasFrankenPHP := f.DetectFrankenPHP(ctx)
-			f.FetchServerNames(ctx)
 
-			plugins := provisionPlugins(ctx, &cfg)
+			plugins := provisionPlugins(ctx, &cfg, multi)
 			defer closePlugins(plugins)
 
 			switch {
 			case cfg.jsonMode:
-				runJSON(ctx, f, cfg.interval, cfg.once, cfg.logger)
+				return runJSON(ctx, instances, &cfg)
 			case cfg.daemon:
-				return runDaemon(ctx, f, &cfg, plugins)
+				return runDaemon(ctx, instances, &cfg, plugins)
 			default:
-				return runTUI(f, &cfg, hasFrankenPHP, version, plugins)
+				inst := instances[0]
+				hasFrankenPHP := inst.fetcher.DetectFrankenPHP(ctx)
+				inst.fetcher.FetchServerNames(ctx)
+				return runTUI(inst.fetcher, &cfg, hasFrankenPHP, cmd.Version, plugins)
 			}
-			return nil
 		},
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringVar(&cfg.addr, "addr", "http://localhost:2019", "Caddy admin API address (http://, https://, or unix//path)")
+	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon and --json modes; supports name=url aliases.")
 	pf.DurationVarP(&cfg.interval, "interval", "i", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
-	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set)")
+	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set; ignored when --addr is repeated)")
 	pf.StringVar(&cfg.caCert, "ca-cert", "", "Path to CA certificate for TLS verification")
 	pf.StringVar(&cfg.clientCert, "client-cert", "", "Path to client certificate for mTLS")
 	pf.StringVar(&cfg.clientKey, "client-key", "", "Path to client private key for mTLS")
@@ -216,9 +205,21 @@ func bindEnv(cmd *cobra.Command) {
 		if f == nil || f.Changed {
 			continue
 		}
-		if val, ok := os.LookupEnv(env); ok {
-			_ = f.Value.Set(val)
+		val, ok := os.LookupEnv(env)
+		if !ok {
+			continue
 		}
+		if name == "addr" {
+			for _, v := range strings.Split(val, ",") {
+				v = strings.TrimSpace(v)
+				if v == "" {
+					continue
+				}
+				_ = f.Value.Set(v)
+			}
+			continue
+		}
+		_ = f.Value.Set(val)
 	}
 }
 
@@ -240,17 +241,23 @@ func validate(cfg *config) error {
 	if cfg.timeout > 0 && cfg.timeout < cfg.interval {
 		return fmt.Errorf("--timeout (%s) must be at least --interval (%s)", cfg.timeout, cfg.interval)
 	}
-	if !strings.HasPrefix(cfg.addr, "http://") && !strings.HasPrefix(cfg.addr, "https://") && !fetcher.IsUnixAddr(cfg.addr) {
-		return fmt.Errorf("--addr must start with http://, https://, or unix//")
+
+	addrs, err := parseAddrs(cfg.addrsRaw)
+	if err != nil {
+		return err
 	}
-	if fetcher.IsUnixAddr(cfg.addr) {
-		if _, ok := fetcher.ParseUnixAddr(cfg.addr); !ok {
-			return fmt.Errorf("--addr must include a non-empty Unix socket path")
-		}
-		if cfg.caCert != "" || cfg.clientCert != "" || cfg.clientKey != "" || cfg.insecure {
+	cfg.addrs = addrs
+
+	for _, spec := range cfg.addrs {
+		if fetcher.IsUnixAddr(spec.url) && (cfg.caCert != "" || cfg.clientCert != "" || cfg.clientKey != "" || cfg.insecure) {
 			return fmt.Errorf("TLS options cannot be used with Unix socket addresses")
 		}
 	}
+
+	if len(cfg.addrs) >= 2 && !cfg.daemon && !cfg.jsonMode {
+		return fmt.Errorf("--addr cannot be repeated for this command/mode (only --daemon and --json support multi-instance)")
+	}
+
 	if cfg.metricsAuth != "" {
 		user, pass, ok := strings.Cut(cfg.metricsAuth, ":")
 		if !ok || user == "" || pass == "" {
@@ -286,19 +293,35 @@ func isValidMetricPrefix(s string) bool {
 	return true
 }
 
+func warnMultiLimitations(cfg *config, multi bool) {
+	if !multi {
+		return
+	}
+	if cfg.frankenphpPID != 0 {
+		cfg.logger.Warn("--frankenphp-pid is ignored in multi-instance mode")
+	}
+}
+
 // provisionPlugins runs Provision on every registered plugin and returns the
 // ones that succeeded. A plugin whose Provision returns an error is logged as
 // a warning and dropped; Ember continues without it instead of aborting.
-func provisionPlugins(ctx context.Context, cfg *config) []plugin.Plugin {
+// Plugins are skipped entirely in multi-instance mode.
+func provisionPlugins(ctx context.Context, cfg *config, multi bool) []plugin.Plugin {
 	all := plugin.All()
 	if len(all) == 0 {
+		return nil
+	}
+	if multi {
+		for _, p := range all {
+			cfg.logger.Warn("plugin disabled in multi-instance mode (issue #36)", "plugin", p.Name())
+		}
 		return nil
 	}
 
 	var ready []plugin.Plugin
 	for _, p := range all {
 		pcfg := plugin.PluginConfig{
-			CaddyAddr: cfg.addr,
+			CaddyAddr: cfg.addrs[0].url,
 			Options:   pluginEnvOptions(p.Name()),
 		}
 		if err := p.Provision(ctx, pcfg); err != nil {
