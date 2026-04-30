@@ -67,11 +67,19 @@ func TestRun_MultiAddr_TUIRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not support multiple --addr")
 }
 
-func TestRun_MultiAddr_WaitRefused(t *testing.T) {
-	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "wait"}, "0.0.0")
+// TestRun_MultiAddr_WaitAllowed verifies that wait no longer rejects repeated
+// --addr at the routing layer. Two unreachable URLs with a short timeout
+// surface a "timeout" error, never the "does not support" error.
+func TestRun_MultiAddr_WaitAllowed(t *testing.T) {
+	err := Run([]string{
+		"--addr", "web1=http://192.0.2.1:1",
+		"--addr", "web2=http://192.0.2.1:2",
+		"--timeout", "2s",
+		"wait",
+	}, "0.0.0")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ember wait")
-	assert.Contains(t, err.Error(), "does not support multiple --addr")
+	assert.NotContains(t, err.Error(), "does not support multiple --addr")
+	assert.Contains(t, err.Error(), "timeout")
 }
 
 func TestRun_MultiAddr_InitRefused(t *testing.T) {

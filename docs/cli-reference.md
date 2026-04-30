@@ -10,7 +10,7 @@ ember [flags]
 
 | Flag               | Type | Default | Description |
 |--------------------|------|---------|-------------|
-| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon` and `--json` modes to monitor multiple instances. Supports `name=url` aliases (see [Multi-instance](#multi-instance-monitoring)). |
+| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon`, `--json`, `status`, and `wait` modes to monitor multiple instances. Supports `name=url` aliases (see [Multi-instance](#multi-instance-monitoring)). |
 | `-i`, `--interval` | duration | `1s` | Polling interval |
 | `--timeout`        | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
@@ -105,7 +105,7 @@ When two or more `--addr` values are supplied, every emitted Prometheus metric (
 
 Constraints:
 
-- Only `--daemon` and `--json` accept repeated `--addr`. The TUI default mode and the `status`, `wait`, `init`, `diff` subcommands refuse it with an explicit error.
+- `--daemon`, `--json`, `status`, and `wait` accept repeated `--addr`. The TUI default mode and the `init`, `diff` subcommands refuse it with an explicit error.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
 - TLS flags (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`) are global and applied uniformly. If you need distinct PKIs per instance, run one Ember process per group.
 - `--frankenphp-pid` is ignored when `--addr` is repeated; only the `process_*` metrics exposed by Caddy are used.
@@ -243,6 +243,8 @@ The `--addr`, `--interval`, and `--frankenphp-pid` flags are also available.
 
 Blocks until the Caddy admin API is reachable, then exits with code 0. If `--timeout` is set and Caddy is still unreachable, exits with code 1.
 
+With repeated `--addr`, `ember wait` blocks until **every** instance is reachable (strict CI semantics). Pass `--any` to return as soon as the first one responds. On timeout, the error names the lagging instance(s).
+
 **Examples:**
 
 ```bash
@@ -251,13 +253,16 @@ ember wait --timeout 30s
 ember wait -q --timeout 10s && ./deploy.sh
 ember wait --addr http://prod:2019 && ember status
 docker compose up -d && ember wait && ./deploy.sh
+ember wait --addr web1=https://a --addr web2=https://b --timeout 30s
+ember wait --any --addr http://primary --addr http://fallback
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `-q`, `--quiet` | bool | `false` | Suppress output (exit code only) |
+| `--any` | bool | `false` | Return as soon as any instance is reachable (default: wait for all) |
 
-The `--addr`, `--interval`, and `--timeout` flags are also available.
+The `--addr`, `--interval`, and `--timeout` flags are also available. `--addr` may be repeated to wait on multiple instances (with optional `name=url` aliases).
 
 ### `ember diff`
 

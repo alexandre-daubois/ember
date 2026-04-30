@@ -128,7 +128,7 @@ Keybindings:
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon and --json modes; supports name=url aliases.")
+	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon, --json, status and wait modes; supports name=url aliases.")
 	pf.DurationVarP(&cfg.interval, "interval", "i", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set; ignored when --addr is repeated)")
@@ -296,7 +296,7 @@ func isValidMetricPrefix(s string) bool {
 // errMultiNotSupported is returned by commands that do not yet accept repeated
 // --addr.
 func errMultiNotSupported(what string) error {
-	return fmt.Errorf("%s does not support multiple --addr (only --daemon, --json and `status` accept repeated --addr; see issue #36)", what)
+	return fmt.Errorf("%s does not support multiple --addr (only --daemon, --json, `status` and `wait` accept repeated --addr; see issue #36)", what)
 }
 
 func warnMultiLimitations(cfg *config, multi bool) {
