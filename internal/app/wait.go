@@ -30,6 +30,9 @@ Useful in deployment scripts, Docker entrypoints, and CI pipelines.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(cfg.addrs) >= 2 {
+				return errMultiNotSupported("`ember wait`")
+			}
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
 			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)

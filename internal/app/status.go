@@ -1,13 +1,16 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -17,7 +20,7 @@ import (
 )
 
 func newStatusCmd(cfg *config) *cobra.Command {
-	var statusJSON bool
+	var statusJSONFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -25,11 +28,14 @@ func newStatusCmd(cfg *config) *cobra.Command {
 		Long: `Performs two fetches separated by the polling interval to compute
 derived metrics (RPS, latency), then prints a compact status line and exits.
 
-Exit code 0 means Caddy is reachable, 1 means unreachable.`,
+Exit code 0 means Caddy is reachable, 1 means unreachable. With multiple
+--addr values, output is one block per instance and the exit code is 0 only
+when all instances are reachable.`,
 		Example: `  ember status
   ember status --json
   ember status --addr http://prod:2019
-  ember status --interval 2s`,
+  ember status --interval 2s
+  ember status --addr web1=https://a --addr web2=https://b`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -37,6 +43,10 @@ Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 			defer cancel()
 			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
 			defer tCancel()
+
+			if len(cfg.addrs) >= 2 {
+				return runStatusMulti(ctx, cmd.OutOrStdout(), cfg, statusJSONFlag)
+			}
 
 			pid := int32(cfg.frankenphpPID)
 			if pid == 0 {
@@ -52,11 +62,11 @@ Exit code 0 means Caddy is reachable, 1 means unreachable.`,
 			if err := configureTLS(f, cfg); err != nil {
 				return err
 			}
-			return runStatus(ctx, cmd.OutOrStdout(), f, addr, cfg.interval, statusJSON)
+			return runStatus(ctx, cmd.OutOrStdout(), f, addr, cfg.interval, statusJSONFlag)
 		},
 	}
 
-	cmd.Flags().BoolVar(&statusJSON, "json", false, "Output status as JSON")
+	cmd.Flags().BoolVar(&statusJSONFlag, "json", false, "Output status as JSON")
 
 	return cmd
 }
@@ -95,6 +105,7 @@ func runStatus(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr st
 }
 
 type statusJSON struct {
+	Name        string   `json:"name,omitempty"`
 	Status      string   `json:"status"`
 	Addr        string   `json:"addr,omitempty"`
 	Hosts       int      `json:"hosts,omitempty"`
@@ -110,6 +121,11 @@ type fpJSON struct {
 	Busy    int `json:"busy"`
 	Total   int `json:"total"`
 	Workers int `json:"workers"`
+}
+
+type statusMultiJSON struct {
+	Status    string       `json:"status"`
+	Instances []statusJSON `json:"instances"`
 }
 
 func buildStatusJSON(state *model.State, hasFrankenPHP bool) statusJSON {
@@ -203,4 +219,116 @@ func formatRSS(rss uint64) string {
 		return fmt.Sprintf("%.1fGB", mb/1024)
 	}
 	return fmt.Sprintf("%.0fMB", mb)
+}
+
+// statusResult holds the per-instance outcome of a multi status run. Only one
+// of (line, payload) is populated based on the requested output format; both
+// are filled when reachable.
+type statusResult struct {
+	name       string
+	addr       string
+	reachable  bool
+	line       string
+	payload    statusJSON
+	frankenPHP bool
+}
+
+func runStatusMulti(ctx context.Context, w io.Writer, cfg *config, jsonMode bool) error {
+	results := make([]statusResult, len(cfg.addrs))
+	var wg sync.WaitGroup
+	for i, spec := range cfg.addrs {
+		wg.Add(1)
+		go func(i int, spec addrSpec) {
+			defer wg.Done()
+			results[i] = collectInstanceStatus(ctx, cfg, spec)
+		}(i, spec)
+	}
+	wg.Wait()
+
+	slices.SortFunc(results, func(a, b statusResult) int { return cmp.Compare(a.name, b.name) })
+
+	allOk := true
+	allDown := true
+	for _, r := range results {
+		if r.reachable {
+			allDown = false
+		} else {
+			allOk = false
+		}
+	}
+
+	overall := "ok"
+	switch {
+	case allDown:
+		overall = "unreachable"
+	case !allOk:
+		overall = "degraded"
+	}
+
+	if jsonMode {
+		body := statusMultiJSON{Status: overall, Instances: make([]statusJSON, len(results))}
+		for i, r := range results {
+			r.payload.Name = r.name
+			r.payload.Addr = r.addr
+			if !r.reachable {
+				r.payload.Status = "unreachable"
+			}
+			body.Instances[i] = r.payload
+		}
+		if err := json.NewEncoder(w).Encode(body); err != nil {
+			return err
+		}
+	} else {
+		for _, r := range results {
+			if r.reachable {
+				fmt.Fprintf(w, "[%s] %s\n", r.name, r.line)
+			} else {
+				fmt.Fprintf(w, "[%s] Caddy UNREACHABLE | %s\n", r.name, r.addr)
+			}
+		}
+	}
+
+	if !allOk {
+		var down []string
+		for _, r := range results {
+			if !r.reachable {
+				down = append(down, r.name)
+			}
+		}
+		return fmt.Errorf("caddy unreachable at instance(s): %s", strings.Join(down, ", "))
+	}
+	return nil
+}
+
+func collectInstanceStatus(ctx context.Context, cfg *config, spec addrSpec) statusResult {
+	res := statusResult{name: spec.name, addr: spec.url}
+	f := fetcher.NewHTTPFetcher(spec.url, 0)
+	if err := configureTLS(f, cfg); err != nil {
+		return res
+	}
+	f.DetectFrankenPHP(ctx)
+	f.FetchServerNames(ctx)
+
+	snap, _ := f.Fetch(ctx)
+	if !isReachable(snap) {
+		return res
+	}
+
+	var state model.State
+	state.Update(snap)
+
+	select {
+	case <-ctx.Done():
+		return res
+	case <-time.After(cfg.interval):
+	}
+
+	snap2, _ := f.Fetch(ctx)
+	state.Update(snap2)
+
+	res.reachable = true
+	res.frankenPHP = f.HasFrankenPHP()
+	res.line = formatStatusLine(&state, res.frankenPHP)
+	res.payload = buildStatusJSON(&state, res.frankenPHP)
+	return res
 }

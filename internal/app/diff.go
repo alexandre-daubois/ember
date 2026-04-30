@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newDiffCmd() *cobra.Command {
+func newDiffCmd(cfg *config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "diff <before.json> <after.json>",
 		Short: "Compare two JSON snapshots",
@@ -29,6 +29,9 @@ Exit code 0 means no regressions detected, 1 means regressions found.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(cfg.addrs) >= 2 {
+				return errMultiNotSupported("`ember diff`")
+			}
 			return runDiff(cmd.OutOrStdout(), args[0], args[1])
 		},
 	}
