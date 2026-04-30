@@ -571,6 +571,112 @@ func TestHealthHandler_ContentType(t *testing.T) {
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 }
 
+func instanceHealthz(holder *StateHolder, path string, interval time.Duration) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	InstanceHealthHandler(holder, interval)(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
+
+func multiHolderWithFresh(t *testing.T, names ...string) *StateHolder {
+	t.Helper()
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+	for _, n := range names {
+		snap := &fetcher.Snapshot{
+			FetchedAt: time.Now(),
+			Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		}
+		var s model.State
+		s.Update(snap)
+		holder.StoreInstance(n, "http://"+n, s, nil, nil)
+	}
+	return holder
+}
+
+func TestInstanceHealthHandler_FreshKnown(t *testing.T) {
+	holder := multiHolderWithFresh(t, "web1", "web2")
+
+	rec := instanceHealthz(holder, "/healthz/web1", time.Second)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "ok", body["status"])
+	assert.Contains(t, body, "last_fetch")
+	assert.Contains(t, body, "age_seconds")
+	assert.NotContains(t, body, "name")
+	assert.NotContains(t, body, "addr")
+	assert.NotContains(t, body, "instances")
+}
+
+func TestInstanceHealthHandler_StaleKnown(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now().Add(-30 * time.Second),
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	var s model.State
+	s.Update(snap)
+	holder.StoreInstance("web1", "http://web1", s, nil, nil)
+
+	rec := instanceHealthz(holder, "/healthz/web1", time.Second)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "stale", body["status"])
+}
+
+func TestInstanceHealthHandler_NoDataKnown(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+	holder.StoreInstance("web1", "http://web1", model.State{}, nil, nil)
+
+	rec := instanceHealthz(holder, "/healthz/web1", time.Second)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "no data yet", body["status"])
+	assert.NotContains(t, body, "last_fetch")
+	assert.NotContains(t, body, "age_seconds")
+}
+
+func TestInstanceHealthHandler_UnknownName(t *testing.T) {
+	holder := multiHolderWithFresh(t, "web1")
+
+	rec := instanceHealthz(holder, "/healthz/web2", time.Second)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestInstanceHealthHandler_SingleInstanceModeAlways404(t *testing.T) {
+	holder := &StateHolder{}
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now(),
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	var s model.State
+	s.Update(snap)
+	holder.Store(s)
+
+	rec := instanceHealthz(holder, "/healthz/web1", time.Second)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+
+	rec = instanceHealthz(holder, "/healthz/", time.Second)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestInstanceHealthHandler_EmptyAndExtraSegments(t *testing.T) {
+	holder := multiHolderWithFresh(t, "web1")
+
+	assert.Equal(t, http.StatusNotFound, instanceHealthz(holder, "/healthz/", time.Second).Code)
+	assert.Equal(t, http.StatusNotFound, instanceHealthz(holder, "/healthz/web1/extra", time.Second).Code)
+}
+
 func TestBasicAuth_ValidCredentials(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
