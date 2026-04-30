@@ -700,3 +700,144 @@ func TestHandler_WithRecorder_GoldenPath(t *testing.T) {
 	assert.Contains(t, families, "myapp_ember_build_info")
 	assert.Contains(t, families, "myapp_ember_scrape_total")
 }
+
+func TestHandler_Multi_LabelsAddedAndOrderingDeterministic(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	st1 := stateWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsBusy: true}}, nil)
+	st2 := stateWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}}, nil)
+	holder.StoreInstance("web2", "https://b", st2, nil, nil)
+	holder.StoreInstance("web1", "https://a", st1, nil, nil)
+
+	rec := httptest.NewRecorder()
+	Handler(holder, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+
+	assert.Contains(t, body, `frankenphp_threads_total{state="busy",ember_instance="web1"} 1`)
+	assert.Contains(t, body, `frankenphp_threads_total{state="idle",ember_instance="web2"} 1`)
+	assert.Contains(t, body, `process_cpu_percent{ember_instance="web1"}`)
+	assert.Contains(t, body, `process_cpu_percent{ember_instance="web2"}`)
+
+	// Output must be valid Prometheus text format with the label present.
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	families, err := parser.TextToMetricFamilies(strings.NewReader(body))
+	require.NoError(t, err, "multi-instance output must remain valid Prometheus text")
+	assert.Contains(t, families, "frankenphp_threads_total")
+	assert.Contains(t, families, "process_cpu_percent")
+
+	// Ordering: web1 before web2 (alphabetical).
+	w1 := strings.Index(body, `ember_instance="web1"`)
+	w2 := strings.Index(body, `ember_instance="web2"`)
+	require.Greater(t, w1, -1)
+	require.Greater(t, w2, -1)
+	assert.Less(t, w1, w2, "instances should be ordered alphabetically by name")
+}
+
+func TestHandler_Multi_NoBuildInfoLabel(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	rec1 := instrumentation.New("v1")
+	rec2 := instrumentation.New("v1")
+	st := stateWithThreads(nil, nil)
+	holder.StoreInstance("web1", "https://a", st, nil, rec1)
+	holder.StoreInstance("web2", "https://b", st, nil, rec2)
+
+	rec := httptest.NewRecorder()
+	Handler(holder, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := rec.Body.String()
+
+	// build_info must not carry an instance label and must be emitted once.
+	count := strings.Count(body, "ember_build_info{")
+	assert.Equal(t, 1, count, "ember_build_info should be emitted exactly once")
+	assert.NotContains(t, body, `ember_build_info{version="v1",goversion=`+strings.Repeat("?", 0)+`",ember_instance=`,
+		"ember_build_info must not carry ember_instance label")
+}
+
+func TestHandler_Single_NoEmberInstanceLabel(t *testing.T) {
+	holder := &StateHolder{}
+	holder.Store(stateWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsBusy: true}}, nil))
+
+	rec := get(holder)
+	body := rec.Body.String()
+	assert.NotContains(t, body, "ember_instance=", "no ember_instance label in single-instance mode")
+}
+
+func TestHandler_Multi_OneInstanceWithoutDataStillExportsOthers(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	st := stateWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsBusy: true}}, nil)
+	holder.StoreInstance("alive", "https://a", st, nil, nil)
+	// "down" instance recorded with empty state (no Current snapshot)
+	holder.StoreInstance("down", "https://b", model.State{}, nil, nil)
+
+	rec := httptest.NewRecorder()
+	Handler(holder, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, `ember_instance="alive"`)
+	assert.NotContains(t, body, `ember_instance="down"`)
+}
+
+func TestHealthHandler_Multi_OkStatus(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	now := time.Now()
+	snap := &fetcher.Snapshot{FetchedAt: now, Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	var st model.State
+	st.Update(snap)
+	holder.StoreInstance("web1", "https://a", st, nil, nil)
+	holder.StoreInstance("web2", "https://b", st, nil, nil)
+
+	rec := healthz(holder, time.Second)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "ok", body["status"])
+	instances, ok := body["instances"].([]any)
+	require.True(t, ok)
+	require.Len(t, instances, 2)
+	first := instances[0].(map[string]any)
+	assert.Equal(t, "web1", first["name"])
+	assert.Equal(t, "ok", first["status"])
+}
+
+func TestHealthHandler_Multi_StaleReturns503(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	freshSnap := &fetcher.Snapshot{FetchedAt: time.Now(), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	staleSnap := &fetcher.Snapshot{FetchedAt: time.Now().Add(-time.Hour), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	var fresh, stale model.State
+	fresh.Update(freshSnap)
+	stale.Update(staleSnap)
+
+	holder.StoreInstance("alive", "https://a", fresh, nil, nil)
+	holder.StoreInstance("dead", "https://b", stale, nil, nil)
+
+	rec := healthz(holder, time.Second)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "stale", body["status"])
+}
+
+func TestHealthHandler_Multi_NoDataYetReturns503(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+	holder.StoreInstance("web1", "https://a", model.State{}, nil, nil)
+	holder.StoreInstance("web2", "https://b", model.State{}, nil, nil)
+
+	rec := healthz(holder, time.Second)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "no data yet", body["status"])
+}

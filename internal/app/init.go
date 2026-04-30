@@ -38,7 +38,8 @@ admin API to read and optionally write configuration.`,
 			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
 			defer tCancel()
 
-			f := fetcher.NewHTTPFetcher(cfg.addr, 0)
+			addr := cfg.addrs[0].url
+			f := fetcher.NewHTTPFetcher(addr, 0)
 			if err := configureTLS(f, cfg); err != nil {
 				return err
 			}
@@ -47,7 +48,7 @@ admin API to read and optionally write configuration.`,
 			if quiet {
 				w = io.Discard
 			}
-			return runInit(ctx, w, os.Stdin, f, cfg.addr, yes)
+			return runInit(ctx, w, os.Stdin, f, addr, yes)
 		},
 	}
 

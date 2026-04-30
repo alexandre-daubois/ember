@@ -11,7 +11,6 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
-	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 )
 
@@ -84,12 +83,13 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config) http.Handler {
 	return handler
 }
 
-func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config, plugins []plugin.Plugin) error {
+func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins []plugin.Plugin) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
 	holder := &exporter.StateHolder{}
-	var state model.State
+	holder.SetMulti(isMulti(instances))
+
 	dPlugins := newDaemonPlugins(plugins)
 
 	srv := &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg)}
@@ -101,24 +101,9 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config, plugins []pl
 	}()
 
 	log := cfg.logger
-	log.Info("daemon started", "metrics_url", metricsURL(cfg.expose))
+	log.Info("daemon started", "metrics_url", metricsURL(cfg.expose), "instances", len(instances))
 
-	var errThrottle errorThrottle
-
-	poll := func() {
-		snap, err := f.Fetch(ctx)
-		if err != nil {
-			errThrottle.record(log, err)
-			return
-		}
-		errThrottle.recover(log)
-		state.Update(snap)
-		notifyDaemonSubscribers(dPlugins, snap)
-		fetchDaemonPlugins(ctx, dPlugins, log)
-		holder.StoreAll(state.CopyForExport(), daemonPluginExports(dPlugins))
-	}
-
-	poll()
+	pollAll(ctx, instances, holder, dPlugins, log)
 
 	ticker := time.NewTicker(cfg.interval)
 	defer ticker.Stop()
@@ -137,12 +122,67 @@ func runDaemon(ctx context.Context, f fetcher.Fetcher, cfg *config, plugins []pl
 			}
 			return nil
 		case <-ticker.C:
-			poll()
+			pollAll(ctx, instances, holder, dPlugins, log)
 		case <-dumpCh:
-			dumpState(&state, log)
+			dumpInstances(instances, log)
 		case <-reloadCh:
-			reloadTLS(f, cfg, log)
+			multi := isMulti(instances)
+			for _, inst := range instances {
+				rlog := log
+				if multi {
+					rlog = log.With("instance", inst.name)
+				}
+				reloadTLS(inst.fetcher, cfg, rlog)
+			}
 		}
+	}
+}
+
+func isMulti(instances []*instance) bool { return len(instances) >= 2 }
+
+func pollAll(ctx context.Context, instances []*instance, holder *exporter.StateHolder, dps []daemonPlugin, log *slog.Logger) {
+	multi := isMulti(instances)
+	var wg sync.WaitGroup
+	for _, inst := range instances {
+		wg.Add(1)
+		go func(inst *instance) {
+			defer wg.Done()
+			pollInstance(ctx, inst, holder, multi, dps, log)
+		}(inst)
+	}
+	wg.Wait()
+}
+
+func pollInstance(ctx context.Context, inst *instance, holder *exporter.StateHolder, multi bool, dps []daemonPlugin, log *slog.Logger) {
+	ilog := log
+	if multi {
+		ilog = log.With("instance", inst.name)
+	}
+	snap, err := inst.fetcher.Fetch(ctx)
+	if err != nil {
+		inst.throttle.record(ilog, err)
+		return
+	}
+	inst.throttle.recover(ilog)
+	inst.state.Update(snap)
+
+	if multi {
+		holder.StoreInstance(inst.name, inst.addr, inst.state.CopyForExport(), nil, inst.recorder)
+		return
+	}
+
+	var exports []plugin.PluginExport
+	if len(dps) > 0 {
+		notifyDaemonSubscribers(dps, snap)
+		fetchDaemonPlugins(ctx, dps, ilog)
+		exports = daemonPluginExports(dps)
+	}
+	holder.StoreAll(inst.state.CopyForExport(), exports)
+}
+
+func dumpInstances(instances []*instance, log *slog.Logger) {
+	for _, inst := range instances {
+		dumpState(&inst.state, log.With("instance", inst.name))
 	}
 }
 

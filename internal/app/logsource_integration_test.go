@@ -184,7 +184,7 @@ func TestSetupLogSource_AutoRegistersAndReceivesPushedLogs(t *testing.T) {
 	api := newFakeCaddyLogAPI(t)
 	defer api.srv.Close()
 
-	cfg := &config{addr: api.srv.URL}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
 	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
 
 	uiCfg := ui.Config{}
@@ -238,7 +238,7 @@ func TestSetupLogSource_NoLogSourceForRemoteCaddyWithoutFlag(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cfg := &config{addr: "http://prod.example.com:2019"}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: "http://prod.example.com:2019"}}}
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	uiCfg := ui.Config{}
@@ -256,7 +256,7 @@ func TestSetupLogSource_AutoEnablesAccessLogsAndRestores(t *testing.T) {
 	api.addServer("srv1", "")                           // also empty: should be enabled
 	api.addServer("user", `{"logger_names":{"x":"y"}}`) // user-defined: leave alone
 
-	cfg := &config{addr: api.srv.URL}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
 	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
 
 	uiCfg := ui.Config{}
@@ -278,7 +278,7 @@ func TestSetupLogSource_AutoEnablesAccessLogsAndRestores(t *testing.T) {
 // Make sure the cleanup function is non-nil and safe to call when no source
 // is wired up.
 func TestSetupLogSource_CleanupSafeWhenNoSource(t *testing.T) {
-	cfg := &config{addr: "http://prod.example.com:2019"}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: "http://prod.example.com:2019"}}}
 	cleanup := setupLogSource(cfg, &dummyFetcher{}, &ui.Config{})
 	require.NotNil(t, cleanup)
 	cleanup()
@@ -294,7 +294,7 @@ func TestSetupLogSource_WatchdogReregistersAfterCaddyReload(t *testing.T) {
 	defer api.srv.Close()
 	api.addServer("srv0", "")
 
-	cfg := &config{addr: api.srv.URL}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
 	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
 
 	uiCfg := ui.Config{}
@@ -324,7 +324,7 @@ func TestSetupLogSource_UnresolvableHostFallsBackToPort(t *testing.T) {
 	defer api.srv.Close()
 
 	cfg := &config{
-		addr:      api.srv.URL,
+		addrs:     []addrSpec{{name: "test", url: api.srv.URL}},
 		logListen: "this-host-does-not-resolve.invalid:9555",
 	}
 	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
@@ -353,7 +353,7 @@ func TestSetupLogSource_EnablesAccessLogsOnSecondTick(t *testing.T) {
 	// is fully loaded.
 	api.unavailable.Store(true)
 
-	cfg := &config{addr: api.srv.URL}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
 	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
 
 	uiCfg := ui.Config{}
@@ -391,7 +391,7 @@ func TestSetupLogSource_RecoversWhenCaddyStartsLate(t *testing.T) {
 	api.addServer("srv0", "")
 	api.unavailable.Store(true)
 
-	cfg := &config{addr: api.srv.URL}
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
 	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
 
 	uiCfg := ui.Config{}

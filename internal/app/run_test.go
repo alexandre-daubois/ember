@@ -15,8 +15,9 @@ import (
 
 func newTestConfig(addr string) *config {
 	return &config{
-		addr:   addr,
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		addrsRaw: []string{addr},
+		addrs:    []addrSpec{{name: "test", url: addr}},
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
 
@@ -28,14 +29,51 @@ func TestValidate_DaemonRequiresExpose(t *testing.T) {
 }
 
 func TestValidate_DaemonWithExposeOK(t *testing.T) {
-	cfg := &config{daemon: true, expose: ":9191", interval: 1 * time.Second, addr: "http://localhost:2019"}
+	cfg := &config{daemon: true, expose: ":9191", interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	err := validate(cfg)
 	assert.NoError(t, err)
 }
 
 func TestValidate_NoDaemonOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_MultiAddr_DaemonOK(t *testing.T) {
+	cfg := &config{
+		daemon:   true,
+		expose:   ":9191",
+		interval: 1 * time.Second,
+		addrsRaw: []string{"web1=https://a", "web2=https://b"},
+	}
+	require.NoError(t, validate(cfg))
+	assert.Len(t, cfg.addrs, 2)
+}
+
+func TestValidate_MultiAddr_JSONOK(t *testing.T) {
+	cfg := &config{
+		jsonMode: true,
+		interval: 1 * time.Second,
+		addrsRaw: []string{"web1=https://a", "web2=https://b"},
+	}
+	require.NoError(t, validate(cfg))
+	assert.Len(t, cfg.addrs, 2)
+}
+
+func TestValidate_MultiAddr_TUIRefused(t *testing.T) {
+	cfg := &config{
+		interval: 1 * time.Second,
+		addrsRaw: []string{"web1=https://a", "web2=https://b"},
+	}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--addr cannot be repeated")
+}
+
+func TestValidate_MultiAddr_StatusRefused(t *testing.T) {
+	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "status"}, "0.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--addr cannot be repeated")
 }
 
 func TestRun_VersionFlag(t *testing.T) {
@@ -126,7 +164,7 @@ func TestValidate_OnceWithDaemon(t *testing.T) {
 }
 
 func TestValidate_OnceWithJSONOK(t *testing.T) {
-	cfg := &config{once: true, jsonMode: true, interval: 1 * time.Second, addr: "http://localhost:2019"}
+	cfg := &config{once: true, jsonMode: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
@@ -137,143 +175,143 @@ func TestRun_OnceWithoutJSON(t *testing.T) {
 }
 
 func TestValidate_IntervalTooLow(t *testing.T) {
-	cfg := &config{interval: 10 * time.Millisecond, addr: "http://localhost:2019"}
+	cfg := &config{interval: 10 * time.Millisecond, addrsRaw: []string{"http://localhost:2019"}}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--interval must be at least")
 }
 
 func TestValidate_IntervalAtMinimumOK(t *testing.T) {
-	cfg := &config{interval: 100 * time.Millisecond, addr: "http://localhost:2019"}
+	cfg := &config{interval: 100 * time.Millisecond, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_IntervalAboveMinimumOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_TimeoutBelowInterval(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, timeout: 200 * time.Millisecond, addr: "http://localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, timeout: 200 * time.Millisecond, addrsRaw: []string{"http://localhost:2019"}}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--timeout")
 }
 
 func TestValidate_TimeoutEqualIntervalOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, timeout: 1 * time.Second, addr: "http://localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, timeout: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_TimeoutZeroOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, timeout: 0, addr: "http://localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, timeout: 0, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_AddrMissingScheme(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"localhost:2019"}}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestValidate_AddrHTTPSOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "https://caddy.internal:2019"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"https://caddy.internal:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_AddrHTTPOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_AddrUnixSocket(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_AddrUnixSocketTripleSlash(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix:///run/caddy/admin.sock"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix:///run/caddy/admin.sock"}}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_AddrUnixSocketEmptyPath(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix//"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//"}}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "non-empty Unix socket path")
 }
 
 func TestValidate_AddrUnixSocketEmptyPathTripleSlash(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix:///"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix:///"}}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "non-empty Unix socket path")
 }
 
 func TestValidate_AddrUnixSocketWithTLS(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock", caCert: "ca.pem"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}, caCert: "ca.pem"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_AddrUnixSocketWithClientCert(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock", clientCert: "cert.pem", clientKey: "key.pem"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}, clientCert: "cert.pem", clientKey: "key.pem"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_AddrUnixSocketWithInsecure(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "unix//run/caddy/admin.sock", insecure: true}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}, insecure: true}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_MetricsAuthBadFormat(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: "nopassword"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: "nopassword"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "user:password format")
 }
 
 func TestValidate_MetricsAuthRequiresExpose(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", metricsAuth: "user:pass"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, metricsAuth: "user:pass"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--metrics-auth requires --expose")
 }
 
 func TestValidate_MetricsAuthOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: "admin:secret"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: "admin:secret"}
 	assert.NoError(t, validate(cfg))
 }
 
 func TestValidate_MetricsAuthColonOnly(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: ":"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: ":"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "both parts required")
 }
 
 func TestValidate_MetricsAuthEmptyUser(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: ":password"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: ":password"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "both parts required")
 }
 
 func TestValidate_MetricsAuthEmptyPassword(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191", metricsAuth: "user:"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: "user:"}
 	err := validate(cfg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "both parts required")
 }
 
 func TestValidate_MetricsAuthEmptyOK(t *testing.T) {
-	cfg := &config{interval: 1 * time.Second, addr: "http://localhost:2019", expose: ":9191"}
+	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191"}
 	assert.NoError(t, validate(cfg))
 }
 
@@ -301,7 +339,7 @@ func TestValidate_MetricsPrefix(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config{
 				interval:      1 * time.Second,
-				addr:          "http://localhost:2019",
+				addrsRaw:      []string{"http://localhost:2019"},
 				expose:        ":9191",
 				metricsPrefix: tc.prefix,
 			}
@@ -429,7 +467,16 @@ func TestBindEnv_AddrFromEnv(t *testing.T) {
 	cmd := newRootCmd("0.0.0")
 	bindEnv(cmd)
 
-	assert.Equal(t, "http://remote:2019", cmd.Flag("addr").Value.String())
+	assert.Equal(t, "[http://remote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_AddrFromEnv_CommaSeparated(t *testing.T) {
+	t.Setenv("EMBER_ADDR", "web1=http://a:2019,web2=http://b:2019")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	assert.Equal(t, "[web1=http://a:2019,web2=http://b:2019]", cmd.Flag("addr").Value.String())
 }
 
 func TestBindEnv_FlagOverridesEnv(t *testing.T) {
@@ -440,7 +487,7 @@ func TestBindEnv_FlagOverridesEnv(t *testing.T) {
 	cmd.Flag("addr").Changed = true
 	bindEnv(cmd)
 
-	assert.Equal(t, "http://flag:2019", cmd.Flag("addr").Value.String())
+	assert.Equal(t, "[http://flag:2019]", cmd.Flag("addr").Value.String())
 }
 
 func TestBindEnv_IntervalFromEnv(t *testing.T) {
@@ -483,7 +530,7 @@ func TestBindEnv_UnsetEnvKeepsDefault(t *testing.T) {
 	cmd := newRootCmd("0.0.0")
 	bindEnv(cmd)
 
-	assert.Equal(t, "http://localhost:2019", cmd.Flag("addr").Value.String())
+	assert.Equal(t, "[http://localhost:2019]", cmd.Flag("addr").Value.String())
 }
 
 func TestNoColorEnv(t *testing.T) {
@@ -526,8 +573,48 @@ func TestProvisionPlugins_Empty(t *testing.T) {
 	plugin.Reset()
 	cfg := newTestConfig("http://localhost:2019")
 
-	plugins := provisionPlugins(context.Background(), cfg)
+	plugins := provisionPlugins(context.Background(), cfg, false)
 	assert.Nil(t, plugins)
+}
+
+func TestProvisionPlugins_MultiSkipsAndWarns(t *testing.T) {
+	plugin.Reset()
+	plugin.Register(&testPlugin{name: "ratelimit"})
+
+	var buf bytes.Buffer
+	cfg := &config{
+		addrsRaw: []string{"web1=https://a", "web2=https://b"},
+		addrs: []addrSpec{
+			{name: "web1", url: "https://a"},
+			{name: "web2", url: "https://b"},
+		},
+		logger: slog.New(slog.NewTextHandler(&buf, nil)),
+	}
+
+	plugins := provisionPlugins(context.Background(), cfg, true)
+	assert.Empty(t, plugins, "plugins must be skipped in multi-instance mode")
+	assert.Contains(t, buf.String(), "plugin disabled in multi-instance mode")
+	assert.Contains(t, buf.String(), "plugin=ratelimit")
+}
+
+func TestWarnMultiLimitations_FrankenphpPID(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := &config{
+		frankenphpPID: 4242,
+		logger:        slog.New(slog.NewTextHandler(&buf, nil)),
+	}
+	warnMultiLimitations(cfg, true)
+	assert.Contains(t, buf.String(), "--frankenphp-pid is ignored")
+}
+
+func TestWarnMultiLimitations_SilentInSingleMode(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := &config{
+		frankenphpPID: 4242,
+		logger:        slog.New(slog.NewTextHandler(&buf, nil)),
+	}
+	warnMultiLimitations(cfg, false)
+	assert.Empty(t, buf.String())
 }
 
 func TestProvisionPlugins_Success(t *testing.T) {
@@ -536,7 +623,7 @@ func TestProvisionPlugins_Success(t *testing.T) {
 	plugin.Register(p)
 
 	cfg := newTestConfig("http://localhost:2019")
-	plugins := provisionPlugins(context.Background(), cfg)
+	plugins := provisionPlugins(context.Background(), cfg, false)
 
 	require.Len(t, plugins, 1)
 	assert.Equal(t, "http://localhost:2019", p.provisionCfg.CaddyAddr)
@@ -550,7 +637,7 @@ func TestProvisionPlugins_FailedPluginIsSkipped(t *testing.T) {
 	plugin.Register(good)
 
 	cfg := newTestConfig("http://localhost:2019")
-	plugins := provisionPlugins(context.Background(), cfg)
+	plugins := provisionPlugins(context.Background(), cfg, false)
 
 	require.Len(t, plugins, 1, "failing plugin should be dropped, good plugin kept")
 	assert.Equal(t, "good", plugins[0].Name())
@@ -595,7 +682,7 @@ func TestProvisionPlugins_PassesEnvOptions(t *testing.T) {
 	plugin.Register(p)
 
 	cfg := newTestConfig("http://localhost:2019")
-	provisionPlugins(context.Background(), cfg)
+	provisionPlugins(context.Background(), cfg, false)
 
 	assert.Equal(t, "val", p.provisionCfg.Options["key"])
 }
@@ -630,7 +717,7 @@ func TestProvisionPlugins_GoodPluginsKeptDespiteFailure(t *testing.T) {
 	plugin.Register(bad)
 
 	cfg := newTestConfig("http://localhost:2019")
-	plugins := provisionPlugins(context.Background(), cfg)
+	plugins := provisionPlugins(context.Background(), cfg, false)
 
 	require.Len(t, plugins, 1)
 	assert.Equal(t, "good", plugins[0].Name())

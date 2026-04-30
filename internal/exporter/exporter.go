@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -13,69 +14,148 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 )
 
-type StateHolder struct {
-	mu            sync.RWMutex
+// instanceSlot holds the latest snapshot for a single Caddy instance. In
+// single-instance mode the slot is keyed by the empty string so the
+// ember_instance label is omitted from emitted metrics.
+type instanceSlot struct {
+	addr          string
 	state         model.State
 	pluginExports []plugin.PluginExport
+	recorder      *instrumentation.Recorder
+}
+
+type StateHolder struct {
+	mu        sync.RWMutex
+	instances map[string]*instanceSlot
+	multi     bool
+}
+
+func (h *StateHolder) put(name string, slot *instanceSlot) {
+	h.mu.Lock()
+	if h.instances == nil {
+		h.instances = make(map[string]*instanceSlot)
+	}
+	h.instances[name] = slot
+	h.mu.Unlock()
 }
 
 func (h *StateHolder) Store(s model.State) {
-	h.mu.Lock()
-	h.state = s
-	h.mu.Unlock()
+	h.put("", &instanceSlot{state: s})
 }
 
 func (h *StateHolder) StoreAll(s model.State, exports []plugin.PluginExport) {
-	h.mu.Lock()
-	h.state = s
-	h.pluginExports = exports
-	h.mu.Unlock()
+	h.put("", &instanceSlot{state: s, pluginExports: exports})
 }
 
 func (h *StateHolder) Load() model.State {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.state
+	if slot, ok := h.instances[""]; ok {
+		return slot.state
+	}
+	return model.State{}
 }
 
-func (h *StateHolder) loadAll() (model.State, []plugin.PluginExport) {
+func (h *StateHolder) SetMulti(multi bool) {
+	h.mu.Lock()
+	h.multi = multi
+	h.mu.Unlock()
+}
+
+func (h *StateHolder) StoreInstance(name, addr string, s model.State, exports []plugin.PluginExport, recorder *instrumentation.Recorder) {
+	h.put(name, &instanceSlot{addr: addr, state: s, pluginExports: exports, recorder: recorder})
+}
+
+type instanceEntry struct {
+	name string
+	slot *instanceSlot
+}
+
+func (h *StateHolder) entries() ([]instanceEntry, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.state, h.pluginExports
+	entries := make([]instanceEntry, 0, len(h.instances))
+	for name, slot := range h.instances {
+		entries = append(entries, instanceEntry{name: name, slot: slot})
+	}
+	slices.SortFunc(entries, func(a, b instanceEntry) int { return cmp.Compare(a.name, b.name) })
+	return entries, h.multi
 }
 
 const prometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
 
+type renderEntry struct {
+	instance string
+	state    *model.State
+}
+
+// metricCtx tracks which metric families have already received their HELP/TYPE
+// lines so a single family rendered for several instances stays valid Prometheus
+// text.
+type metricCtx struct {
+	out      io.Writer
+	prefix   string
+	helpSeen map[string]bool
+}
+
+func newMetricCtx(w io.Writer, prefix string) *metricCtx {
+	return &metricCtx{out: w, prefix: prefix, helpSeen: make(map[string]bool)}
+}
+
+func (c *metricCtx) help(name, help, typ string) {
+	if c.helpSeen[name] {
+		return
+	}
+	c.helpSeen[name] = true
+	fmt.Fprintf(c.out, "# HELP %s %s\n", name, help)
+	fmt.Fprintf(c.out, "# TYPE %s %s\n", name, typ)
+}
+
 // Handler returns an /metrics handler. prefix may be "" for unprefixed names.
-// recorder may be nil; when set, Ember's own scrape metrics (build_info,
-// per-stage counters and timestamps) are appended to the response.
-func Handler(holder *StateHolder, prefix string, recorder *instrumentation.Recorder) http.HandlerFunc {
+// fallbackRecorder is consulted only in single-instance mode when no recorder
+// has been associated with the slot via StoreInstance; it preserves the
+// pre-multi-instance API used by the TUI and the tests.
+func Handler(holder *StateHolder, prefix string, fallbackRecorder *instrumentation.Recorder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s, pluginExports := holder.loadAll()
-		if s.Current == nil {
+		entries, multi := holder.entries()
+		render := make([]renderEntry, 0, len(entries))
+		for _, e := range entries {
+			if e.slot.state.Current == nil {
+				continue
+			}
+			label := ""
+			if multi {
+				label = e.name
+			}
+			render = append(render, renderEntry{instance: label, state: &e.slot.state})
+		}
+		if len(render) == 0 {
 			http.Error(w, "no data yet", http.StatusServiceUnavailable)
 			return
 		}
 
 		w.Header().Set("Content-Type", prometheusContentType)
+		ctx := newMetricCtx(w, prefix)
 
-		writeThreadMetrics(w, &s, prefix)
-		writeThreadMemory(w, &s, prefix)
-		writeWorkerMetrics(w, &s, prefix)
-		writeHostMetrics(w, &s, prefix)
-		writeErrorMetrics(w, &s, prefix)
-		writePercentiles(w, &s, prefix)
-		writeProcessMetrics(w, &s, prefix)
-		if recorder != nil {
-			writeSelfMetrics(w, recorder.Snapshot(), prefix)
-		}
+		writeThreadMetrics(ctx, render)
+		writeThreadMemory(ctx, render)
+		writeWorkerMetrics(ctx, render)
+		writeHostMetrics(ctx, render)
+		writeErrorMetrics(ctx, render)
+		writePercentiles(ctx, render)
+		writeProcessMetrics(ctx, render)
 
-		for _, pe := range pluginExports {
-			if pe.Exporter != nil && pe.Data != nil {
-				safeWriteMetrics(w, pe.Exporter, pe.Data, prefix)
+		writeAllSelfMetrics(ctx, entries, multi, fallbackRecorder)
+
+		for _, e := range entries {
+			for _, pe := range e.slot.pluginExports {
+				if pe.Exporter != nil && pe.Data != nil {
+					safeWriteMetrics(w, pe.Exporter, pe.Data, prefix)
+				}
 			}
 		}
 	}
@@ -97,155 +177,223 @@ func prefixed(prefix, name string) string {
 	return prefix + "_" + name
 }
 
-func writeThreadMetrics(w http.ResponseWriter, s *model.State, prefix string) {
-	total := len(s.Current.Threads.ThreadDebugStates)
-	other := total - s.Derived.TotalBusy - s.Derived.TotalIdle
-	if other < 0 {
-		other = 0
+// instLabelKV returns the key/value fragment ember_instance="name" for use
+// inside an existing label set, or "" when no instance label should be emitted.
+func instLabelKV(instance string) string {
+	if instance == "" {
+		return ""
 	}
-
-	name := prefixed(prefix, "frankenphp_threads_total")
-	fmt.Fprintf(w, "# HELP %s Number of FrankenPHP threads by state\n", name)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
-	fmt.Fprintf(w, "%s{state=\"busy\"} %d\n", name, s.Derived.TotalBusy)
-	fmt.Fprintf(w, "%s{state=\"idle\"} %d\n", name, s.Derived.TotalIdle)
-	fmt.Fprintf(w, "%s{state=\"other\"} %d\n", name, other)
+	return `ember_instance="` + escapeLabelValue(instance) + `"`
 }
 
-func writeThreadMemory(w http.ResponseWriter, s *model.State, prefix string) {
-	hasMemory := false
-	for _, t := range s.Current.Threads.ThreadDebugStates {
-		if t.MemoryUsage > 0 {
-			hasMemory = true
+// labels assembles a Prometheus label set from optional fragments. Empty
+// fragments are dropped; the result is "" or "{...}".
+func labels(parts ...string) string {
+	keep := parts[:0]
+	for _, p := range parts {
+		if p != "" {
+			keep = append(keep, p)
+		}
+	}
+	if len(keep) == 0 {
+		return ""
+	}
+	return "{" + strings.Join(keep, ",") + "}"
+}
+
+func writeThreadMetrics(ctx *metricCtx, entries []renderEntry) {
+	name := prefixed(ctx.prefix, "frankenphp_threads_total")
+	ctx.help(name, "Number of FrankenPHP threads by state", "gauge")
+	for _, e := range entries {
+		s := e.state
+		total := len(s.Current.Threads.ThreadDebugStates)
+		other := total - s.Derived.TotalBusy - s.Derived.TotalIdle
+		if other < 0 {
+			other = 0
+		}
+		inst := instLabelKV(e.instance)
+		fmt.Fprintf(ctx.out, "%s%s %d\n", name, labels(`state="busy"`, inst), s.Derived.TotalBusy)
+		fmt.Fprintf(ctx.out, "%s%s %d\n", name, labels(`state="idle"`, inst), s.Derived.TotalIdle)
+		fmt.Fprintf(ctx.out, "%s%s %d\n", name, labels(`state="other"`, inst), other)
+	}
+}
+
+func writeThreadMemory(ctx *metricCtx, entries []renderEntry) {
+	hasAny := false
+	for _, e := range entries {
+		for _, t := range e.state.Current.Threads.ThreadDebugStates {
+			if t.MemoryUsage > 0 {
+				hasAny = true
+				break
+			}
+		}
+		if hasAny {
 			break
 		}
 	}
-	if !hasMemory {
+	if !hasAny {
 		return
 	}
 
-	name := prefixed(prefix, "frankenphp_thread_memory_bytes")
-	fmt.Fprintf(w, "# HELP %s Memory usage per FrankenPHP thread\n", name)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
-	for _, t := range s.Current.Threads.ThreadDebugStates {
-		if t.MemoryUsage > 0 {
-			fmt.Fprintf(w, "%s{index=\"%d\"} %d\n", name, t.Index, t.MemoryUsage)
+	name := prefixed(ctx.prefix, "frankenphp_thread_memory_bytes")
+	ctx.help(name, "Memory usage per FrankenPHP thread", "gauge")
+	for _, e := range entries {
+		inst := instLabelKV(e.instance)
+		for _, t := range e.state.Current.Threads.ThreadDebugStates {
+			if t.MemoryUsage > 0 {
+				fmt.Fprintf(ctx.out, "%s%s %d\n", name, labels(fmt.Sprintf(`index="%d"`, t.Index), inst), t.MemoryUsage)
+			}
 		}
 	}
 }
 
-func writeWorkerMetrics(out http.ResponseWriter, s *model.State, prefix string) {
-	if len(s.Current.Metrics.Workers) == 0 {
+func writeWorkerMetrics(ctx *metricCtx, entries []renderEntry) {
+	hasAny := false
+	for _, e := range entries {
+		if len(e.state.Current.Metrics.Workers) > 0 {
+			hasAny = true
+			break
+		}
+	}
+	if !hasAny {
 		return
 	}
 
-	names := sortedWorkerNames(s.Current.Metrics.Workers)
-
-	crashes := prefixed(prefix, "frankenphp_worker_crashes_total")
-	fmt.Fprintf(out, "# HELP %s Total worker crashes\n", crashes)
-	fmt.Fprintf(out, "# TYPE %s counter\n", crashes)
-	for _, name := range names {
-		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", crashes, escapeLabelValue(name), wm.Crashes)
+	emitWorkers := func(metricName, helpText string, get func(*metrics.WorkerMetrics) float64) {
+		full := prefixed(ctx.prefix, metricName)
+		ctx.help(full, helpText, workerCounterType(metricName))
+		for _, e := range entries {
+			workers := e.state.Current.Metrics.Workers
+			if len(workers) == 0 {
+				continue
+			}
+			inst := instLabelKV(e.instance)
+			for _, name := range sortedWorkerNames(workers) {
+				wm := workers[name]
+				fmt.Fprintf(ctx.out, "%s%s %g\n", full, labels(fmt.Sprintf(`worker="%s"`, escapeLabelValue(name)), inst), get(wm))
+			}
+		}
 	}
 
-	restarts := prefixed(prefix, "frankenphp_worker_restarts_total")
-	fmt.Fprintf(out, "# HELP %s Total worker restarts\n", restarts)
-	fmt.Fprintf(out, "# TYPE %s counter\n", restarts)
-	for _, name := range names {
-		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", restarts, escapeLabelValue(name), wm.Restarts)
-	}
-
-	queue := prefixed(prefix, "frankenphp_worker_queue_depth")
-	fmt.Fprintf(out, "# HELP %s Requests in queue per worker\n", queue)
-	fmt.Fprintf(out, "# TYPE %s gauge\n", queue)
-	for _, name := range names {
-		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", queue, escapeLabelValue(name), wm.QueueDepth)
-	}
-
-	reqs := prefixed(prefix, "frankenphp_worker_requests_total")
-	fmt.Fprintf(out, "# HELP %s Total requests processed per worker\n", reqs)
-	fmt.Fprintf(out, "# TYPE %s counter\n", reqs)
-	for _, name := range names {
-		wm := s.Current.Metrics.Workers[name]
-		fmt.Fprintf(out, "%s{worker=\"%s\"} %g\n", reqs, escapeLabelValue(name), wm.RequestCount)
-	}
+	emitWorkers("frankenphp_worker_crashes_total", "Total worker crashes", func(wm *metrics.WorkerMetrics) float64 { return wm.Crashes })
+	emitWorkers("frankenphp_worker_restarts_total", "Total worker restarts", func(wm *metrics.WorkerMetrics) float64 { return wm.Restarts })
+	emitWorkers("frankenphp_worker_queue_depth", "Requests in queue per worker", func(wm *metrics.WorkerMetrics) float64 { return wm.QueueDepth })
+	emitWorkers("frankenphp_worker_requests_total", "Total requests processed per worker", func(wm *metrics.WorkerMetrics) float64 { return wm.RequestCount })
 }
 
-func writeHostMetrics(w http.ResponseWriter, s *model.State, prefix string) {
-	if len(s.HostDerived) == 0 {
+func workerCounterType(name string) string {
+	if strings.HasSuffix(name, "_depth") {
+		return "gauge"
+	}
+	return "counter"
+}
+
+type hostView struct {
+	instance string
+	hosts    []model.HostDerived
+}
+
+func writeHostMetrics(ctx *metricCtx, entries []renderEntry) {
+	views := make([]hostView, 0, len(entries))
+	for _, e := range entries {
+		if len(e.state.HostDerived) == 0 {
+			continue
+		}
+		views = append(views, hostView{instance: e.instance, hosts: sortedHostNames(e.state.HostDerived)})
+	}
+	if len(views) == 0 {
 		return
 	}
 
-	hosts := sortedHostNames(s.HostDerived)
-
-	rps := prefixed(prefix, "ember_host_rps")
-	fmt.Fprintf(w, "# HELP %s Requests per second by host\n", rps)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", rps)
-	for _, hd := range hosts {
-		fmt.Fprintf(w, "%s{host=\"%s\"} %.2f\n", rps, escapeLabelValue(hd.Host), hd.RPS)
+	rps := prefixed(ctx.prefix, "ember_host_rps")
+	ctx.help(rps, "Requests per second by host", "gauge")
+	for _, v := range views {
+		inst := instLabelKV(v.instance)
+		for _, hd := range v.hosts {
+			fmt.Fprintf(ctx.out, "%s%s %.2f\n", rps, labels(hostKV(hd.Host), inst), hd.RPS)
+		}
 	}
 
-	avg := prefixed(prefix, "ember_host_latency_avg_milliseconds")
-	fmt.Fprintf(w, "# HELP %s Average response time by host\n", avg)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", avg)
-	for _, hd := range hosts {
-		fmt.Fprintf(w, "%s{host=\"%s\"} %.2f\n", avg, escapeLabelValue(hd.Host), hd.AvgTime)
+	avg := prefixed(ctx.prefix, "ember_host_latency_avg_milliseconds")
+	ctx.help(avg, "Average response time by host", "gauge")
+	for _, v := range views {
+		inst := instLabelKV(v.instance)
+		for _, hd := range v.hosts {
+			fmt.Fprintf(ctx.out, "%s%s %.2f\n", avg, labels(hostKV(hd.Host), inst), hd.AvgTime)
+		}
 	}
 
 	hasPercentiles := false
-	for _, hd := range hosts {
-		if hd.HasPercentiles {
-			hasPercentiles = true
+	for _, v := range views {
+		for _, hd := range v.hosts {
+			if hd.HasPercentiles {
+				hasPercentiles = true
+				break
+			}
+		}
+		if hasPercentiles {
 			break
 		}
 	}
 	if hasPercentiles {
-		lat := prefixed(prefix, "ember_host_latency_milliseconds")
-		fmt.Fprintf(w, "# HELP %s Response time percentiles by host\n", lat)
-		fmt.Fprintf(w, "# TYPE %s gauge\n", lat)
-		for _, hd := range hosts {
-			if !hd.HasPercentiles {
-				continue
+		lat := prefixed(ctx.prefix, "ember_host_latency_milliseconds")
+		ctx.help(lat, "Response time percentiles by host", "gauge")
+		for _, v := range views {
+			inst := instLabelKV(v.instance)
+			for _, hd := range v.hosts {
+				if !hd.HasPercentiles {
+					continue
+				}
+				h := hostKV(hd.Host)
+				fmt.Fprintf(ctx.out, "%s%s %.2f\n", lat, labels(h, `quantile="0.5"`, inst), hd.P50)
+				fmt.Fprintf(ctx.out, "%s%s %.2f\n", lat, labels(h, `quantile="0.9"`, inst), hd.P90)
+				fmt.Fprintf(ctx.out, "%s%s %.2f\n", lat, labels(h, `quantile="0.95"`, inst), hd.P95)
+				fmt.Fprintf(ctx.out, "%s%s %.2f\n", lat, labels(h, `quantile="0.99"`, inst), hd.P99)
 			}
-			h := escapeLabelValue(hd.Host)
-			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.5\"} %.2f\n", lat, h, hd.P50)
-			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.9\"} %.2f\n", lat, h, hd.P90)
-			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.95\"} %.2f\n", lat, h, hd.P95)
-			fmt.Fprintf(w, "%s{host=\"%s\",quantile=\"0.99\"} %.2f\n", lat, h, hd.P99)
 		}
 	}
 
-	infl := prefixed(prefix, "ember_host_inflight")
-	fmt.Fprintf(w, "# HELP %s In-flight requests by host\n", infl)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", infl)
-	for _, hd := range hosts {
-		fmt.Fprintf(w, "%s{host=\"%s\"} %.0f\n", infl, escapeLabelValue(hd.Host), hd.InFlight)
+	infl := prefixed(ctx.prefix, "ember_host_inflight")
+	ctx.help(infl, "In-flight requests by host", "gauge")
+	for _, v := range views {
+		inst := instLabelKV(v.instance)
+		for _, hd := range v.hosts {
+			fmt.Fprintf(ctx.out, "%s%s %.0f\n", infl, labels(hostKV(hd.Host), inst), hd.InFlight)
+		}
 	}
 
 	hasStatus := false
-	for _, hd := range hosts {
-		if len(hd.StatusCodes) > 0 {
-			hasStatus = true
+	for _, v := range views {
+		for _, hd := range v.hosts {
+			if len(hd.StatusCodes) > 0 {
+				hasStatus = true
+				break
+			}
+		}
+		if hasStatus {
 			break
 		}
 	}
 	if hasStatus {
-		sr := prefixed(prefix, "ember_host_status_rate")
-		fmt.Fprintf(w, "# HELP %s Request rate by host and status class\n", sr)
-		fmt.Fprintf(w, "# TYPE %s gauge\n", sr)
-		for _, hd := range hosts {
-			classes := statusClassRates(hd.StatusCodes)
-			h := escapeLabelValue(hd.Host)
-			for _, c := range []string{"2xx", "3xx", "4xx", "5xx"} {
-				if rate, ok := classes[c]; ok {
-					fmt.Fprintf(w, "%s{host=\"%s\",class=\"%s\"} %.2f\n", sr, h, c, rate)
+		sr := prefixed(ctx.prefix, "ember_host_status_rate")
+		ctx.help(sr, "Request rate by host and status class", "gauge")
+		for _, v := range views {
+			inst := instLabelKV(v.instance)
+			for _, hd := range v.hosts {
+				classes := statusClassRates(hd.StatusCodes)
+				h := hostKV(hd.Host)
+				for _, c := range []string{"2xx", "3xx", "4xx", "5xx"} {
+					if rate, ok := classes[c]; ok {
+						fmt.Fprintf(ctx.out, "%s%s %.2f\n", sr, labels(h, `class="`+c+`"`, inst), rate)
+					}
 				}
 			}
 		}
 	}
+}
+
+func hostKV(host string) string {
+	return `host="` + escapeLabelValue(host) + `"`
 }
 
 func statusClassRates(codes map[int]float64) map[string]float64 {
@@ -277,99 +425,197 @@ func sortedHostNames(hosts []model.HostDerived) []model.HostDerived {
 	return sorted
 }
 
-func writeErrorMetrics(w http.ResponseWriter, s *model.State, prefix string) {
-	hasErrors := false
-	for _, hd := range s.HostDerived {
-		if hd.ErrorRate > 0 {
-			hasErrors = true
+func writeErrorMetrics(ctx *metricCtx, entries []renderEntry) {
+	views := make([]hostView, 0, len(entries))
+	for _, e := range entries {
+		hasErr := false
+		for _, hd := range e.state.HostDerived {
+			if hd.ErrorRate > 0 {
+				hasErr = true
+				break
+			}
+		}
+		if !hasErr {
+			continue
+		}
+		views = append(views, hostView{instance: e.instance, hosts: sortedHostNames(e.state.HostDerived)})
+	}
+	if len(views) == 0 {
+		return
+	}
+
+	name := prefixed(ctx.prefix, "ember_host_error_rate")
+	ctx.help(name, "Middleware error rate by host", "gauge")
+	for _, v := range views {
+		inst := instLabelKV(v.instance)
+		for _, hd := range v.hosts {
+			if hd.ErrorRate > 0 {
+				fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(hostKV(hd.Host), inst), hd.ErrorRate)
+			}
+		}
+	}
+}
+
+func writePercentiles(ctx *metricCtx, entries []renderEntry) {
+	hasAny := false
+	for _, e := range entries {
+		if e.state.Derived.HasPercentiles {
+			hasAny = true
 			break
 		}
 	}
-	if !hasErrors {
+	if !hasAny {
 		return
 	}
 
-	name := prefixed(prefix, "ember_host_error_rate")
-	fmt.Fprintf(w, "# HELP %s Middleware error rate by host\n", name)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
-	for _, hd := range sortedHostNames(s.HostDerived) {
-		if hd.ErrorRate > 0 {
-			fmt.Fprintf(w, "%s{host=\"%s\"} %.2f\n", name, escapeLabelValue(hd.Host), hd.ErrorRate)
+	name := prefixed(ctx.prefix, "frankenphp_request_duration_milliseconds")
+	ctx.help(name, "Request duration percentiles", "gauge")
+	for _, e := range entries {
+		if !e.state.Derived.HasPercentiles {
+			continue
+		}
+		inst := instLabelKV(e.instance)
+		fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(`quantile="0.5"`, inst), e.state.Derived.P50)
+		fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(`quantile="0.9"`, inst), e.state.Derived.P90)
+		fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(`quantile="0.95"`, inst), e.state.Derived.P95)
+		fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(`quantile="0.99"`, inst), e.state.Derived.P99)
+	}
+}
+
+func writeProcessMetrics(ctx *metricCtx, entries []renderEntry) {
+	cpu := prefixed(ctx.prefix, "process_cpu_percent")
+	ctx.help(cpu, "CPU usage of the monitored process", "gauge")
+	for _, e := range entries {
+		fmt.Fprintf(ctx.out, "%s%s %.2f\n", cpu, labels(instLabelKV(e.instance)), e.state.Current.Process.CPUPercent)
+	}
+
+	rss := prefixed(ctx.prefix, "process_rss_bytes")
+	ctx.help(rss, "Resident set size of the monitored process", "gauge")
+	for _, e := range entries {
+		fmt.Fprintf(ctx.out, "%s%s %d\n", rss, labels(instLabelKV(e.instance)), e.state.Current.Process.RSS)
+	}
+}
+
+// writeAllSelfMetrics emits ember_build_info once and per-stage scrape metrics
+// for each instance that has a recorder. In single-instance mode the
+// fallbackRecorder is consulted when the slot has none, preserving the pre
+// multi-instance handler API.
+func writeAllSelfMetrics(ctx *metricCtx, entries []instanceEntry, multi bool, fallback *instrumentation.Recorder) {
+	type recorded struct {
+		instance string
+		snap     instrumentation.Snapshot
+	}
+	var snaps []recorded
+	for _, e := range entries {
+		if e.slot.state.Current == nil {
+			continue
+		}
+		rec := e.slot.recorder
+		if rec == nil && !multi {
+			rec = fallback
+		}
+		if rec == nil {
+			continue
+		}
+		instance := ""
+		if multi {
+			instance = e.name
+		}
+		snaps = append(snaps, recorded{instance: instance, snap: rec.Snapshot()})
+	}
+	if len(snaps) == 0 {
+		return
+	}
+
+	build := prefixed(ctx.prefix, "ember_build_info")
+	ctx.help(build, "Ember build information; the value is always 1", "gauge")
+	first := snaps[0].snap
+	fmt.Fprintf(ctx.out, "%s{version=\"%s\",goversion=\"%s\"} 1\n",
+		build, escapeLabelValue(first.Version), escapeLabelValue(first.GoVersion))
+
+	if len(first.Stages) == 0 {
+		return
+	}
+
+	total := prefixed(ctx.prefix, "ember_scrape_total")
+	ctx.help(total, "Total scrape attempts per stage (success + error)", "counter")
+	for _, r := range snaps {
+		inst := instLabelKV(r.instance)
+		for _, s := range r.snap.Stages {
+			fmt.Fprintf(ctx.out, "%s%s %d\n", total, labels(fmt.Sprintf(`stage="%s"`, escapeLabelValue(s.Stage)), inst), s.Total)
+		}
+	}
+
+	errs := prefixed(ctx.prefix, "ember_scrape_errors_total")
+	ctx.help(errs, "Failed scrape attempts per stage", "counter")
+	for _, r := range snaps {
+		inst := instLabelKV(r.instance)
+		for _, s := range r.snap.Stages {
+			fmt.Fprintf(ctx.out, "%s%s %d\n", errs, labels(fmt.Sprintf(`stage="%s"`, escapeLabelValue(s.Stage)), inst), s.Errors)
+		}
+	}
+
+	dur := prefixed(ctx.prefix, "ember_scrape_duration_seconds")
+	ctx.help(dur, "Duration of the last scrape attempt per stage, in seconds", "gauge")
+	for _, r := range snaps {
+		inst := instLabelKV(r.instance)
+		for _, s := range r.snap.Stages {
+			fmt.Fprintf(ctx.out, "%s%s %.6f\n", dur, labels(fmt.Sprintf(`stage="%s"`, escapeLabelValue(s.Stage)), inst), s.LastDuration.Seconds())
+		}
+	}
+
+	last := prefixed(ctx.prefix, "ember_last_successful_scrape_timestamp_seconds")
+	ctx.help(last, "Unix timestamp of the last successful scrape per stage; 0 means none yet", "gauge")
+	for _, r := range snaps {
+		inst := instLabelKV(r.instance)
+		for _, s := range r.snap.Stages {
+			var ts float64
+			if !s.LastSuccessAt.IsZero() {
+				ts = float64(s.LastSuccessAt.UnixNano()) / 1e9
+			}
+			fmt.Fprintf(ctx.out, "%s%s %.3f\n", last, labels(fmt.Sprintf(`stage="%s"`, escapeLabelValue(s.Stage)), inst), ts)
 		}
 	}
 }
 
-func writePercentiles(w http.ResponseWriter, s *model.State, prefix string) {
-	if !s.Derived.HasPercentiles {
-		return
-	}
+const (
+	healthOK        = "ok"
+	healthStale     = "stale"
+	healthNoDataYet = "no data yet"
+)
 
-	name := prefixed(prefix, "frankenphp_request_duration_milliseconds")
-	fmt.Fprintf(w, "# HELP %s Request duration percentiles\n", name)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", name)
-	fmt.Fprintf(w, "%s{quantile=\"0.5\"} %.2f\n", name, s.Derived.P50)
-	fmt.Fprintf(w, "%s{quantile=\"0.9\"} %.2f\n", name, s.Derived.P90)
-	fmt.Fprintf(w, "%s{quantile=\"0.95\"} %.2f\n", name, s.Derived.P95)
-	fmt.Fprintf(w, "%s{quantile=\"0.99\"} %.2f\n", name, s.Derived.P99)
+type healthInstanceBody struct {
+	Name       string  `json:"name"`
+	Addr       string  `json:"addr,omitempty"`
+	Status     string  `json:"status"`
+	LastFetch  string  `json:"last_fetch,omitempty"`
+	AgeSeconds float64 `json:"age_seconds,omitempty"`
 }
 
-func writeProcessMetrics(w http.ResponseWriter, s *model.State, prefix string) {
-	cpu := prefixed(prefix, "process_cpu_percent")
-	fmt.Fprintf(w, "# HELP %s CPU usage of the monitored process\n", cpu)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", cpu)
-	fmt.Fprintf(w, "%s %.2f\n", cpu, s.Current.Process.CPUPercent)
-
-	rss := prefixed(prefix, "process_rss_bytes")
-	fmt.Fprintf(w, "# HELP %s Resident set size of the monitored process\n", rss)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", rss)
-	fmt.Fprintf(w, "%s %d\n", rss, s.Current.Process.RSS)
+// instanceHealth derives a status string and the timing fields used in the
+// /healthz body from a slot's state. Returns ("", "", 0) when status is
+// healthNoDataYet so callers can omit the timing keys.
+func instanceHealth(slot *instanceSlot, staleThreshold time.Duration) (status, lastFetch string, age float64) {
+	if slot == nil || slot.state.Current == nil {
+		return healthNoDataYet, "", 0
+	}
+	d := time.Since(slot.state.Current.FetchedAt)
+	if d > staleThreshold {
+		return healthStale, slot.state.Current.FetchedAt.Format(time.RFC3339), d.Seconds()
+	}
+	return healthOK, slot.state.Current.FetchedAt.Format(time.RFC3339), d.Seconds()
 }
 
-// writeSelfMetrics emits ember_* metrics describing the exporter itself:
-// build info, per-stage scrape totals/errors, last duration and last
-// success timestamp. Stages are sorted by name in the snapshot, so output
-// is deterministic across scrapes.
-func writeSelfMetrics(w http.ResponseWriter, snap instrumentation.Snapshot, prefix string) {
-	build := prefixed(prefix, "ember_build_info")
-	fmt.Fprintf(w, "# HELP %s Ember build information; the value is always 1\n", build)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", build)
-	fmt.Fprintf(w, "%s{version=\"%s\",goversion=\"%s\"} 1\n",
-		build, escapeLabelValue(snap.Version), escapeLabelValue(snap.GoVersion))
-
-	if len(snap.Stages) == 0 {
-		return
-	}
-
-	total := prefixed(prefix, "ember_scrape_total")
-	fmt.Fprintf(w, "# HELP %s Total scrape attempts per stage (success + error)\n", total)
-	fmt.Fprintf(w, "# TYPE %s counter\n", total)
-	for _, s := range snap.Stages {
-		fmt.Fprintf(w, "%s{stage=\"%s\"} %d\n", total, escapeLabelValue(s.Stage), s.Total)
-	}
-
-	errs := prefixed(prefix, "ember_scrape_errors_total")
-	fmt.Fprintf(w, "# HELP %s Failed scrape attempts per stage\n", errs)
-	fmt.Fprintf(w, "# TYPE %s counter\n", errs)
-	for _, s := range snap.Stages {
-		fmt.Fprintf(w, "%s{stage=\"%s\"} %d\n", errs, escapeLabelValue(s.Stage), s.Errors)
-	}
-
-	dur := prefixed(prefix, "ember_scrape_duration_seconds")
-	fmt.Fprintf(w, "# HELP %s Duration of the last scrape attempt per stage, in seconds\n", dur)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", dur)
-	for _, s := range snap.Stages {
-		fmt.Fprintf(w, "%s{stage=\"%s\"} %.6f\n", dur, escapeLabelValue(s.Stage), s.LastDuration.Seconds())
-	}
-
-	last := prefixed(prefix, "ember_last_successful_scrape_timestamp_seconds")
-	fmt.Fprintf(w, "# HELP %s Unix timestamp of the last successful scrape per stage; 0 means none yet\n", last)
-	fmt.Fprintf(w, "# TYPE %s gauge\n", last)
-	for _, s := range snap.Stages {
-		var ts float64
-		if !s.LastSuccessAt.IsZero() {
-			ts = float64(s.LastSuccessAt.UnixNano()) / 1e9
-		}
-		fmt.Fprintf(w, "%s{stage=\"%s\"} %.3f\n", last, escapeLabelValue(s.Stage), ts)
+// healthSeverity orders statuses so callers can compute the worst across
+// instances: ok < stale < no data yet.
+func healthSeverity(status string) int {
+	switch status {
+	case healthStale:
+		return 1
+	case healthNoDataYet:
+		return 2
+	default:
+		return 0
 	}
 }
 
@@ -386,30 +632,48 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		s := holder.Load()
+		entries, multi := holder.entries()
 		w.Header().Set("Content-Type", "application/json")
 
-		if s.Current == nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			enc(w, map[string]string{"status": "no data yet"})
+		if !multi {
+			var slot *instanceSlot
+			if len(entries) > 0 {
+				slot = entries[0].slot
+			}
+			status, lastFetch, age := instanceHealth(slot, staleThreshold)
+			if status != healthOK {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}
+			body := map[string]any{"status": status}
+			if lastFetch != "" {
+				body["last_fetch"] = lastFetch
+				body["age_seconds"] = age
+			}
+			enc(w, body)
 			return
 		}
 
-		age := time.Since(s.Current.FetchedAt)
-		if age > staleThreshold {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			enc(w, map[string]any{
-				"status":      "stale",
-				"last_fetch":  s.Current.FetchedAt.Format(time.RFC3339),
-				"age_seconds": age.Seconds(),
+		bodies := make([]healthInstanceBody, 0, len(entries))
+		worst := healthOK
+		for _, e := range entries {
+			status, lastFetch, age := instanceHealth(e.slot, staleThreshold)
+			bodies = append(bodies, healthInstanceBody{
+				Name:       e.name,
+				Addr:       e.slot.addr,
+				Status:     status,
+				LastFetch:  lastFetch,
+				AgeSeconds: age,
 			})
-			return
+			if healthSeverity(status) > healthSeverity(worst) {
+				worst = status
+			}
 		}
-
+		if worst != healthOK {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
 		enc(w, map[string]any{
-			"status":      "ok",
-			"last_fetch":  s.Current.FetchedAt.Format(time.RFC3339),
-			"age_seconds": age.Seconds(),
+			"status":    worst,
+			"instances": bodies,
 		})
 	}
 }

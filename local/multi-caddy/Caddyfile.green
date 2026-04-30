@@ -1,0 +1,16 @@
+{
+	admin 0.0.0.0:2019
+	metrics {
+		per_host
+	}
+}
+
+:80 {
+	@health path /health
+	respond @health "green OK" 200
+
+	@slow path /slow
+	respond @slow "green slow" 200
+
+	respond "green {http.request.host} {http.request.uri}" 200
+}

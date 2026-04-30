@@ -111,6 +111,35 @@ volumes:
   caddy-admin:
 ```
 
+## Multi-instance sidecar
+
+A single Ember container can scrape several Caddy instances and aggregate them behind one Prometheus endpoint:
+
+```yaml
+services:
+  caddy-blue:
+    image: caddy:latest
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+
+  caddy-green:
+    image: caddy:latest
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+
+  ember:
+    image: alexandredaubois/ember
+    environment:
+      EMBER_ADDR: blue=http://caddy-blue:2019,green=http://caddy-green:2019
+    ports:
+      - "9191:9191"
+    depends_on:
+      - caddy-blue
+      - caddy-green
+```
+
+Every emitted Prometheus metric (except `ember_build_info`) carries an `ember_instance="blue"` or `ember_instance="green"` label. See [Prometheus Export](prometheus-export.md#multi-instance-label) for details and a recommended `metric_relabel_configs` snippet.
+
 ## See Also
 
 - [Getting Started](getting-started.md)

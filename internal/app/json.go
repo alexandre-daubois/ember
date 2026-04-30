@@ -3,9 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"math"
 	"os"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -13,6 +14,7 @@ import (
 )
 
 type jsonOutput struct {
+	Instance  string                  `json:"instance,omitempty"`
 	Threads   jsonThreadsResponse     `json:"threads"`
 	Metrics   fetcher.MetricsSnapshot `json:"metrics"`
 	Process   fetcher.ProcessMetrics  `json:"process"`
@@ -78,33 +80,68 @@ type jsonDerived struct {
 	P99       *float64 `json:"p99,omitempty"`
 }
 
-func runJSON(ctx context.Context, f fetcher.Fetcher, interval time.Duration, once bool, log *slog.Logger) {
+func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 	enc := json.NewEncoder(os.Stdout)
-	var state model.State
+	multi := len(instances) >= 2
+
+	// Pre-compute the alphabetical emission order so each tick produces a
+	// stable, name-sorted JSONL stream regardless of the order the user
+	// supplied --addr in. Matches the deterministic ordering used by the
+	// /metrics handler.
+	order := make([]int, len(instances))
+	for i := range instances {
+		order[i] = i
+	}
+	sort.Slice(order, func(a, b int) bool {
+		return instances[order[a]].name < instances[order[b]].name
+	})
 
 	poll := func() {
-		snap, err := f.Fetch(ctx)
-		if err != nil {
-			log.Error("fetch failed", "err", err)
-			return
+		results := make([]*jsonOutput, len(instances))
+		var wg sync.WaitGroup
+		for i, inst := range instances {
+			wg.Add(1)
+			go func(i int, inst *instance) {
+				defer wg.Done()
+				snap, err := inst.fetcher.Fetch(ctx)
+				if err != nil {
+					ilog := cfg.logger
+					if multi {
+						ilog = ilog.With("instance", inst.name)
+					}
+					ilog.Error("fetch failed", "err", err)
+					return
+				}
+				inst.state.Update(snap)
+				out := buildJSONOutput(snap, &inst.state)
+				if multi {
+					out.Instance = inst.name
+				}
+				results[i] = &out
+			}(i, inst)
 		}
-		state.Update(snap)
-		_ = enc.Encode(buildJSONOutput(snap, &state))
+		wg.Wait()
+
+		for _, idx := range order {
+			if results[idx] != nil {
+				_ = enc.Encode(results[idx])
+			}
+		}
 	}
 
 	poll()
 
-	if once {
-		return
+	if cfg.once {
+		return nil
 	}
 
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(cfg.interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-ticker.C:
 			poll()
 		}

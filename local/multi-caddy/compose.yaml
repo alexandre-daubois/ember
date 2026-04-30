@@ -1,0 +1,28 @@
+services:
+  caddy-blue:
+    image: caddy:latest
+    container_name: ember-multi-caddy-blue
+    ports:
+      - "8081:80"
+      - "2019:2019"
+    volumes:
+      - ./Caddyfile.blue:/etc/caddy/Caddyfile
+      - caddy_blue_data:/data
+      - caddy_blue_config:/config
+
+  caddy-green:
+    image: caddy:latest
+    container_name: ember-multi-caddy-green
+    ports:
+      - "8082:80"
+      - "2020:2019"
+    volumes:
+      - ./Caddyfile.green:/etc/caddy/Caddyfile
+      - caddy_green_data:/data
+      - caddy_green_config:/config
+
+volumes:
+  caddy_blue_data:
+  caddy_blue_config:
+  caddy_green_data:
+  caddy_green_config:
