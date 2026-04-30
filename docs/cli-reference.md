@@ -190,9 +190,35 @@ ember status --json
 ember status --json | jq .rps
 ember status --addr http://prod:2019
 ember status --interval 2s
+ember status --addr web1=https://a --addr web2=https://b   # multi-instance
 ```
 
-With `--json`, the output is a JSON object:
+### Multi-instance status
+
+When `--addr` is repeated, `ember status` checks every instance in parallel and emits one block per instance, sorted alphabetically by name. Exit code is 0 only when **all** instances are reachable.
+
+**Text output:**
+
+```
+[web1] Caddy OK | 5 hosts | 450 rps | P99 12ms | CPU 3.2% | RSS 48MB | up 3d 2h
+[web2] Caddy UNREACHABLE | https://web2.fr
+```
+
+**JSON output (`--json`):**
+
+```json
+{
+  "status": "degraded",
+  "instances": [
+    {"name": "web1", "addr": "https://web1.fr", "status": "ok",          "rps": 450, "cpuPercent": 3.2, "rssBytes": 50331648, "p99": 12.3},
+    {"name": "web2", "addr": "https://web2.fr", "status": "unreachable", "rps": 0,   "cpuPercent": 0,   "rssBytes": 0}
+  ]
+}
+```
+
+The top-level `status` is the worst of: `ok` (every instance reachable) < `degraded` (mixed) < `unreachable` (every instance down). FrankenPHP fields are emitted per instance when detected.
+
+With `--json` (single-instance mode), the output is a JSON object:
 
 ```json
 {

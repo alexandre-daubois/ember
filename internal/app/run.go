@@ -101,6 +101,10 @@ Keybindings:
 			multi := len(cfg.addrs) >= 2
 			warnMultiLimitations(&cfg, multi)
 
+			if multi && !cfg.jsonMode && !cfg.daemon {
+				return errMultiNotSupported("the TUI default mode")
+			}
+
 			instances, err := newInstances(ctx, &cfg, cmd.Version)
 			if err != nil {
 				return err
@@ -148,7 +152,7 @@ Keybindings:
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
 	cmd.AddCommand(newVersionCmd(version))
-	cmd.AddCommand(newDiffCmd())
+	cmd.AddCommand(newDiffCmd(&cfg))
 	cmd.AddCommand(newInitCmd(&cfg))
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
@@ -254,10 +258,6 @@ func validate(cfg *config) error {
 		}
 	}
 
-	if len(cfg.addrs) >= 2 && !cfg.daemon && !cfg.jsonMode {
-		return fmt.Errorf("--addr cannot be repeated for this command/mode (only --daemon and --json support multi-instance)")
-	}
-
 	if cfg.metricsAuth != "" {
 		user, pass, ok := strings.Cut(cfg.metricsAuth, ":")
 		if !ok || user == "" || pass == "" {
@@ -291,6 +291,12 @@ func isValidMetricPrefix(s string) bool {
 		}
 	}
 	return true
+}
+
+// errMultiNotSupported is returned by commands that do not yet accept repeated
+// --addr.
+func errMultiNotSupported(what string) error {
+	return fmt.Errorf("%s does not support multiple --addr (only --daemon, --json and `status` accept repeated --addr; see issue #36)", what)
 }
 
 func warnMultiLimitations(cfg *config, multi bool) {

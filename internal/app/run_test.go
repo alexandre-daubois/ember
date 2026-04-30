@@ -60,20 +60,45 @@ func TestValidate_MultiAddr_JSONOK(t *testing.T) {
 	assert.Len(t, cfg.addrs, 2)
 }
 
-func TestValidate_MultiAddr_TUIRefused(t *testing.T) {
-	cfg := &config{
-		interval: 1 * time.Second,
-		addrsRaw: []string{"web1=https://a", "web2=https://b"},
-	}
-	err := validate(cfg)
+func TestRun_MultiAddr_TUIRefused(t *testing.T) {
+	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b"}, "0.0.0")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--addr cannot be repeated")
+	assert.Contains(t, err.Error(), "TUI default mode")
+	assert.Contains(t, err.Error(), "does not support multiple --addr")
 }
 
-func TestValidate_MultiAddr_StatusRefused(t *testing.T) {
-	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "status"}, "0.0.0")
+func TestRun_MultiAddr_WaitRefused(t *testing.T) {
+	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "wait"}, "0.0.0")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--addr cannot be repeated")
+	assert.Contains(t, err.Error(), "ember wait")
+	assert.Contains(t, err.Error(), "does not support multiple --addr")
+}
+
+func TestRun_MultiAddr_InitRefused(t *testing.T) {
+	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "init"}, "0.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ember init")
+}
+
+func TestRun_MultiAddr_DiffRefused(t *testing.T) {
+	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b", "diff", "a.json", "b.json"}, "0.0.0")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ember diff")
+}
+
+// TestRun_MultiAddr_StatusAllowed verifies that status no longer rejects
+// repeated --addr at the routing layer. The two unreachable URLs cause an
+// "unreachable" error, never the "does not support" error.
+func TestRun_MultiAddr_StatusAllowed(t *testing.T) {
+	err := Run([]string{
+		"--addr", "web1=http://192.0.2.1:1",
+		"--addr", "web2=http://192.0.2.1:2",
+		"--timeout", "2s",
+		"status",
+	}, "0.0.0")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "does not support multiple --addr")
+	assert.Contains(t, err.Error(), "unreachable")
 }
 
 func TestRun_VersionFlag(t *testing.T) {
