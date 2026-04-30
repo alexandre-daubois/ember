@@ -39,12 +39,12 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 **Integration & Operations**
 
 - Prometheus metrics export (`/metrics`) with optional basic auth and health endpoint (`/healthz`)
-- Multi-instance scraping in `--daemon`, `--json`, and `status` modes: a single Ember process aggregates several Caddy instances behind one Prometheus endpoint with an `ember_instance` label
+- Multi-instance scraping in `--daemon`, `--json`, `status`, and `wait` modes: a single Ember process aggregates several Caddy instances behind one Prometheus endpoint with an `ember_instance` label
 - Self-observability: `ember_*` metrics (build info, per-stage scrape totals, errors, durations, last success) so you can monitor the monitor
 - Daemon mode for headless operation, with error throttling and TLS certificate reload via SIGHUP
 - JSON output mode for scripting, with `--once` for single snapshots
 - Quick health check: `ember status` (text or `--json`) for a one-line Caddy summary
-- Readiness gate: `ember wait` blocks until Caddy is up (`-q` for silent scripting)
+- Readiness gate: `ember wait` blocks until Caddy is up (`-q` for silent scripting; supports repeated `--addr` with `--any` for first-ready semantics)
 - Deployment validation: `ember diff before.json after.json` compares snapshots
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`

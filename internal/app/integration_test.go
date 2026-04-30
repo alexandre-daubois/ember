@@ -31,13 +31,12 @@ func caddyAddr() string {
 
 func TestIntegration_Wait(t *testing.T) {
 	addr := caddyAddr()
-	f := fetcher.NewHTTPFetcher(addr, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runWait(ctx, &buf, f, addr, 500*time.Millisecond)
+	err := runWait(ctx, &buf, []*waitInstance{newWaitInst(t, "test", addr)}, 500*time.Millisecond, false)
 
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ready")
@@ -45,12 +44,11 @@ func TestIntegration_Wait(t *testing.T) {
 
 func TestIntegration_WaitQuiet(t *testing.T) {
 	addr := caddyAddr()
-	f := fetcher.NewHTTPFetcher(addr, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := runWait(ctx, io.Discard, f, addr, 500*time.Millisecond)
+	err := runWait(ctx, io.Discard, []*waitInstance{newWaitInst(t, "test", addr)}, 500*time.Millisecond, false)
 	require.NoError(t, err)
 }
 
@@ -316,14 +314,13 @@ func TestIntegration_Daemon_Healthz(t *testing.T) {
 
 func TestIntegration_Wait_Unreachable(t *testing.T) {
 	closedPort := freePort(t)
-
-	f := fetcher.NewHTTPFetcher("http://"+closedPort, 0)
+	addr := "http://" + closedPort
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runWait(ctx, &buf, f, "http://"+closedPort, 200*time.Millisecond)
+	err := runWait(ctx, &buf, []*waitInstance{newWaitInst(t, "test", addr)}, 200*time.Millisecond, false)
 
 	require.Error(t, err, "runWait should fail when Caddy is unreachable")
 }
