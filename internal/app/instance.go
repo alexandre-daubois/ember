@@ -129,8 +129,11 @@ func newInstances(ctx context.Context, cfg *config, version string) ([]*instance
 	multi := len(cfg.addrs) >= 2
 	for _, spec := range cfg.addrs {
 		var pid int32
-		if !multi {
+		switch {
+		case !multi:
 			pid = resolveFrankenPHPPID(ctx, cfg)
+		case fetcher.IsLocalAddr(spec.url):
+			pid = resolveLocalListenerPID(ctx, cfg, spec)
 		}
 
 		f := fetcher.NewHTTPFetcher(spec.url, pid)
@@ -169,4 +172,19 @@ func resolveFrankenPHPPID(ctx context.Context, cfg *config) int32 {
 		}
 	}
 	return pid
+}
+
+// resolveLocalListenerPID maps a local --addr to the PID of the process
+// bound to its admin endpoint. Failures are silent: callers fall back to the
+// process_* metrics already exposed by Caddy.
+func resolveLocalListenerPID(ctx context.Context, cfg *config, spec addrSpec) int32 {
+	ll, err := fetcher.FindLocalListener(ctx, spec.url)
+	if err != nil {
+		return 0
+	}
+	if ll.Ambiguous {
+		cfg.logger.Debug("multiple processes listen on instance admin endpoint; using first match",
+			"instance", spec.name, "addr", spec.url, "pid", ll.PID)
+	}
+	return ll.PID
 }

@@ -108,7 +108,7 @@ Constraints:
 - `--daemon`, `--json`, `status`, `wait`, and `diff` accept multi-instance input. The TUI default mode and the `init` subcommand refuse repeated `--addr` with an explicit error.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
 - TLS flags (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`) are global and applied uniformly. If you need distinct PKIs per instance, run one Ember process per group.
-- `--frankenphp-pid` is ignored when `--addr` is repeated; only the `process_*` metrics exposed by Caddy are used.
+- `--frankenphp-pid` is ignored when `--addr` is repeated. Local instances (`localhost`, `127.0.0.1`, `::1` or `unix//`) get per-instance `process_cpu_percent`/`process_rss_bytes` via auto-detection on the admin endpoint; remote instances silently fall back to the `process_*` metrics exposed by Caddy.
 - Plugins are skipped in multi-instance mode (a startup warning is logged).
 
 See [Prometheus Export](prometheus-export.md) for the resulting metric labels and `/healthz` body.

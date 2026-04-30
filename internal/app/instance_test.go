@@ -5,10 +5,12 @@ import (
 	"encoding/pem"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -179,4 +181,37 @@ func TestSlugifyHost(t *testing.T) {
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, slugifyHost(tt.in), "slugifyHost(%q)", tt.in)
 	}
+}
+
+func TestResolveLocalListenerPID_LocalAddrPicksUpListener(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	cfg := &config{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	spec := addrSpec{name: "web1", url: "http://127.0.0.1:" + strconv.Itoa(port)}
+
+	pid := resolveLocalListenerPID(context.Background(), cfg, spec)
+	if pid == 0 {
+		t.Skipf("connections lookup unavailable in this env")
+	}
+	assert.Equal(t, int32(os.Getpid()), pid)
+}
+
+func TestResolveLocalListenerPID_RemoteAddrSilentZero(t *testing.T) {
+	cfg := &config{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	spec := addrSpec{name: "prod", url: "http://prod.example.com:2019"}
+	assert.Equal(t, int32(0), resolveLocalListenerPID(context.Background(), cfg, spec))
+}
+
+func TestResolveLocalListenerPID_NoListenerSilentZero(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+
+	cfg := &config{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	spec := addrSpec{name: "vacant", url: "http://127.0.0.1:" + strconv.Itoa(port)}
+	assert.Equal(t, int32(0), resolveLocalListenerPID(context.Background(), cfg, spec))
 }
