@@ -2,12 +2,16 @@ package app
 
 import (
 	"bufio"
+	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -29,27 +33,32 @@ admin API to read and optionally write configuration.`,
 		Example: `  ember init
   ember init --addr https://prod:2019 --ca-cert ca.pem
   ember init -y
-  ember init -yq`,
+  ember init -yq
+  ember init -y --addr web1=https://a --addr web2=https://b`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(cfg.addrs) >= 2 {
-				return errMultiNotSupported("`ember init`")
-			}
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
 			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
 			defer tCancel()
 
+			w := cmd.OutOrStdout()
+			if quiet {
+				w = io.Discard
+			}
+
+			if len(cfg.addrs) >= 2 {
+				if !yes {
+					return fmt.Errorf("`ember init` requires --yes (-y) when multiple --addr are provided (interactive prompts are disabled in multi-instance mode)")
+				}
+				return runInitMulti(ctx, w, cfg)
+			}
+
 			addr := cfg.addrs[0].url
 			f := fetcher.NewHTTPFetcher(addr, 0)
 			if err := configureTLS(f, cfg); err != nil {
 				return err
-			}
-
-			w := cmd.OutOrStdout()
-			if quiet {
-				w = io.Discard
 			}
 			return runInit(ctx, w, os.Stdin, f, addr, yes)
 		},
@@ -171,6 +180,54 @@ func printCheck(w io.Writer, c initCheck) {
 func hasWildcardHost(hosts map[string]*fetcher.HostMetrics) bool {
 	h, ok := hosts["*"]
 	return ok && h.RequestsTotal > 0
+}
+
+type initResult struct {
+	name   string
+	output string
+	err    error
+}
+
+func runInitMulti(ctx context.Context, w io.Writer, cfg *config) error {
+	results := make([]initResult, len(cfg.addrs))
+	var wg sync.WaitGroup
+	for i, spec := range cfg.addrs {
+		wg.Add(1)
+		go func(i int, spec addrSpec) {
+			defer wg.Done()
+			results[i] = collectInitResult(ctx, cfg, spec)
+		}(i, spec)
+	}
+	wg.Wait()
+
+	slices.SortFunc(results, func(a, b initResult) int { return cmp.Compare(a.name, b.name) })
+
+	var failed []string
+	for i, r := range results {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "--- %s ---\n", r.name)
+		fmt.Fprint(w, r.output)
+		if r.err != nil {
+			failed = append(failed, r.name)
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("init failed for instance(s): %s", strings.Join(failed, ", "))
+	}
+	return nil
+}
+
+func collectInitResult(ctx context.Context, cfg *config, spec addrSpec) initResult {
+	var buf bytes.Buffer
+	f := fetcher.NewHTTPFetcher(spec.url, 0)
+	if err := configureTLS(f, cfg); err != nil {
+		fmt.Fprintf(&buf, "  ✗ TLS configuration failed (%s)\n", err)
+		return initResult{name: spec.name, output: buf.String(), err: err}
+	}
+	err := runInit(ctx, &buf, strings.NewReader(""), f, spec.url, true)
+	return initResult{name: spec.name, output: buf.String(), err: err}
 }
 
 func promptYesNo(w io.Writer, r io.Reader, prompt string, autoYes bool) bool {

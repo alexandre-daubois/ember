@@ -296,7 +296,7 @@ func isValidMetricPrefix(s string) bool {
 // errMultiNotSupported is returned by commands that do not yet accept repeated
 // --addr.
 func errMultiNotSupported(what string) error {
-	return fmt.Errorf("%s does not support multiple --addr (only --daemon, --json, `status` and `wait` accept repeated --addr; see issue #36)", what)
+	return fmt.Errorf("%s does not support multiple --addr (only --daemon, --json, `status`, `wait` and `init` accept repeated --addr; see issue #36)", what)
 }
 
 func warnMultiLimitations(cfg *config, multi bool) {
