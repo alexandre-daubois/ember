@@ -183,6 +183,16 @@ In multi-instance mode the body switches to an aggregated form. The top-level `s
 
 > **Tip:** Use `/healthz` as a Kubernetes liveness probe to detect when Ember loses contact with Caddy.
 
+### Per-instance health (`/healthz/<name>`)
+
+In multi-instance mode, `GET /healthz/<name>` returns the readiness of a single instance, with the same body shape as the single-instance `/healthz`:
+
+```json
+{ "status": "ok", "last_fetch": "2026-03-16T10:00:00Z", "age_seconds": 1.2 }
+```
+
+The status code is `200` only when that instance is `ok`, `503` otherwise. The endpoint returns `404` when the instance name is unknown, when no name is provided (`/healthz/`), or in single-instance mode. Use it as a per-pod readiness probe when running Ember as a sidecar against several upstreams: a single bad upstream no longer fails every probe.
+
 ## Authentication
 
 Use `--metrics-auth` to protect the `/metrics` and `/healthz` endpoints with HTTP Basic Authentication:

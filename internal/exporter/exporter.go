@@ -75,6 +75,12 @@ type instanceEntry struct {
 	slot *instanceSlot
 }
 
+func (h *StateHolder) lookup(name string) (*instanceSlot, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.instances[name], h.multi
+}
+
 func (h *StateHolder) entries() ([]instanceEntry, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -619,17 +625,31 @@ func healthSeverity(status string) int {
 	}
 }
 
-func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {
-	staleThreshold := 3 * interval
-	if staleThreshold < 5*time.Second {
-		staleThreshold = 5 * time.Second
-	}
+func staleThresholdFor(interval time.Duration) time.Duration {
+	return max(3*interval, 5*time.Second)
+}
 
-	enc := func(w http.ResponseWriter, v any) {
-		if err := json.NewEncoder(w).Encode(v); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+func encodeJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func writeSingleHealthBody(w http.ResponseWriter, slot *instanceSlot, threshold time.Duration) {
+	status, lastFetch, age := instanceHealth(slot, threshold)
+	if status != healthOK {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	body := map[string]any{"status": status}
+	if lastFetch != "" {
+		body["last_fetch"] = lastFetch
+		body["age_seconds"] = age
+	}
+	encodeJSON(w, body)
+}
+
+func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {
+	threshold := staleThresholdFor(interval)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		entries, multi := holder.entries()
@@ -640,23 +660,14 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 			if len(entries) > 0 {
 				slot = entries[0].slot
 			}
-			status, lastFetch, age := instanceHealth(slot, staleThreshold)
-			if status != healthOK {
-				w.WriteHeader(http.StatusServiceUnavailable)
-			}
-			body := map[string]any{"status": status}
-			if lastFetch != "" {
-				body["last_fetch"] = lastFetch
-				body["age_seconds"] = age
-			}
-			enc(w, body)
+			writeSingleHealthBody(w, slot, threshold)
 			return
 		}
 
 		bodies := make([]healthInstanceBody, 0, len(entries))
 		worst := healthOK
 		for _, e := range entries {
-			status, lastFetch, age := instanceHealth(e.slot, staleThreshold)
+			status, lastFetch, age := instanceHealth(e.slot, threshold)
 			bodies = append(bodies, healthInstanceBody{
 				Name:       e.name,
 				Addr:       e.slot.addr,
@@ -671,10 +682,33 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 		if worst != healthOK {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		enc(w, map[string]any{
+		encodeJSON(w, map[string]any{
 			"status":    worst,
 			"instances": bodies,
 		})
+	}
+}
+
+// InstanceHealthHandler serves /healthz/<name>: per-instance readiness probe
+// returning the same body shape as the single-instance /healthz. Returns 404
+// outside multi-instance mode, when the name is unknown, or when the path has
+// no name or extra segments.
+func InstanceHealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {
+	threshold := staleThresholdFor(interval)
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/healthz/")
+		if name == "" || strings.Contains(name, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		slot, multi := holder.lookup(name)
+		if !multi || slot == nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		writeSingleHealthBody(w, slot, threshold)
 	}
 }
 

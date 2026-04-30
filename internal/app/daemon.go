@@ -73,6 +73,7 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix, cfg.recorder))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval))
+	mux.HandleFunc("/healthz/", exporter.InstanceHealthHandler(holder, cfg.interval))
 
 	var handler http.Handler = mux
 	if cfg.metricsAuth != "" {
