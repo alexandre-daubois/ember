@@ -81,7 +81,10 @@ Keybindings:
   ember --expose :9191 --daemon           # headless metrics exporter
   ember --daemon --expose :9191 \
         --addr web1=https://web1.fr \
-        --addr web2=https://web2.fr     # multi-instance daemon`,
+        --addr web2=https://web2.fr     # multi-instance daemon
+  ember --daemon --expose :9191 \
+        --addr web1=https://a,ca=/etc/ca1.pem \
+        --addr web2=https://b,ca=/etc/ca2.pem # per-instance TLS`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -128,7 +131,7 @@ Keybindings:
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon, --json, status and wait modes; supports name=url aliases.")
+	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon, --json, status and wait modes; supports name=url aliases and per-instance TLS suffixes (,ca=PATH ,cert=PATH ,key=PATH ,insecure).")
 	pf.DurationVarP(&cfg.interval, "interval", "i", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set; ignored when --addr is repeated)")
@@ -166,16 +169,11 @@ func contextWithTimeout(parent context.Context, timeout time.Duration) (context.
 	return parent, func() {}
 }
 
-func configureTLS(f *fetcher.HTTPFetcher, cfg *config) error {
+func configureTLS(f *fetcher.HTTPFetcher, opts fetcher.TLSOptions) error {
 	if f.IsUnixSocket() {
 		return nil
 	}
-	tlsCfg, err := fetcher.BuildTLSConfig(fetcher.TLSOptions{
-		CACert:     cfg.caCert,
-		ClientCert: cfg.clientCert,
-		ClientKey:  cfg.clientKey,
-		Insecure:   cfg.insecure,
-	})
+	tlsCfg, err := fetcher.BuildTLSConfig(opts)
 	if err != nil {
 		return err
 	}
@@ -214,7 +212,7 @@ func bindEnv(cmd *cobra.Command) {
 			continue
 		}
 		if name == "addr" {
-			for _, v := range strings.Split(val, ",") {
+			for v := range strings.SplitSeq(val, ";") {
 				v = strings.TrimSpace(v)
 				if v == "" {
 					continue

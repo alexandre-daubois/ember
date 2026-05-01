@@ -130,7 +130,7 @@ services:
   ember:
     image: alexandredaubois/ember
     environment:
-      EMBER_ADDR: blue=http://caddy-blue:2019,green=http://caddy-green:2019
+      EMBER_ADDR: blue=http://caddy-blue:2019;green=http://caddy-green:2019
     ports:
       - "9191:9191"
     depends_on:

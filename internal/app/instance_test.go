@@ -125,6 +125,75 @@ func TestParseAddrs_UnixEmptyPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "non-empty Unix socket path")
 }
 
+func TestParseAddrs_TLSSuffix_All(t *testing.T) {
+	addrs, err := parseAddrs([]string{
+		"web1=https://a,ca=/p/ca1.pem,cert=/p/c.pem,key=/p/k.pem",
+		"web2=https://b,insecure",
+	})
+	require.NoError(t, err)
+	require.Len(t, addrs, 2)
+
+	assert.Equal(t, "/p/ca1.pem", addrs[0].tls.caCert)
+	assert.Equal(t, "/p/c.pem", addrs[0].tls.clientCert)
+	assert.Equal(t, "/p/k.pem", addrs[0].tls.clientKey)
+	assert.False(t, addrs[0].tls.insecureSet)
+
+	assert.True(t, addrs[1].tls.insecureSet)
+	assert.True(t, addrs[1].tls.insecure)
+}
+
+func TestParseAddrs_TLSSuffix_InsecureExplicitFalse(t *testing.T) {
+	addrs, err := parseAddrs([]string{"web1=https://a,insecure=false"})
+	require.NoError(t, err)
+	assert.True(t, addrs[0].tls.insecureSet)
+	assert.False(t, addrs[0].tls.insecure)
+}
+
+func TestParseAddrs_TLSSuffix_InsecureBadValue(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,insecure=maybe"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "true|false")
+}
+
+func TestParseAddrs_TLSSuffix_UnknownKey(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,foo=bar"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown suffix")
+}
+
+func TestParseAddrs_TLSSuffix_EmptyPath(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,ca="})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty path")
+}
+
+func TestParseAddrs_TLSSuffix_CertWithoutKey(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,cert=/p/c.pem"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cert= and key= must be set together")
+}
+
+func TestParseAddrs_TLSSuffix_OnUnixSocketRejected(t *testing.T) {
+	_, err := parseAddrs([]string{"sock=unix//run/caddy.sock,ca=/p/ca.pem"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
+}
+
+func TestParseAddrs_TLSSuffix_InsecureOnUnixRejected(t *testing.T) {
+	_, err := parseAddrs([]string{"sock=unix//run/caddy.sock,insecure"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
+}
+
+func TestParseAddrs_TLSSuffix_AliasOptional(t *testing.T) {
+	addrs, err := parseAddrs([]string{"https://web1.fr,ca=/p/ca.pem"})
+	require.NoError(t, err)
+	require.Len(t, addrs, 1)
+	assert.Equal(t, "web1_fr", addrs[0].name)
+	assert.Equal(t, "https://web1.fr", addrs[0].url)
+	assert.Equal(t, "/p/ca.pem", addrs[0].tls.caCert)
+}
+
 func TestNewInstances_SharedCACert_TwoHTTPSInstances(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -165,6 +234,75 @@ func TestNewInstances_SharedCACert_TwoHTTPSInstances(t *testing.T) {
 		require.NotNil(t, snap)
 		assert.Empty(t, snap.Errors, "TLS handshake against shared CA must succeed for %s", inst.name)
 	}
+}
+
+// TestNewInstances_PerInstanceCACert proves the acceptance criterion: two
+// HTTPS instances signed by distinct CAs are scraped successfully when each
+// --addr carries its own ca= suffix and no global --ca-cert is set.
+func TestNewInstances_PerInstanceCACert(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{host=\"x\",code=\"200\"} 1\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	srv1 := httptest.NewTLSServer(handler)
+	defer srv1.Close()
+	srv2 := httptest.NewTLSServer(handler)
+	defer srv2.Close()
+
+	dir := t.TempDir()
+	ca1 := filepath.Join(dir, "ca1.pem")
+	ca2 := filepath.Join(dir, "ca2.pem")
+	require.NoError(t, os.WriteFile(ca1, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv1.Certificate().Raw}), 0o600))
+	require.NoError(t, os.WriteFile(ca2, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv2.Certificate().Raw}), 0o600))
+
+	cfg := &config{
+		addrs: []addrSpec{
+			{name: "web1", url: srv1.URL, tls: addrTLS{caCert: ca1}},
+			{name: "web2", url: srv2.URL, tls: addrTLS{caCert: ca2}},
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	instances, err := newInstances(context.Background(), cfg, "test")
+	require.NoError(t, err)
+	require.Len(t, instances, 2)
+
+	for _, inst := range instances {
+		snap, err := inst.fetcher.Fetch(context.Background())
+		require.NoError(t, err, "instance %s should fetch via its own ca= suffix", inst.name)
+		require.NotNil(t, snap)
+		assert.Empty(t, snap.Errors, "per-instance CA handshake must succeed for %s", inst.name)
+	}
+
+	// Per-instance TLS options must be the ones stored on the instance so SIGHUP
+	// reload re-reads the right files.
+	assert.Equal(t, ca1, instances[0].tls.CACert)
+	assert.Equal(t, ca2, instances[1].tls.CACert)
+}
+
+func TestEffectiveTLS_PerInstanceOverridesGlobal(t *testing.T) {
+	cfg := &config{caCert: "/global/ca.pem", insecure: true}
+	spec := addrSpec{tls: addrTLS{caCert: "/inst/ca.pem", insecureSet: true, insecure: false}}
+
+	opts := effectiveTLS(spec, cfg)
+
+	assert.Equal(t, "/inst/ca.pem", opts.CACert)
+	assert.False(t, opts.Insecure)
+}
+
+func TestEffectiveTLS_FallbackToGlobalPerField(t *testing.T) {
+	cfg := &config{caCert: "/global/ca.pem", clientCert: "/global/c.pem", clientKey: "/global/k.pem", insecure: true}
+	spec := addrSpec{tls: addrTLS{clientCert: "/inst/c.pem", clientKey: "/inst/k.pem"}}
+
+	opts := effectiveTLS(spec, cfg)
+
+	assert.Equal(t, "/global/ca.pem", opts.CACert)
+	assert.Equal(t, "/inst/c.pem", opts.ClientCert)
+	assert.Equal(t, "/inst/k.pem", opts.ClientKey)
+	assert.True(t, opts.Insecure, "insecureSet=false leaves the global value intact")
 }
 
 func TestSlugifyHost(t *testing.T) {

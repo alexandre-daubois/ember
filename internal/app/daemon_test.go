@@ -94,9 +94,8 @@ func TestReloadTLS_NoTLSConfig(t *testing.T) {
 	log := testLogger(&buf)
 
 	f := fetcher.NewHTTPFetcher("http://localhost:2019", 0)
-	cfg := &config{}
 
-	reloadTLS(f, cfg, log)
+	reloadTLS(f, fetcher.TLSOptions{}, log)
 
 	assert.Contains(t, buf.String(), "TLS certificates reloaded")
 }
@@ -106,9 +105,8 @@ func TestReloadTLS_InvalidCert(t *testing.T) {
 	log := testLogger(&buf)
 
 	f := fetcher.NewHTTPFetcher("http://localhost:2019", 0)
-	cfg := &config{caCert: "/nonexistent/ca.pem"}
 
-	reloadTLS(f, cfg, log)
+	reloadTLS(f, fetcher.TLSOptions{CACert: "/nonexistent/ca.pem"}, log)
 
 	assert.Contains(t, buf.String(), "TLS reload failed")
 }
@@ -123,7 +121,7 @@ func TestReloadTLS_NonHTTPFetcher(t *testing.T) {
 	var buf bytes.Buffer
 	log := testLogger(&buf)
 
-	reloadTLS(&mockFetcher{}, &config{}, log)
+	reloadTLS(&mockFetcher{}, fetcher.TLSOptions{}, log)
 
 	assert.Contains(t, buf.String(), "not supported")
 }

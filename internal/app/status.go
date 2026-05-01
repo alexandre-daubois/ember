@@ -57,12 +57,12 @@ when all instances are reachable.`,
 				pid = detected
 			}
 
-			addr := cfg.addrs[0].url
-			f := fetcher.NewHTTPFetcher(addr, pid)
-			if err := configureTLS(f, cfg); err != nil {
+			spec := cfg.addrs[0]
+			f := fetcher.NewHTTPFetcher(spec.url, pid)
+			if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 				return err
 			}
-			return runStatus(ctx, cmd.OutOrStdout(), f, addr, cfg.interval, statusJSONFlag)
+			return runStatus(ctx, cmd.OutOrStdout(), f, spec.url, cfg.interval, statusJSONFlag)
 		},
 	}
 
@@ -303,7 +303,7 @@ func runStatusMulti(ctx context.Context, w io.Writer, cfg *config, jsonMode bool
 func collectInstanceStatus(ctx context.Context, cfg *config, spec addrSpec) statusResult {
 	res := statusResult{name: spec.name, addr: spec.url}
 	f := fetcher.NewHTTPFetcher(spec.url, 0)
-	if err := configureTLS(f, cfg); err != nil {
+	if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 		return res
 	}
 	f.DetectFrankenPHP(ctx)

@@ -507,13 +507,33 @@ func TestBindEnv_AddrFromEnv(t *testing.T) {
 	assert.Equal(t, "[http://remote:2019]", cmd.Flag("addr").Value.String())
 }
 
-func TestBindEnv_AddrFromEnv_CommaSeparated(t *testing.T) {
-	t.Setenv("EMBER_ADDR", "web1=http://a:2019,web2=http://b:2019")
+func TestBindEnv_AddrFromEnv_SemicolonSeparated(t *testing.T) {
+	t.Setenv("EMBER_ADDR", "web1=http://a:2019;web2=http://b:2019")
 
 	cmd := newRootCmd("0.0.0")
 	bindEnv(cmd)
 
 	assert.Equal(t, "[web1=http://a:2019,web2=http://b:2019]", cmd.Flag("addr").Value.String())
+}
+
+// EMBER_ADDR uses ';' as the separator so a single entry can carry
+// per-instance TLS suffixes (which are themselves comma-separated).
+func TestBindEnv_AddrFromEnv_SemicolonPreservesTLSSuffix(t *testing.T) {
+	t.Setenv("EMBER_ADDR", "web1=https://a,ca=/etc/ca1.pem;web2=https://b,insecure")
+
+	cmd := newRootCmd("0.0.0")
+	bindEnv(cmd)
+
+	raws, err := cmd.PersistentFlags().GetStringArray("addr")
+	require.NoError(t, err)
+	require.Equal(t, []string{"web1=https://a,ca=/etc/ca1.pem", "web2=https://b,insecure"}, raws)
+
+	specs, err := parseAddrs(raws)
+	require.NoError(t, err)
+	require.Len(t, specs, 2)
+	assert.Equal(t, "/etc/ca1.pem", specs[0].tls.caCert)
+	assert.True(t, specs[1].tls.insecure)
+	assert.True(t, specs[1].tls.insecureSet)
 }
 
 func TestBindEnv_FlagOverridesEnv(t *testing.T) {
