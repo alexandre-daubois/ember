@@ -122,6 +122,14 @@ func (f *HTTPFetcher) SetTLSConfig(tlsConfig *tls.Config) {
 	}
 }
 
+// CloseIdleConnections drains the underlying HTTP connection pool. Call this
+// on daemon shutdown so persistConn read/write goroutines exit promptly.
+func (f *HTTPFetcher) CloseIdleConnections() {
+	if tr := f.transport.inner.Load(); tr != nil {
+		tr.CloseIdleConnections()
+	}
+}
+
 // TLSOptions holds paths for TLS certificate files.
 type TLSOptions struct {
 	CACert     string

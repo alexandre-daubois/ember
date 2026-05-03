@@ -24,24 +24,24 @@ func TestRun_Help(t *testing.T) {
 
 func TestRun_InvalidFlag(t *testing.T) {
 	err := app.Run([]string{"--nonexistent"}, version)
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestRun_InvalidAddr(t *testing.T) {
 	err := app.Run([]string{"--addr", "localhost:2019"}, version)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestRun_InvalidInterval(t *testing.T) {
 	err := app.Run([]string{"--interval", "1ms"}, version)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--interval must be at least")
 }
 
 func TestRun_DaemonRequiresExpose(t *testing.T) {
 	err := app.Run([]string{"--daemon"}, version)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--daemon requires --expose")
 }
 

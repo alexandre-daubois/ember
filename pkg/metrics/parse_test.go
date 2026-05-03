@@ -60,12 +60,12 @@ func TestParsePrometheus_GlobalMetrics(t *testing.T) {
 	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
 
-	assert.Equal(t, float64(20), snap.TotalThreads, "TotalThreads")
-	assert.Equal(t, float64(4), snap.BusyThreads, "BusyThreads")
-	assert.Equal(t, float64(2), snap.QueueDepth, "QueueDepth")
+	assert.InDelta(t, float64(20), snap.TotalThreads, 0.001, "TotalThreads")
+	assert.InDelta(t, float64(4), snap.BusyThreads, 0.001, "BusyThreads")
+	assert.InDelta(t, float64(2), snap.QueueDepth, 0.001, "QueueDepth")
 	assert.False(t, snap.HasConfigReloadMetrics, "HasConfigReloadMetrics should be false for FrankenPHP-only metrics")
-	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessful, "ConfigLastReloadSuccessful default")
-	assert.Equal(t, float64(0), snap.ConfigLastReloadSuccessTimestamp, "ConfigLastReloadSuccessTimestamp default")
+	assert.Zero(t, snap.ConfigLastReloadSuccessful, "ConfigLastReloadSuccessful default")
+	assert.Zero(t, snap.ConfigLastReloadSuccessTimestamp, "ConfigLastReloadSuccessTimestamp default")
 }
 
 func TestParsePrometheus_WorkerMetrics(t *testing.T) {
@@ -175,7 +175,7 @@ func TestParsePrometheus_CaddyHistogramBuckets(t *testing.T) {
 	assert.Equal(t, 0.01, snap.DurationBuckets[1].UpperBound)
 	assert.Equal(t, float64(100), snap.DurationBuckets[1].CumulativeCount)
 
-	assert.True(t, snap.DurationBuckets[2].UpperBound > 1e300, "+Inf bucket")
+	assert.Greater(t, snap.DurationBuckets[2].UpperBound, 1e300, "+Inf bucket")
 	assert.Equal(t, float64(160), snap.DurationBuckets[2].CumulativeCount)
 }
 
@@ -592,9 +592,61 @@ func TestSortBuckets_DuplicateUpperBounds(t *testing.T) {
 		{UpperBound: 0.1, CumulativeCount: 50},
 	}
 	metrics.SortBuckets(buckets)
-	assert.Equal(t, 0.01, buckets[0].UpperBound)
-	assert.Equal(t, 0.1, buckets[1].UpperBound)
-	assert.Equal(t, 0.1, buckets[2].UpperBound)
+	assert.InDelta(t, 0.01, buckets[0].UpperBound, 0.0001)
+	assert.InDelta(t, 0.1, buckets[1].UpperBound, 0.0001)
+	assert.InDelta(t, 0.1, buckets[2].UpperBound, 0.0001)
+}
+
+// TestSortBuckets_ManyShufflesAreSorted property-tests that sortBuckets
+// produces a non-decreasing UpperBound sequence regardless of input order.
+// Catches comparator-boundary mutations that produce inconsistent comparators
+// (those let the sort succeed for some inputs but not others).
+func TestSortBuckets_ManyShufflesAreSorted(t *testing.T) {
+	base := []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, math.Inf(1)}
+
+	// Generate every distinct rotation plus the reverse — enough variance
+	// to surface an inconsistent comparator without needing rand.
+	type shuffle []float64
+	var shuffles []shuffle
+	for offset := range base {
+		s := make(shuffle, len(base))
+		for i := range base {
+			s[i] = base[(i+offset)%len(base)]
+		}
+		shuffles = append(shuffles, s)
+	}
+	rev := make(shuffle, len(base))
+	for i, v := range base {
+		rev[len(base)-1-i] = v
+	}
+	shuffles = append(shuffles, rev)
+
+	for i, s := range shuffles {
+		buckets := make([]metrics.HistogramBucket, len(s))
+		for j, v := range s {
+			buckets[j] = metrics.HistogramBucket{UpperBound: v, CumulativeCount: float64(j)}
+		}
+		metrics.SortBuckets(buckets)
+		for k := 1; k < len(buckets); k++ {
+			assert.LessOrEqualf(t, buckets[k-1].UpperBound, buckets[k].UpperBound,
+				"shuffle %d: position %d (%v) must be <= position %d (%v)",
+				i, k-1, buckets[k-1].UpperBound, k, buckets[k].UpperBound)
+		}
+	}
+}
+
+// TestMetricValue_UntypedScalar covers the rarely-hit Untyped branch in
+// metricValue. We declare a scalar that scalarValue() reads (frankenphp
+// thread count) as `untyped` rather than the usual `gauge`. The resulting
+// value must still be returned, otherwise the metricValue branch is dead.
+func TestMetricValue_UntypedScalar(t *testing.T) {
+	body := `# TYPE frankenphp_total_threads untyped
+frankenphp_total_threads 17
+`
+	snap, err := metrics.ParsePrometheus(strings.NewReader(body))
+	require.NoError(t, err)
+	assert.InDelta(t, 17.0, snap.TotalThreads, 0.001,
+		"metricValue must read the value when the metric is declared untyped")
 }
 
 func TestScalarValue_HistogramReturnsZero(t *testing.T) {

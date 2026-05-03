@@ -200,7 +200,7 @@ func TestNewDaemonPlugins_IncludesExporter(t *testing.T) {
 func TestSafeFetch_Normal(t *testing.T) {
 	p := &daemonFetchPlugin{testPlugin: testPlugin{name: "ok"}, fetchData: "hello"}
 	data, err := plugin.SafeFetch(context.Background(), p)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "hello", data)
 }
 
@@ -292,10 +292,10 @@ func TestPollAll_MultiInstance_OneDownStillExportsOther(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{host=\"test.com\",code=\"200\"} 1\n"))
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer good.Close()

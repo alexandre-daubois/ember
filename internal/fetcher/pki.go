@@ -60,7 +60,7 @@ func (f *HTTPFetcher) discoverCAIDs(ctx context.Context) ([]string, error) {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("discover CAs: HTTP %d", resp.StatusCode)
 	}
 
@@ -91,7 +91,7 @@ func (f *HTTPFetcher) fetchCAInfo(ctx context.Context, caID string) (*pkiCAInfo,
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetch CA %s: HTTP %d", caID, resp.StatusCode)
 	}
 
@@ -209,7 +209,7 @@ func (f *HTTPFetcher) resolveTLSAddresses(ctx context.Context, hosts []string) [
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil
 	}
 

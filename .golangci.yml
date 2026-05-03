@@ -3,9 +3,13 @@ version: "2"
 linters:
   enable:
     - bodyclose
+    - errorlint
     - exhaustive
+    - gocritic
     - misspell
     - nolintlint
+    - testifylint
+    - usestdlibvars
   exclusions:
     rules:
       - path: _test\.go
@@ -19,8 +23,19 @@ linters:
         - fmt.Fprint
     exhaustive:
       default-signifies-exhaustive: true
+    gocritic:
+      enabled-tags:
+        - diagnostic
+      disabled-checks:
+        - appendAssign
+        - evalOrder
+        - ifElseChain
+        - sprintfQuotedString
     nolintlint:
       require-explanation: true
+    testifylint:
+      disable:
+        - float-compare
 
 formatters:
   enable:

@@ -73,7 +73,7 @@ func TestSortHosts(t *testing.T) {
 	for _, tt := range tests {
 		sorted := sortHosts(hosts, tt.field)
 		assert.Equal(t, tt.first, sorted[0].Host, "sortHosts by %v", tt.field)
-		assert.Equal(t, 3, len(sorted))
+		assert.Len(t, sorted, 3)
 		// original slice must not be modified
 		assert.Equal(t, "b.com", hosts[0].Host)
 	}

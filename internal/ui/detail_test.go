@@ -203,8 +203,8 @@ func TestFormatDuration(t *testing.T) {
 }
 
 func TestRenderMemSparkline_Empty(t *testing.T) {
-	assert.Equal(t, "", renderMemSparkline(nil, 10))
-	assert.Equal(t, "", renderMemSparkline([]int64{100}, 10))
+	assert.Empty(t, renderMemSparkline(nil, 10))
+	assert.Empty(t, renderMemSparkline([]int64{100}, 10))
 }
 
 func TestRenderMemSparkline_Trend(t *testing.T) {
@@ -502,7 +502,7 @@ func TestHostDetailPanel_RestartNotAvailable(t *testing.T) {
 func TestSectionHeader_FillsWidth(t *testing.T) {
 	raw := sectionHeader("Request", 40)
 	plain := stripANSI(raw)
-	assert.Equal(t, 40, len([]rune(plain)), "section header should fill the target width in runes")
+	assert.Len(t, []rune(plain), 40, "section header should fill the target width in runes")
 }
 
 func TestSectionHeader_NarrowWidth(t *testing.T) {

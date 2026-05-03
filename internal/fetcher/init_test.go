@@ -14,7 +14,7 @@ import (
 func TestCheckAdminAPI_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("{}"))
 		}
 	}))
@@ -38,7 +38,7 @@ func TestCheckAdminAPI_Unreachable(t *testing.T) {
 func TestCheckMetricsEnabled_True(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/metrics" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{})
 		}
 	}))
@@ -53,7 +53,7 @@ func TestCheckMetricsEnabled_True(t *testing.T) {
 func TestCheckMetricsEnabled_False(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/metrics" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("null"))
 		}
 	}))
@@ -67,7 +67,7 @@ func TestCheckMetricsEnabled_False(t *testing.T) {
 
 func TestCheckMetricsEnabled_404(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -82,7 +82,7 @@ func TestEnableMetrics_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/metrics" && r.Method == http.MethodPost {
 			called = true
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		}
 	}))
 	defer srv.Close()
@@ -95,7 +95,7 @@ func TestEnableMetrics_OK(t *testing.T) {
 
 func TestEnableMetrics_Fail(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -108,7 +108,7 @@ func TestEnableMetrics_Fail(t *testing.T) {
 func TestFetchFrankenPHPConfig_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/frankenphp" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(FrankenPHPConfig{
 				NumThreads: 16,
 				Workers: []FrankenPHPWorkerConfig{
@@ -131,7 +131,7 @@ func TestFetchFrankenPHPConfig_OK(t *testing.T) {
 
 func TestFetchFrankenPHPConfig_NotAvailable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -144,7 +144,7 @@ func TestFetchFrankenPHPConfig_NotAvailable(t *testing.T) {
 func TestFetchFrankenPHPConfig_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/frankenphp" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("not json"))
 		}
 	}))
@@ -161,7 +161,7 @@ func TestCheckMetricsEnabled_InvalidJSONTreatedAsDisabled(t *testing.T) {
 	// safest fallback is "metrics off" so the operator is prompted to fix it
 	// rather than silently believing metrics are wired up.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("not json"))
 	}))
 	defer srv.Close()

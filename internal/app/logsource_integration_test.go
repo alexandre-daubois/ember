@@ -265,8 +265,8 @@ func TestSetupLogSource_AutoEnablesAccessLogsAndRestores(t *testing.T) {
 	assert.Equal(t, 1, api.serverPostCount("srv0"))
 	assert.Equal(t, 1, api.serverPostCount("srv1"))
 	assert.Equal(t, 0, api.serverPostCount("user"), "must not POST when user has logs config")
-	assert.Equal(t, "{}", api.serverLogs("srv0"))
-	assert.Equal(t, `{"logger_names":{"x":"y"}}`, api.serverLogs("user"))
+	assert.JSONEq(t, "{}", api.serverLogs("srv0"))
+	assert.JSONEq(t, `{"logger_names":{"x":"y"}}`, api.serverLogs("user"))
 
 	cleanup()
 

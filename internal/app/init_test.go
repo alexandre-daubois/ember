@@ -29,19 +29,19 @@ func newInitTestServer(s *initServer) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/config/" && r.Method == http.MethodGet:
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{"admin": map[string]any{"listen": "localhost:2019"}})
 
 		case r.URL.Path == "/config/apps/http/servers" && r.Method == http.MethodGet:
 			if s.servers != nil {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(s.servers)
 			} else {
-				w.WriteHeader(404)
+				w.WriteHeader(http.StatusNotFound)
 			}
 
 		case r.URL.Path == "/config/apps/http/metrics" && r.Method == http.MethodGet:
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			if s.metricsEnabled || s.enabledMetrics {
 				json.NewEncoder(w).Encode(map[string]any{})
 			} else {
@@ -50,28 +50,28 @@ func newInitTestServer(s *initServer) *httptest.Server {
 
 		case r.URL.Path == "/config/apps/http/metrics" && r.Method == http.MethodPost:
 			s.enabledMetrics = true
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 
 		case r.URL.Path == "/frankenphp/threads" && r.Method == http.MethodGet:
 			if s.hasFrankenPHP {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(fetcher.ThreadsResponse{
 					ThreadDebugStates: []fetcher.ThreadDebugState{{Index: 0}},
 				})
 			} else {
-				w.WriteHeader(404)
+				w.WriteHeader(http.StatusNotFound)
 			}
 
 		case r.URL.Path == "/config/apps/frankenphp" && r.Method == http.MethodGet:
 			if s.fpConfig != nil {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(s.fpConfig)
 			} else {
-				w.WriteHeader(404)
+				w.WriteHeader(http.StatusNotFound)
 			}
 
 		case r.URL.Path == "/metrics" && r.Method == http.MethodGet:
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			if s.hasHTTPMetrics && s.wildcardHost {
 				w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{code=\"200\"} 100\n# TYPE caddy_http_request_duration_seconds histogram\ncaddy_http_request_duration_seconds_bucket{le=\"+Inf\"} 100\ncaddy_http_request_duration_seconds_sum 5.0\ncaddy_http_request_duration_seconds_count 100\n"))
 			} else if s.hasHTTPMetrics {
@@ -82,7 +82,7 @@ func newInitTestServer(s *initServer) *httptest.Server {
 			}
 
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }
@@ -202,7 +202,7 @@ func TestRunInit_AccessLogs_AnnouncesHotSink(t *testing.T) {
 
 func TestRunInit_Unreachable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	srv.Close()
 

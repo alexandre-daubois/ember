@@ -79,7 +79,7 @@ frankenphp_busy_threads 5
 	f := NewHTTPFetcher(srv.URL, 0)
 	metrics, err := f.fetchMetrics(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, float64(5), metrics.BusyThreads)
+	assert.InDelta(t, float64(5), metrics.BusyThreads, 0.001)
 }
 
 func TestFetch_GracefulDegradation(t *testing.T) {
@@ -92,12 +92,12 @@ func TestFetch_GracefulDegradation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/frankenphp/threads":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(resp)
 		case "/metrics":
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -134,10 +134,10 @@ func TestDetectFrankenPHP_True(t *testing.T) {
 func TestDetectFrankenPHP_False(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/frankenphp/threads" {
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
@@ -165,10 +165,10 @@ caddy_http_requests_total{host="example.com",code="200"} 100
 func TestRestartWorkers_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/frankenphp/workers/restart" && r.Method == http.MethodPost {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -179,7 +179,7 @@ func TestRestartWorkers_OK(t *testing.T) {
 
 func TestRestartWorkers_Fail(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -192,7 +192,7 @@ func TestDoWithRetry_SucceedsFirstTry(t *testing.T) {
 	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts.Add(1)
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
@@ -219,7 +219,7 @@ func TestDoWithRetry_SucceedsAfterRetry(t *testing.T) {
 				return
 			}
 		}
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
@@ -257,7 +257,7 @@ func TestDoWithRetry_NoRetryOnHTTPError(t *testing.T) {
 	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts.Add(1)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -297,7 +297,7 @@ func TestDoWithRetry_RespectsContext(t *testing.T) {
 func TestFetchServerNames_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/servers" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{
 				"main": map[string]any{"listen": []string{":443"}},
 				"api":  map[string]any{"listen": []string{":9443"}},
@@ -305,7 +305,7 @@ func TestFetchServerNames_OK(t *testing.T) {
 			})
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -317,7 +317,7 @@ func TestFetchServerNames_OK(t *testing.T) {
 
 func TestFetchServerNames_BadStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -329,11 +329,11 @@ func TestFetchServerNames_BadStatus(t *testing.T) {
 func TestFetchServerNames_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/servers" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("not json"))
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -345,11 +345,11 @@ func TestFetchServerNames_InvalidJSON(t *testing.T) {
 func TestFetchServerNames_Empty(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/servers" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("{}"))
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -378,12 +378,12 @@ caddy_http_request_duration_seconds_count{host="main.example.com"} 50
 
 	main := snap.Metrics.Hosts["main.example.com"]
 	require.NotNil(t, main)
-	assert.Equal(t, float64(50), main.RequestsTotal)
+	assert.InDelta(t, float64(50), main.RequestsTotal, 0.001)
 
 	app := snap.Metrics.Hosts["app.example.com"]
 	require.NotNil(t, app, "app.example.com should be seeded")
 	assert.Equal(t, "app.example.com", app.Host)
-	assert.Equal(t, float64(0), app.RequestsTotal)
+	assert.Zero(t, app.RequestsTotal)
 	assert.NotNil(t, app.StatusCodes)
 	assert.NotNil(t, app.Methods)
 
@@ -450,7 +450,7 @@ caddy_http_request_duration_seconds_count{host="main.example.com"} 100
 
 	main := snap.Metrics.Hosts["main.example.com"]
 	require.NotNil(t, main)
-	assert.Equal(t, float64(100), main.RequestsTotal, "seeding should not overwrite existing host data")
+	assert.InDelta(t, float64(100), main.RequestsTotal, 0.001, "seeding should not overwrite existing host data")
 }
 
 func TestOnConnected_DetectsFrankenPHP(t *testing.T) {
@@ -459,17 +459,17 @@ func TestOnConnected_DetectsFrankenPHP(t *testing.T) {
 		switch r.URL.Path {
 		case "/frankenphp/threads":
 			if frankenPHPAvailable {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(ThreadsResponse{
 					ThreadDebugStates: []ThreadDebugState{{Index: 0, State: "ready"}},
 				})
 			} else {
-				w.WriteHeader(404)
+				w.WriteHeader(http.StatusNotFound)
 			}
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -498,17 +498,17 @@ func TestOnConnected_FrankenPHPDisappears(t *testing.T) {
 		switch r.URL.Path {
 		case "/frankenphp/threads":
 			if frankenPHPAvailable {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(ThreadsResponse{
 					ThreadDebugStates: []ThreadDebugState{{Index: 0, State: "ready"}},
 				})
 			} else {
-				w.WriteHeader(404)
+				w.WriteHeader(http.StatusNotFound)
 			}
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -538,7 +538,7 @@ func TestOnConnected_FetchesServerNames(t *testing.T) {
 		switch r.URL.Path {
 		case "/config/apps/http/servers":
 			if serverNamesAvailable {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(map[string]any{
 					"main": map[string]any{
 						"listen": []string{":443"},
@@ -548,12 +548,12 @@ func TestOnConnected_FetchesServerNames(t *testing.T) {
 					},
 				})
 			} else {
-				w.WriteHeader(404)
+				w.WriteHeader(http.StatusNotFound)
 			}
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -582,11 +582,11 @@ func TestOnConnected_NoRetryWhenMetricsFail(t *testing.T) {
 		switch r.URL.Path {
 		case "/frankenphp/threads":
 			detectCalls.Add(1)
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		case "/metrics":
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -606,12 +606,12 @@ func TestOnConnected_StopsAfterSuccess(t *testing.T) {
 		switch r.URL.Path {
 		case "/frankenphp/threads":
 			detectCalls.Add(1)
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(ThreadsResponse{})
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -633,14 +633,14 @@ func TestOnConnected_RefreshesServerNamesAfterInterval(t *testing.T) {
 		switch r.URL.Path {
 		case "/config/apps/http/servers":
 			serverCalls.Add(1)
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{
 				"main": map[string]any{"listen": []string{":443"}},
 			})
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -650,7 +650,7 @@ func TestOnConnected_RefreshesServerNamesAfterInterval(t *testing.T) {
 	// first fetch: triggers refresh (lastServerNamesRefresh is zero)
 	f.Fetch(context.Background())
 	first := serverCalls.Load()
-	assert.True(t, first >= 1)
+	assert.GreaterOrEqual(t, first, int32(1))
 
 	// second fetch: no refresh (within 30s)
 	f.Fetch(context.Background())
@@ -663,7 +663,7 @@ func TestOnConnected_RefreshesServerNamesAfterInterval(t *testing.T) {
 
 	// third fetch: triggers refresh again
 	f.Fetch(context.Background())
-	assert.True(t, serverCalls.Load() > first, "should refresh after interval elapsed")
+	assert.Greater(t, serverCalls.Load(), first, "should refresh after interval elapsed")
 }
 
 func TestOnConnected_DoesNotMarkRefreshedOnFailure(t *testing.T) {
@@ -672,11 +672,11 @@ func TestOnConnected_DoesNotMarkRefreshedOnFailure(t *testing.T) {
 		switch r.URL.Path {
 		case "/config/apps/http/servers":
 			serverCalls.Add(1)
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -687,7 +687,7 @@ func TestOnConnected_DoesNotMarkRefreshedOnFailure(t *testing.T) {
 	f.Fetch(context.Background())
 	f.Fetch(context.Background())
 
-	assert.True(t, serverCalls.Load() >= 3, "should retry every fetch when server names fail")
+	assert.GreaterOrEqual(t, serverCalls.Load(), int32(3), "should retry every fetch when server names fail")
 }
 
 func TestFetch_HasFrankenPHPInSnapshot(t *testing.T) {
@@ -729,8 +729,8 @@ process_start_time_seconds 1.7e+09
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(10485760), snap.Process.RSS, "RSS should come from Prometheus metrics")
-	assert.True(t, snap.Process.Uptime > 0, "Uptime should be derived from process_start_time_seconds")
-	assert.True(t, snap.Process.CreateTime > 0, "CreateTime should be derived from process_start_time_seconds")
+	assert.Positive(t, snap.Process.Uptime, "Uptime should be derived from process_start_time_seconds")
+	assert.Positive(t, snap.Process.CreateTime, "CreateTime should be derived from process_start_time_seconds")
 }
 
 func TestFetch_PrometheusProcessFallback_CPU(t *testing.T) {
@@ -745,7 +745,7 @@ process_cpu_seconds_total 10.0
 	// First fetch: records baseline, CPU=0 (no previous sample)
 	snap, err := f.Fetch(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, float64(0), snap.Process.CPUPercent, "first fetch has no delta yet")
+	assert.Zero(t, snap.Process.CPUPercent, "first fetch has no delta yet")
 
 	// Simulate time passing and CPU usage increasing
 	f.lastPromSample = f.lastPromSample.Add(-1 * time.Second)
@@ -761,7 +761,7 @@ process_cpu_seconds_total 10.5
 
 	snap, err = f.Fetch(context.Background())
 	require.NoError(t, err)
-	assert.True(t, snap.Process.CPUPercent > 0, "CPU should be derived from Prometheus delta")
+	assert.Positive(t, snap.Process.CPUPercent, "CPU should be derived from Prometheus delta")
 }
 
 func TestFetch_PrometheusProcessFallback_NotUsedWhenGopsutilWorks(t *testing.T) {
@@ -784,7 +784,7 @@ process_resident_memory_bytes 1.048576e+07
 func TestFetchThreads_PerRequestTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(requestTimeout + time.Second)
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
@@ -836,11 +836,11 @@ func TestHTTPFetcher_ConcurrentAccess(t *testing.T) {
 func TestFetchConfig_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"apps":{"http":{"servers":{}}}}`))
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -852,7 +852,7 @@ func TestFetchConfig_OK(t *testing.T) {
 
 func TestFetchConfig_BadStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -865,11 +865,11 @@ func TestFetchConfig_BadStatus(t *testing.T) {
 func TestFetchConfig_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("not json"))
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -881,11 +881,11 @@ func TestFetchConfig_InvalidJSON(t *testing.T) {
 func TestFetchConfig_EmptyConfig(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/" {
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{}`))
 			return
 		}
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 

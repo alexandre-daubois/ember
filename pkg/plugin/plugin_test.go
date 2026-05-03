@@ -122,7 +122,7 @@ func TestPluginProvision(t *testing.T) {
 	}
 	err := p.Provision(context.Background(), cfg)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, cfg, p.provisionCfg)
 }
 
@@ -140,7 +140,7 @@ func TestFetcherInterface(t *testing.T) {
 	}
 	data, err := p.Fetch(context.Background())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "hello", data)
 }
 
@@ -253,7 +253,7 @@ func TestCloserInterface(t *testing.T) {
 
 	closer, ok := any(p).(plugin.Closer)
 	require.True(t, ok)
-	assert.NoError(t, closer.Close())
+	require.NoError(t, closer.Close())
 	assert.True(t, p.closed)
 }
 
@@ -270,7 +270,7 @@ func TestSafeFetch(t *testing.T) {
 		fetchData:  "result",
 	}
 	data, err := plugin.SafeFetch(context.Background(), p)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "result", data)
 }
 

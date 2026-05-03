@@ -130,15 +130,15 @@ func benchDaemonServer(nThreads, nHosts int) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/frankenphp/threads":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(threadsResp)
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(metricsBody))
 		case "/config/apps/http/servers":
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }

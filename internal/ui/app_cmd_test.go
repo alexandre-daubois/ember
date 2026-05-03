@@ -121,7 +121,7 @@ func TestDoRestart_NonRestarterFetcherReturnsEmptyMsg(t *testing.T) {
 func TestDoFetchConfig_ConfigFetcher(t *testing.T) {
 	app := NewApp(&stubFetcher{configRaw: json.RawMessage(`{"x":1}`)}, Config{Interval: time.Second})
 	got := app.doFetchConfig()().(configFetchMsg)
-	assert.NoError(t, got.err)
+	require.NoError(t, got.err)
 	assert.JSONEq(t, `{"x":1}`, string(got.raw))
 }
 

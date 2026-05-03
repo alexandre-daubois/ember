@@ -21,6 +21,6 @@ func TestProcessHandle_Reset(t *testing.T) {
 
 	h.reset()
 	assert.Nil(t, h.proc)
-	assert.Equal(t, float64(0), h.lastCPU)
+	assert.Zero(t, h.lastCPU)
 	assert.True(t, h.lastSample.IsZero())
 }

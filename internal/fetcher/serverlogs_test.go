@@ -101,7 +101,7 @@ func TestRestoreServerAccessLogs_LeavesUserChangesAlone(t *testing.T) {
 	f := NewHTTPFetcher(srv.URL, 0)
 	require.NoError(t, f.RestoreServerAccessLogs(context.Background(), "srv0"))
 	assert.Equal(t, 0, state.deletes)
-	assert.Equal(t, `{"default_logger_name":"user-logger"}`, state.current)
+	assert.JSONEq(t, `{"default_logger_name":"user-logger"}`, state.current)
 }
 
 func TestRestoreServerAccessLogs_NotFoundIsFine(t *testing.T) {

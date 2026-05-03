@@ -85,7 +85,7 @@ func TestIntegration_PluginFullLifecycle(t *testing.T) {
 
 	// data propagated to group
 	assert.Equal(t, "fetch-1", app.pluginGroups[0].data)
-	assert.NoError(t, app.pluginGroups[0].err)
+	require.NoError(t, app.pluginGroups[0].err)
 
 	// renderer was updated
 	view = safePluginView(app.pluginTabs[0].renderer, 80, 24)
@@ -93,7 +93,7 @@ func TestIntegration_PluginFullLifecycle(t *testing.T) {
 
 	// StatusCount reflects new data
 	count, err := safePluginStatusCount(app.pluginTabs[0].renderer)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "fetch-1", count)
 
 	// Exports include plugin data
@@ -110,16 +110,16 @@ func TestIntegration_PluginFullLifecycle(t *testing.T) {
 
 	// key handling: plugin-consumed key
 	consumed, err := safePluginHandleKey(app.pluginTabs[0].renderer, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, consumed)
 
 	// key handling: non-consumed key
 	consumed, err = safePluginHandleKey(app.pluginTabs[0].renderer, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, consumed)
 
 	hb, err := safePluginHelpBindings(app.pluginTabs[0].renderer)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	require.Len(t, hb, 1)
 	assert.Equal(t, "x", hb[0].Key)
 

@@ -1,11 +1,14 @@
 package model
 
 import (
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRouteAggregator_TrackAndSnapshot(t *testing.T) {
@@ -26,7 +29,7 @@ func TestRouteAggregator_TrackAndSnapshot(t *testing.T) {
 	// Snapshot is unsorted (callers always re-sort by their active key).
 	SortRoutes(snap, SortByRouteCount)
 	first := snap[0]
-	if first.Key.Method != "GET" || first.Key.Pattern != "/users/:id" {
+	if first.Key.Method != http.MethodGet || first.Key.Pattern != "/users/:id" {
 		t.Errorf("expected GET /users/:id first, got %+v", first.Key)
 	}
 	if first.Count != 4 {
@@ -54,6 +57,27 @@ func TestRouteAggregator_SurvivesRingWraparound(t *testing.T) {
 	if snap[0].Count != 100_000 {
 		t.Errorf("Count = %d, want 100000 (aggregator should not be ring-bound)", snap[0].Count)
 	}
+}
+
+// TestRouteAggregator_DurationAggregation pins the millisecond conversion
+// (e.Duration is seconds, the bucket sums it as ms) and the max-tracking
+// invariant. Without these the aggregator could drop the *1000 conversion
+// or invert the max comparison and tests would still pass.
+func TestRouteAggregator_DurationAggregation(t *testing.T) {
+	agg := NewRouteAggregator()
+	now := time.Now()
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0.030, now))
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0.250, now.Add(time.Second)))
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0.080, now.Add(2*time.Second)))
+
+	snap := agg.Snapshot()
+	require.Len(t, snap, 1)
+	got := snap[0]
+	const wantSumMs = 30.0 + 250.0 + 80.0
+	assert.InDelta(t, wantSumMs, got.DurationSumMs, 0.001,
+		"seconds-to-ms conversion regressed")
+	assert.InDelta(t, 250.0, got.DurationMaxMs, 0.001,
+		"DurationMaxMs must track the max, not min/last")
 }
 
 func TestRouteAggregator_SkipsNonAccess(t *testing.T) {

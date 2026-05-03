@@ -125,9 +125,12 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 		select {
 		case <-ctx.Done():
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer shutdownCancel()
 			_ = srv.Shutdown(shutdownCtx)
+			shutdownCancel()
 			wg.Wait()
+			for _, inst := range instances {
+				inst.fetcher.CloseIdleConnections()
+			}
 			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 				return cause
 			}

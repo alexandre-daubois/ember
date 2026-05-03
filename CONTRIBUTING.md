@@ -19,12 +19,15 @@ make build
 Run `make help` to see all available targets:
 
 ```
-make build       Build the binary
-make test        Run tests with race detector
-make lint        Run golangci-lint
-make bench       Run benchmarks
-make check       Run lint + test (same as CI)
-make clean       Remove build artifacts
+make build         Build the binary
+make test          Run tests with race detector, shuffle and no cache
+make test-nocolor  Run UI tests under NO_COLOR=1
+make lint          Run golangci-lint
+make bench         Run benchmarks
+make integration   Run integration tests (requires running Caddy)
+make fuzz          Run all fuzz targets for 30s each
+make check         Run lint + tests + NO_COLOR variant
+make clean         Remove build artifacts
 ```
 
 ## Project Architecture
@@ -56,7 +59,10 @@ local/
 make test
 ```
 
-All tests run against mocks/httptest servers and don't require a live Caddy instance.
+`make test` runs the unit suite with `-race -shuffle=on -count=1` against mocks/httptest servers and does not require a live Caddy. The other tiers each have their own `make` target:
+
+- `make integration` (build tag `integration`): in-process daemon against a live Caddy at `EMBER_TEST_CADDY_ADDR` (default `http://localhost:2019`).
+- `make fuzz`: runs every fuzz target for 30s each via `scripts/run_fuzz.sh`.
 
 For benchmarks:
 

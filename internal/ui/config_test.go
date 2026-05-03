@@ -539,7 +539,7 @@ func TestHandleConfigKey_PgUpPgDown(t *testing.T) {
 	}
 
 	app.handleConfigListKey(tea.KeyMsg{Type: tea.KeyPgDown})
-	assert.Greater(t, app.configCursor, 0)
+	assert.Positive(t, app.configCursor)
 
 	app.handleConfigListKey(tea.KeyMsg{Type: tea.KeyPgUp})
 	assert.Equal(t, 0, app.configCursor)
@@ -568,11 +568,11 @@ func TestParseJSONTree_LargeConfig(t *testing.T) {
 	root, err := parseJSONTree(json.RawMessage(raw))
 	require.NoError(t, err)
 	assert.Equal(t, jsonObject, root.kind)
-	assert.True(t, len(root.children) > 0)
+	assert.NotEmpty(t, root.children)
 
 	expandAll(root)
 	visible := flattenVisible(root)
-	assert.True(t, len(visible) > 10)
+	assert.Greater(t, len(visible), 10)
 
 	assert.NotPanics(t, func() {
 		renderConfigTree(root, 0, 120, 40, "", false)

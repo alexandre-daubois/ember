@@ -44,7 +44,7 @@ func TestAppendHistory_CapsAtSparkline(t *testing.T) {
 		h = appendHistory(h, float64(i), sparklineSize)
 	}
 	assert.Len(t, h, sparklineSize)
-	assert.Equal(t, float64(49), h[len(h)-1])
+	assert.InDelta(t, float64(49), h[len(h)-1], 0.001)
 }
 
 func TestAppendHistory_CapsAtGraphSize(t *testing.T) {
@@ -90,11 +90,11 @@ func TestCountWorkerThreads_None(t *testing.T) {
 }
 
 func TestRenderThreadBar_Empty(t *testing.T) {
-	assert.Equal(t, "", renderThreadBar(0, 0, 0, 20))
+	assert.Empty(t, renderThreadBar(0, 0, 0, 20))
 }
 
 func TestRenderThreadBar_TooNarrow(t *testing.T) {
-	assert.Equal(t, "", renderThreadBar(1, 1, 2, 5))
+	assert.Empty(t, renderThreadBar(1, 1, 2, 5))
 }
 
 func TestRenderThreadBar_HasBrackets(t *testing.T) {

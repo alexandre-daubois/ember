@@ -109,7 +109,7 @@ func TestRenderSingleGraph_FloatPrecisionStability(t *testing.T) {
 
 	lines1 := strings.Split(out1, "\n")
 	lines2 := strings.Split(out2, "\n")
-	assert.Equal(t, len(lines1), len(lines2), "same height regardless of float precision noise")
+	assert.Len(t, lines2, len(lines1), "same height regardless of float precision noise")
 }
 
 func TestRenderSingleGraph_DoesNotMutateOriginal(t *testing.T) {

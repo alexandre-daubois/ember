@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func TestBuildTLSConfig_NothingSet(t *testing.T) {
@@ -110,12 +111,17 @@ func TestSetTLSConfig(t *testing.T) {
 // hammers the server while another goroutine swaps the TLS config in a loop.
 // Run with -race; any unsynchronized access on the transport field will fail.
 func TestSetTLSConfig_ConcurrentWithFetch(t *testing.T) {
+	// Registered first so it runs LAST: by then httptest is closed and
+	// CloseIdleConnections has drained the pool.
+	t.Cleanup(func() { goleak.VerifyNone(t) })
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
+	defer f.CloseIdleConnections()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -168,8 +174,8 @@ func TestSetTLSConfig_ConcurrentWithFetch(t *testing.T) {
 	stop.Store(true)
 	wg.Wait()
 
-	assert.Greater(t, fetches.Load(), int64(0), "should have completed at least one fetch")
-	assert.Greater(t, swaps.Load(), int64(0), "should have completed at least one swap")
+	assert.Positive(t, fetches.Load(), "should have completed at least one fetch")
+	assert.Positive(t, swaps.Load(), "should have completed at least one swap")
 	// Some fetches may legitimately fail when the underlying connection is
 	// closed mid-flight by CloseIdleConnections; that is the documented
 	// behavior, not a race. We just want no panics and no -race report.
