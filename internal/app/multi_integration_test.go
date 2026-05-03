@@ -178,7 +178,7 @@ func TestIntegration_Multi_HealthzAggregatesPerInstance(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	exporter.HealthHandler(holder, time.Second)(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	exporter.HealthHandler(holder, time.Second, nil)(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var body struct {
@@ -246,4 +246,114 @@ func TestIntegration_Multi_JSONOutputsLinePerInstance(t *testing.T) {
 	require.Len(t, second.Hosts, 1)
 	assert.Equal(t, "web1.example", first.Hosts[0].Host)
 	assert.Equal(t, "web2.example", second.Hosts[0].Host)
+}
+
+// countingCaddy is a minimal fake that returns a static /metrics body and
+// exposes a per-server hit counter so tests can verify polling cadence.
+func countingCaddy(t *testing.T, host string) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			hits.Add(1)
+			_, _ = fmt.Fprintf(w, "# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{server=\"srv0\",host=%q,code=\"200\"} 1\n", host)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits
+}
+
+// TestIntegration_Multi_DaemonPerInstanceInterval verifies issue #46: when
+// --addr carries ,interval=, that instance polls at its own cadence rather
+// than at the global --interval.
+func TestIntegration_Multi_DaemonPerInstanceInterval(t *testing.T) {
+	fast, fastHits := countingCaddy(t, "fast.example")
+	slow, slowHits := countingCaddy(t, "slow.example")
+
+	cfg := &config{
+		addrs: []addrSpec{
+			{name: "fast", url: fast.URL, interval: 100 * time.Millisecond},
+			{name: "slow", url: slow.URL, interval: 500 * time.Millisecond},
+		},
+		interval: 100 * time.Millisecond,
+		expose:   freePort(t),
+		daemon:   true,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	instances, err := newInstances(context.Background(), cfg, "v-test")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	done := make(chan error, 1)
+	go func() { done <- runDaemon(ctx, instances, cfg, nil) }()
+	waitForServer(t, "http://"+cfg.expose+"/healthz", 3*time.Second)
+
+	time.Sleep(1100 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("daemon did not exit after cancel")
+	}
+
+	fastN := fastHits.Load()
+	slowN := slowHits.Load()
+	// Initial pollAll fetches every instance once, then per-instance tickers
+	// take over. After ~1.1s: fast (100ms) should have polled ~11 times, slow
+	// (500ms) ~3 times. Allow generous slack for CI scheduler jitter.
+	assert.GreaterOrEqual(t, fastN, int64(6), "fast instance must poll at its own (faster) cadence")
+	assert.LessOrEqual(t, slowN, int64(5), "slow instance must not be dragged onto the global cadence")
+	assert.Greater(t, fastN, slowN, "fast must out-poll slow over the same window")
+}
+
+// TestIntegration_Multi_JSONPerInstanceInterval verifies the JSONL streamer
+// emits per-instance lines at each instance's own cadence.
+func TestIntegration_Multi_JSONPerInstanceInterval(t *testing.T) {
+	fast, _ := countingCaddy(t, "fast.example")
+	slow, _ := countingCaddy(t, "slow.example")
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	origStdout := os.Stdout
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = origStdout })
+
+	cfg := &config{
+		interval: 100 * time.Millisecond,
+		jsonMode: true,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	instances := []*instance{
+		{name: "fast", addr: fast.URL, interval: 100 * time.Millisecond, fetcher: fetcher.NewHTTPFetcher(fast.URL, 0)},
+		{name: "slow", addr: slow.URL, interval: 500 * time.Millisecond, fetcher: fetcher.NewHTTPFetcher(slow.URL, 0)},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1100*time.Millisecond)
+	t.Cleanup(cancel)
+	require.NoError(t, runJSON(ctx, instances, cfg))
+	w.Close()
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	var fastLines, slowLines int
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var out jsonOutput
+		require.NoError(t, json.Unmarshal(line, &out))
+		switch out.Instance {
+		case "fast":
+			fastLines++
+		case "slow":
+			slowLines++
+		}
+	}
+	assert.Greater(t, fastLines, slowLines, "fast must emit more JSONL lines than slow over the same window")
+	assert.GreaterOrEqual(t, fastLines, 6)
 }

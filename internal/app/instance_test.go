@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -192,6 +193,59 @@ func TestParseAddrs_TLSSuffix_AliasOptional(t *testing.T) {
 	assert.Equal(t, "web1_fr", addrs[0].name)
 	assert.Equal(t, "https://web1.fr", addrs[0].url)
 	assert.Equal(t, "/p/ca.pem", addrs[0].tls.caCert)
+}
+
+func TestParseAddrs_IntervalSuffix(t *testing.T) {
+	addrs, err := parseAddrs([]string{"web1=https://a,interval=2s", "web2=https://b"})
+	require.NoError(t, err)
+	require.Len(t, addrs, 2)
+	assert.Equal(t, 2*time.Second, addrs[0].interval)
+	assert.Equal(t, time.Duration(0), addrs[1].interval, "omitted suffix must leave interval at zero (fallback to global)")
+}
+
+func TestParseAddrs_IntervalSuffix_MixedWithTLS(t *testing.T) {
+	addrs, err := parseAddrs([]string{"web1=https://a,ca=/p/ca.pem,interval=500ms"})
+	require.NoError(t, err)
+	require.Len(t, addrs, 1)
+	assert.Equal(t, "/p/ca.pem", addrs[0].tls.caCert)
+	assert.Equal(t, 500*time.Millisecond, addrs[0].interval)
+}
+
+func TestParseAddrs_IntervalSuffix_BadValue(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,interval=nope"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Go duration")
+}
+
+func TestParseAddrs_IntervalSuffix_EmptyValue(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,interval="})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a duration")
+}
+
+func TestParseAddrs_IntervalSuffix_BelowMinimum(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,interval=50ms"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at least")
+}
+
+func TestParseAddrs_IntervalSuffix_UnknownStillRejected(t *testing.T) {
+	_, err := parseAddrs([]string{"web1=https://a,foo=bar"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "interval")
+}
+
+func TestParseAddrs_IntervalSuffix_OnUnixSocket(t *testing.T) {
+	addrs, err := parseAddrs([]string{"sock=unix//run/caddy.sock,interval=2s"})
+	require.NoError(t, err, "interval is not a TLS option, so it must be allowed on unix sockets")
+	require.Len(t, addrs, 1)
+	assert.Equal(t, 2*time.Second, addrs[0].interval)
+}
+
+func TestEffectiveInterval_FallbackToGlobal(t *testing.T) {
+	cfg := &config{interval: 1 * time.Second}
+	assert.Equal(t, 1*time.Second, effectiveInterval(addrSpec{}, cfg))
+	assert.Equal(t, 5*time.Second, effectiveInterval(addrSpec{interval: 5 * time.Second}, cfg))
 }
 
 func TestNewInstances_SharedCACert_TwoHTTPSInstances(t *testing.T) {

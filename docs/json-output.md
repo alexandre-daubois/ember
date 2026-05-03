@@ -145,7 +145,7 @@ ember --json \
 {"instance":"web1","threads":{...},"metrics":{...},"hosts":[...],"fetchedAt":"..."}
 ```
 
-Instances are emitted in alphabetical order by name within a tick, so downstream consumers can rely on deterministic grouping. With `--once`, exactly one line per instance is produced before exit.
+The first emission is sorted alphabetically by name. Subsequent lines interleave per instance as each one polls on its own ticker (per-instance `,interval=` suffix when set, otherwise the global `--interval`), so downstream consumers should expect lines in arrival order rather than grouped per tick. With `--once`, exactly one line per instance is produced in alphabetical order before exit.
 
 When only a single `--addr` is provided, the `instance` field is omitted: the output is byte-for-byte identical to the pre-multi-instance format.
 

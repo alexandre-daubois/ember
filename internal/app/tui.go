@@ -53,7 +53,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string, 
 			holder.StoreAll(s.CopyForExport(), pluginExports)
 		}
 
-		srv = &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg)}
+		srv = &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg, nil)}
 
 		listenErr := make(chan error, 1)
 		go func() {

@@ -69,11 +69,11 @@ func metricsURL(addr string) string {
 	return "http://" + addr + "/metrics"
 }
 
-func newMetricsHandler(holder *exporter.StateHolder, cfg *config) http.Handler {
+func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance map[string]time.Duration) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix, cfg.recorder))
-	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval))
-	mux.HandleFunc("/healthz/", exporter.InstanceHealthHandler(holder, cfg.interval))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval, perInstance))
+	mux.HandleFunc("/healthz/", exporter.InstanceHealthHandler(holder, cfg.interval, perInstance))
 
 	var handler http.Handler = mux
 	if cfg.metricsAuth != "" {
@@ -93,7 +93,7 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 
 	dPlugins := newDaemonPlugins(plugins)
 
-	srv := &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg)}
+	srv := &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg, perInstanceIntervals(instances))}
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -106,8 +106,17 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 
 	pollAll(ctx, instances, holder, dPlugins, log)
 
-	ticker := time.NewTicker(cfg.interval)
-	defer ticker.Stop()
+	multi := isMulti(instances)
+	dumpChans := make([]chan struct{}, len(instances))
+	var wg sync.WaitGroup
+	for i, inst := range instances {
+		dumpChans[i] = make(chan struct{}, 1)
+		wg.Add(1)
+		go func(inst *instance, dump <-chan struct{}) {
+			defer wg.Done()
+			pollLoop(ctx, inst, holder, multi, dPlugins, log, dump)
+		}(inst, dumpChans[i])
+	}
 
 	dumpCh := dumpSignal()
 	reloadCh := reloadSignal()
@@ -118,16 +127,19 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer shutdownCancel()
 			_ = srv.Shutdown(shutdownCtx)
+			wg.Wait()
 			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
 				return cause
 			}
 			return nil
-		case <-ticker.C:
-			pollAll(ctx, instances, holder, dPlugins, log)
 		case <-dumpCh:
-			dumpInstances(instances, log)
+			for _, ch := range dumpChans {
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			}
 		case <-reloadCh:
-			multi := isMulti(instances)
 			for _, inst := range instances {
 				rlog := log
 				if multi {
@@ -139,7 +151,45 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 	}
 }
 
+// pollLoop polls a single instance at its own interval. State reads (dump)
+// happen on this same goroutine so they don't race with concurrent writes
+// from the polling path.
+func pollLoop(ctx context.Context, inst *instance, holder *exporter.StateHolder, multi bool, dps []daemonPlugin, log *slog.Logger, dumpCh <-chan struct{}) {
+	ticker := time.NewTicker(inst.interval)
+	defer ticker.Stop()
+	ilog := log
+	if multi {
+		ilog = log.With("instance", inst.name)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pollInstance(ctx, inst, holder, multi, dps, log)
+		case <-dumpCh:
+			dumpState(&inst.state, ilog)
+		}
+	}
+}
+
 func isMulti(instances []*instance) bool { return len(instances) >= 2 }
+
+// perInstanceIntervals maps each instance name to its effective polling
+// interval, used by /healthz to compute the staleness threshold per
+// instance. In single-instance mode the holder keys the slot under ""
+// (StoreAll), so the lookup must also be reachable via "" or the threshold
+// falls back to the global --interval and reports stale between polls.
+func perInstanceIntervals(instances []*instance) map[string]time.Duration {
+	m := make(map[string]time.Duration, len(instances))
+	for _, inst := range instances {
+		m[inst.name] = inst.interval
+	}
+	if len(instances) == 1 {
+		m[""] = instances[0].interval
+	}
+	return m
+}
 
 func pollAll(ctx context.Context, instances []*instance, holder *exporter.StateHolder, dps []daemonPlugin, log *slog.Logger) {
 	multi := isMulti(instances)
@@ -179,12 +229,6 @@ func pollInstance(ctx context.Context, inst *instance, holder *exporter.StateHol
 		exports = daemonPluginExports(dps)
 	}
 	holder.StoreAll(inst.state.CopyForExport(), exports)
-}
-
-func dumpInstances(instances []*instance, log *slog.Logger) {
-	for _, inst := range instances {
-		dumpState(&inst.state, log.With("instance", inst.name))
-	}
 }
 
 type daemonPlugin struct {

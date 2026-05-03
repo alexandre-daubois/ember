@@ -31,7 +31,7 @@ func TestNewMetricsHandler_ServesMetricsAndHealth(t *testing.T) {
 	holder := freshHolder()
 
 	cfg := &config{interval: time.Second}
-	handler := newMetricsHandler(holder, cfg)
+	handler := newMetricsHandler(holder, cfg, nil)
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -50,7 +50,7 @@ func TestNewMetricsHandler_BasicAuth_RejectsUnauthenticated(t *testing.T) {
 		interval:    time.Second,
 		metricsAuth: "admin:secret",
 	}
-	handler := newMetricsHandler(holder, cfg)
+	handler := newMetricsHandler(holder, cfg, nil)
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -64,7 +64,7 @@ func TestNewMetricsHandler_BasicAuth_AcceptsCorrectCredentials(t *testing.T) {
 		interval:    time.Second,
 		metricsAuth: "admin:secret",
 	}
-	handler := newMetricsHandler(holder, cfg)
+	handler := newMetricsHandler(holder, cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	req.SetBasicAuth("admin", "secret")
@@ -79,7 +79,7 @@ func TestNewMetricsHandler_PrefixIsAppliedToMetricNames(t *testing.T) {
 		interval:      time.Second,
 		metricsPrefix: "ember_test",
 	}
-	handler := newMetricsHandler(holder, cfg)
+	handler := newMetricsHandler(holder, cfg, nil)
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -99,7 +99,7 @@ func TestNewMetricsHandler_RecorderIsExposed(t *testing.T) {
 		interval: time.Second,
 		recorder: rec,
 	}
-	handler := newMetricsHandler(holder, cfg)
+	handler := newMetricsHandler(holder, cfg, nil)
 
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -152,7 +152,7 @@ frankenphp_busy_threads 1
 	holder.Store(state.CopyForExport())
 
 	cfg := &config{interval: time.Second}
-	handler := newMetricsHandler(holder, cfg)
+	handler := newMetricsHandler(holder, cfg, nil)
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
