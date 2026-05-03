@@ -49,6 +49,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`
 - TLS and mTLS support for secured Caddy admin APIs, with per-instance certs via `--addr web=https://a,ca=/p/ca.pem,cert=/p/c.pem,key=/p/k.pem`
+- Per-instance polling interval via `--addr remote=https://far,interval=10s` so slow instances don't force the global cadence up
 - Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, `EMBER_LOG_LISTEN`, ...) for container deployments
 - `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))

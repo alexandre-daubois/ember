@@ -219,7 +219,7 @@ func TestIntegration_Daemon_Metrics(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
-	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second, nil))
 	srv := &http.Server{Addr: expose, Handler: mux}
 
 	go func() { _ = srv.ListenAndServe() }()
@@ -271,7 +271,7 @@ func TestIntegration_Daemon_Healthz(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
-	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second, nil))
 	srv := &http.Server{Addr: expose, Handler: mux}
 
 	go func() { _ = srv.ListenAndServe() }()
@@ -343,7 +343,7 @@ func TestIntegration_Daemon_BasicAuth(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
-	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second))
+	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, 1*time.Second, nil))
 	srv := &http.Server{Addr: expose, Handler: exporter.BasicAuth(mux, "admin", "secret")}
 
 	go func() { _ = srv.ListenAndServe() }()

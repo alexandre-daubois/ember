@@ -491,7 +491,7 @@ func TestHandler_EmptyPrefix_DefaultNames(t *testing.T) {
 
 func healthz(holder *StateHolder, interval time.Duration) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	HealthHandler(holder, interval)(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	HealthHandler(holder, interval, nil)(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	return rec
 }
 
@@ -573,7 +573,7 @@ func TestHealthHandler_ContentType(t *testing.T) {
 
 func instanceHealthz(holder *StateHolder, path string, interval time.Duration) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	InstanceHealthHandler(holder, interval)(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	InstanceHealthHandler(holder, interval, nil)(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	return rec
 }
 
@@ -946,4 +946,66 @@ func TestHealthHandler_Multi_NoDataYetReturns503(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	assert.Equal(t, "no data yet", body["status"])
+}
+
+// TestHealthHandler_Multi_PerInstanceStaleness covers the issue #46 acceptance
+// criterion: an instance polled on its own (slow) interval must not be marked
+// stale just because its last fetch is older than the global threshold.
+func TestHealthHandler_Multi_PerInstanceStaleness(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	// Default global interval would mark anything older than 5s stale.
+	// "slow" was last fetched 8s ago — stale under the global threshold,
+	// fresh under its own 10s interval (stale = max(3*10s, 5s) = 30s).
+	freshSnap := &fetcher.Snapshot{FetchedAt: time.Now(), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	slowSnap := &fetcher.Snapshot{FetchedAt: time.Now().Add(-8 * time.Second), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	var fresh, slow model.State
+	fresh.Update(freshSnap)
+	slow.Update(slowSnap)
+	holder.StoreInstance("fast", "https://a", fresh, nil, nil)
+	holder.StoreInstance("slow", "https://b", slow, nil, nil)
+
+	rec := httptest.NewRecorder()
+	HealthHandler(holder, time.Second, map[string]time.Duration{"slow": 10 * time.Second})(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	assert.Equal(t, http.StatusOK, rec.Code, "slow instance is fresh under its own 10s interval")
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "ok", body["status"])
+}
+
+// TestHealthHandler_Single_PerInstanceStaleness covers the single-instance
+// case where the holder keys the slot under "" (StoreAll path) but the
+// caller still wants the per-instance ,interval= suffix to drive the
+// staleness threshold rather than the global --interval.
+func TestHealthHandler_Single_PerInstanceStaleness(t *testing.T) {
+	holder := &StateHolder{}
+
+	slowSnap := &fetcher.Snapshot{FetchedAt: time.Now().Add(-8 * time.Second), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	var slow model.State
+	slow.Update(slowSnap)
+	holder.StoreAll(slow, nil)
+
+	rec := httptest.NewRecorder()
+	HealthHandler(holder, time.Second, map[string]time.Duration{"": 10 * time.Second})(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	assert.Equal(t, http.StatusOK, rec.Code, "single instance with ,interval=10s suffix must use a 30s threshold, not 5s")
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "ok", body["status"])
+}
+
+func TestInstanceHealthHandler_PerInstanceStaleness(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	slowSnap := &fetcher.Snapshot{FetchedAt: time.Now().Add(-8 * time.Second), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	var slow model.State
+	slow.Update(slowSnap)
+	holder.StoreInstance("slow", "https://b", slow, nil, nil)
+
+	rec := httptest.NewRecorder()
+	InstanceHealthHandler(holder, time.Second, map[string]time.Duration{"slow": 10 * time.Second})(rec, httptest.NewRequest(http.MethodGet, "/healthz/slow", nil))
+	assert.Equal(t, http.StatusOK, rec.Code)
 }

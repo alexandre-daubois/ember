@@ -82,12 +82,13 @@ type jsonDerived struct {
 
 func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 	enc := json.NewEncoder(os.Stdout)
+	var encMu sync.Mutex
 	multi := len(instances) >= 2
 
-	// Pre-compute the alphabetical emission order so each tick produces a
-	// stable, name-sorted JSONL stream regardless of the order the user
-	// supplied --addr in. Matches the deterministic ordering used by the
-	// /metrics handler.
+	// Initial emission is sorted alphabetically by name for a stable first
+	// snapshot, matching the deterministic ordering used by the /metrics
+	// handler. Subsequent emissions interleave per-instance as each instance
+	// polls at its own cadence.
 	order := make([]int, len(instances))
 	for i := range instances {
 		order[i] = i
@@ -96,56 +97,68 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 		return instances[order[a]].name < instances[order[b]].name
 	})
 
-	poll := func() {
-		results := make([]*jsonOutput, len(instances))
-		var wg sync.WaitGroup
-		for i, inst := range instances {
-			wg.Add(1)
-			go func(i int, inst *instance) {
-				defer wg.Done()
-				snap, err := inst.fetcher.Fetch(ctx)
-				if err != nil {
-					ilog := cfg.logger
-					if multi {
-						ilog = ilog.With("instance", inst.name)
-					}
-					ilog.Error("fetch failed", "err", err)
-					return
-				}
-				inst.state.Update(snap)
-				out := buildJSONOutput(snap, &inst.state)
-				if multi {
-					out.Instance = inst.name
-				}
-				results[i] = &out
-			}(i, inst)
-		}
-		wg.Wait()
-
-		for _, idx := range order {
-			if results[idx] != nil {
-				_ = enc.Encode(results[idx])
+	pollOne := func(inst *instance) *jsonOutput {
+		snap, err := inst.fetcher.Fetch(ctx)
+		if err != nil {
+			ilog := cfg.logger
+			if multi {
+				ilog = ilog.With("instance", inst.name)
 			}
+			ilog.Error("fetch failed", "err", err)
+			return nil
 		}
+		inst.state.Update(snap)
+		out := buildJSONOutput(snap, &inst.state)
+		if multi {
+			out.Instance = inst.name
+		}
+		return &out
 	}
 
-	poll()
+	emit := func(out *jsonOutput) {
+		if out == nil {
+			return
+		}
+		encMu.Lock()
+		_ = enc.Encode(out)
+		encMu.Unlock()
+	}
+
+	results := make([]*jsonOutput, len(instances))
+	var wg sync.WaitGroup
+	for i, inst := range instances {
+		wg.Add(1)
+		go func(i int, inst *instance) {
+			defer wg.Done()
+			results[i] = pollOne(inst)
+		}(i, inst)
+	}
+	wg.Wait()
+	for _, idx := range order {
+		emit(results[idx])
+	}
 
 	if cfg.once {
 		return nil
 	}
 
-	ticker := time.NewTicker(cfg.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			poll()
-		}
+	for _, inst := range instances {
+		go func(inst *instance) {
+			ticker := time.NewTicker(inst.interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					emit(pollOne(inst))
+				}
+			}
+		}(inst)
 	}
+
+	<-ctx.Done()
+	return nil
 }
 
 func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {

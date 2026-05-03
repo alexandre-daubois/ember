@@ -245,6 +245,26 @@ func TestValidate_TimeoutZeroOK(t *testing.T) {
 	assert.NoError(t, validate(cfg))
 }
 
+func TestValidate_TimeoutBelowPerInstanceInterval(t *testing.T) {
+	cfg := &config{
+		interval: 500 * time.Millisecond,
+		timeout:  2 * time.Second,
+		addrsRaw: []string{"web1=http://a", "web2=http://b,interval=5s"},
+	}
+	err := validate(cfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "5s", "error must mention the largest effective interval")
+}
+
+func TestValidate_TimeoutAboveMaxPerInstanceIntervalOK(t *testing.T) {
+	cfg := &config{
+		interval: 1 * time.Second,
+		timeout:  10 * time.Second,
+		addrsRaw: []string{"web1=http://a,interval=2s", "web2=http://b,interval=5s"},
+	}
+	assert.NoError(t, validate(cfg))
+}
+
 func TestValidate_AddrMissingScheme(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"localhost:2019"}}
 	err := validate(cfg)

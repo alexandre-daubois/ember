@@ -10,7 +10,7 @@ ember [flags]
 
 | Flag               | Type | Default | Description |
 |--------------------|------|---------|-------------|
-| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon`, `--json`, `status`, and `wait` modes to monitor multiple instances. Supports `name=url` aliases and per-instance TLS suffixes (`,ca=PATH`, `,cert=PATH`, `,key=PATH`, `,insecure`); see [Multi-instance](#multi-instance-monitoring). |
+| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon`, `--json`, `status`, and `wait` modes to monitor multiple instances. Supports `name=url` aliases and per-instance suffixes (`,ca=PATH`, `,cert=PATH`, `,key=PATH`, `,insecure`, `,interval=DURATION`); see [Multi-instance](#multi-instance-monitoring). |
 | `-i`, `--interval` | duration | `1s` | Polling interval |
 | `--timeout`        | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
@@ -122,10 +122,24 @@ ember --daemon --expose :9191 \
 
 On `SIGHUP`, each instance re-reads its own certificate files independently, so per-instance certs can be rotated in place without restarting Ember.
 
+### Per-instance polling interval
+
+Each `--addr` can override the global `--interval` with a `,interval=DURATION` suffix. This matters for fleets where some instances are remote and benefit from a slower cadence without raising the global default.
+
+```bash
+ember --daemon --expose :9191 \
+  --addr web1=https://web1.fr \
+  --addr remote=https://far.example,interval=10s
+```
+
+Active in `--daemon` and `--json` modes (each instance polls its own ticker). The `/healthz` and `/healthz/<name>` staleness threshold is computed per-instance, so a slow instance is not flagged stale just because its cadence is slower than the global default. `status` and `wait` keep using the global interval.
+
 Constraints:
 
 - File paths in suffixes cannot contain a literal comma; the comma is reserved as the suffix separator.
 - TLS suffixes are rejected on `unix//` addresses (no TLS over a Unix socket).
+- Per-instance `interval=` is allowed on `unix//` addresses (it is not a TLS option).
+- Per-instance `interval=` must be at least `100ms`. When `--timeout` is set, it must be at least the largest effective polling interval (global or per-instance).
 - `--daemon`, `--json`, `status`, `wait`, and `diff` accept multi-instance input. The TUI default mode and the `init` subcommand refuse repeated `--addr` with an explicit error.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
 - `--frankenphp-pid` is ignored when `--addr` is repeated. Local instances (`localhost`, `127.0.0.1`, `::1` or `unix//`) get per-instance `process_cpu_percent`/`process_rss_bytes` via auto-detection on the admin endpoint; remote instances silently fall back to the `process_*` metrics exposed by Caddy.

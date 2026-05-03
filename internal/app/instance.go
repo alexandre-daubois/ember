@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
@@ -14,9 +15,10 @@ import (
 )
 
 type addrSpec struct {
-	name string
-	url  string
-	tls  addrTLS
+	name     string
+	url      string
+	tls      addrTLS
+	interval time.Duration
 }
 
 // addrTLS holds the per-instance TLS knobs parsed from --addr suffixes.
@@ -38,6 +40,7 @@ type instance struct {
 	name     string
 	addr     string
 	tls      fetcher.TLSOptions
+	interval time.Duration
 	fetcher  *fetcher.HTTPFetcher
 	state    model.State
 	throttle errorThrottle
@@ -109,18 +112,21 @@ func parseOneAddr(raw string, validateName bool) (addrSpec, error) {
 		return addrSpec{}, fmt.Errorf("instance name %q derived from %q must match [a-zA-Z_][a-zA-Z0-9_]* (use alias=url to set explicitly)", name, raw)
 	}
 
-	tls, err := parseAddrTLS(suffixes)
+	tls, interval, err := parseAddrSuffixes(suffixes)
 	if err != nil {
 		return addrSpec{}, fmt.Errorf("--addr %q: %w", raw, err)
 	}
 	if fetcher.IsUnixAddr(url) && tls.any() {
 		return addrSpec{}, fmt.Errorf("--addr %q: TLS options cannot be used with Unix socket addresses", raw)
 	}
-	return addrSpec{name: name, url: url, tls: tls}, nil
+	return addrSpec{name: name, url: url, tls: tls, interval: interval}, nil
 }
 
-func parseAddrTLS(suffixes []string) (addrTLS, error) {
-	var tls addrTLS
+func parseAddrSuffixes(suffixes []string) (addrTLS, time.Duration, error) {
+	var (
+		tls      addrTLS
+		interval time.Duration
+	)
 	paths := map[string]*string{"ca": &tls.caCert, "cert": &tls.clientCert, "key": &tls.clientKey}
 	for _, s := range suffixes {
 		s = strings.TrimSpace(s)
@@ -133,7 +139,7 @@ func parseAddrTLS(suffixes []string) (addrTLS, error) {
 
 		if target, ok := paths[key]; ok {
 			if !hasValue || value == "" {
-				return addrTLS{}, fmt.Errorf("suffix %q requires a non-empty path", key)
+				return addrTLS{}, 0, fmt.Errorf("suffix %q requires a non-empty path", key)
 			}
 			*target = value
 			continue
@@ -146,17 +152,31 @@ func parseAddrTLS(suffixes []string) (addrTLS, error) {
 			}
 			b, err := strconv.ParseBool(value)
 			if err != nil {
-				return addrTLS{}, fmt.Errorf("suffix %q expects true|false (got %q)", key, value)
+				return addrTLS{}, 0, fmt.Errorf("suffix %q expects true|false (got %q)", key, value)
 			}
 			tls.insecure = b
 			continue
 		}
-		return addrTLS{}, fmt.Errorf("unknown suffix %q (allowed: ca, cert, key, insecure)", key)
+		if key == "interval" {
+			if !hasValue || value == "" {
+				return addrTLS{}, 0, fmt.Errorf("suffix %q requires a duration (e.g. 2s, 500ms)", key)
+			}
+			d, err := time.ParseDuration(value)
+			if err != nil {
+				return addrTLS{}, 0, fmt.Errorf("suffix %q expects a Go duration (got %q): %w", key, value, err)
+			}
+			if d < minInterval {
+				return addrTLS{}, 0, fmt.Errorf("suffix %q must be at least %s (got %s)", key, minInterval, d)
+			}
+			interval = d
+			continue
+		}
+		return addrTLS{}, 0, fmt.Errorf("unknown suffix %q (allowed: ca, cert, key, insecure, interval)", key)
 	}
 	if (tls.clientCert != "") != (tls.clientKey != "") {
-		return addrTLS{}, fmt.Errorf("suffixes cert= and key= must be set together")
+		return addrTLS{}, 0, fmt.Errorf("suffixes cert= and key= must be set together")
 	}
-	return tls, nil
+	return tls, interval, nil
 }
 
 func deriveInstanceName(url string) string {
@@ -220,6 +240,7 @@ func newInstances(ctx context.Context, cfg *config, version string) ([]*instance
 			name:     spec.name,
 			addr:     spec.url,
 			tls:      opts,
+			interval: effectiveInterval(spec, cfg),
 			fetcher:  f,
 			recorder: rec,
 		})
@@ -228,6 +249,13 @@ func newInstances(ctx context.Context, cfg *config, version string) ([]*instance
 		cfg.recorder = instances[0].recorder
 	}
 	return instances, nil
+}
+
+func effectiveInterval(spec addrSpec, cfg *config) time.Duration {
+	if spec.interval > 0 {
+		return spec.interval
+	}
+	return cfg.interval
 }
 
 func effectiveTLS(spec addrSpec, cfg *config) fetcher.TLSOptions {

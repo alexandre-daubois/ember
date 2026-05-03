@@ -131,7 +131,7 @@ Keybindings:
 	}
 
 	pf := cmd.PersistentFlags()
-	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon, --json, status and wait modes; supports name=url aliases and per-instance TLS suffixes (,ca=PATH ,cert=PATH ,key=PATH ,insecure).")
+	pf.StringArrayVar(&cfg.addrsRaw, "addr", []string{"http://localhost:2019"}, "Caddy admin API address (http://, https://, or unix//path). Repeatable in --daemon, --json, status and wait modes; supports name=url aliases and per-instance suffixes (,ca=PATH ,cert=PATH ,key=PATH ,insecure ,interval=DUR).")
 	pf.DurationVarP(&cfg.interval, "interval", "i", 1*time.Second, "Polling interval")
 	pf.DurationVar(&cfg.timeout, "timeout", 0, "Global timeout (0 = no timeout)")
 	pf.IntVar(&cfg.frankenphpPID, "frankenphp-pid", 0, "FrankenPHP PID (auto-detected if not set; ignored when --addr is repeated)")
@@ -240,15 +240,24 @@ func validate(cfg *config) error {
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)
 	}
-	if cfg.timeout > 0 && cfg.timeout < cfg.interval {
-		return fmt.Errorf("--timeout (%s) must be at least --interval (%s)", cfg.timeout, cfg.interval)
-	}
 
 	addrs, err := parseAddrs(cfg.addrsRaw)
 	if err != nil {
 		return err
 	}
 	cfg.addrs = addrs
+
+	if cfg.timeout > 0 {
+		maxInterval := cfg.interval
+		for _, spec := range cfg.addrs {
+			if spec.interval > maxInterval {
+				maxInterval = spec.interval
+			}
+		}
+		if cfg.timeout < maxInterval {
+			return fmt.Errorf("--timeout (%s) must be at least the largest polling interval (%s)", cfg.timeout, maxInterval)
+		}
+	}
 
 	for _, spec := range cfg.addrs {
 		if fetcher.IsUnixAddr(spec.url) && (cfg.caCert != "" || cfg.clientCert != "" || cfg.clientKey != "" || cfg.insecure) {

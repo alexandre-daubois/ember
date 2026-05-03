@@ -126,6 +126,23 @@ func TestReloadTLS_NonHTTPFetcher(t *testing.T) {
 	assert.Contains(t, buf.String(), "not supported")
 }
 
+func TestPerInstanceIntervals_SingleInstanceAlsoKeyedUnderEmpty(t *testing.T) {
+	m := perInstanceIntervals([]*instance{{name: "localhost_2019", interval: 10 * time.Second}})
+	assert.Equal(t, 10*time.Second, m["localhost_2019"])
+	assert.Equal(t, 10*time.Second, m[""], "single-instance holder uses \"\" as the slot key, /healthz lookup must reach it")
+}
+
+func TestPerInstanceIntervals_MultiInstanceHasNoEmptyKey(t *testing.T) {
+	m := perInstanceIntervals([]*instance{
+		{name: "fast", interval: 100 * time.Millisecond},
+		{name: "slow", interval: 5 * time.Second},
+	})
+	assert.Equal(t, 100*time.Millisecond, m["fast"])
+	assert.Equal(t, 5*time.Second, m["slow"])
+	_, hasEmpty := m[""]
+	assert.False(t, hasEmpty, "multi-instance must not introduce a phantom \"\" entry")
+}
+
 type daemonFetchPlugin struct {
 	testPlugin
 	fetchData any

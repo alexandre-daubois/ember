@@ -648,8 +648,18 @@ func writeSingleHealthBody(w http.ResponseWriter, slot *instanceSlot, threshold 
 	encodeJSON(w, body)
 }
 
-func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {
-	threshold := staleThresholdFor(interval)
+// HealthHandler serves /healthz. defaultInterval is used to compute the
+// staleness threshold; perInstance overrides it per name (a nil or
+// missing-key map falls back to defaultInterval). Per-instance overrides
+// matter when --addr carries an ,interval= suffix that differs from the
+// global --interval.
+func HealthHandler(holder *StateHolder, defaultInterval time.Duration, perInstance map[string]time.Duration) http.HandlerFunc {
+	thresholdFor := func(name string) time.Duration {
+		if d, ok := perInstance[name]; ok {
+			return staleThresholdFor(d)
+		}
+		return staleThresholdFor(defaultInterval)
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		entries, multi := holder.entries()
@@ -657,17 +667,19 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 
 		if !multi {
 			var slot *instanceSlot
+			var name string
 			if len(entries) > 0 {
 				slot = entries[0].slot
+				name = entries[0].name
 			}
-			writeSingleHealthBody(w, slot, threshold)
+			writeSingleHealthBody(w, slot, thresholdFor(name))
 			return
 		}
 
 		bodies := make([]healthInstanceBody, 0, len(entries))
 		worst := healthOK
 		for _, e := range entries {
-			status, lastFetch, age := instanceHealth(e.slot, threshold)
+			status, lastFetch, age := instanceHealth(e.slot, thresholdFor(e.name))
 			bodies = append(bodies, healthInstanceBody{
 				Name:       e.name,
 				Addr:       e.slot.addr,
@@ -693,8 +705,13 @@ func HealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc
 // returning the same body shape as the single-instance /healthz. Returns 404
 // outside multi-instance mode, when the name is unknown, or when the path has
 // no name or extra segments.
-func InstanceHealthHandler(holder *StateHolder, interval time.Duration) http.HandlerFunc {
-	threshold := staleThresholdFor(interval)
+func InstanceHealthHandler(holder *StateHolder, defaultInterval time.Duration, perInstance map[string]time.Duration) http.HandlerFunc {
+	thresholdFor := func(name string) time.Duration {
+		if d, ok := perInstance[name]; ok {
+			return staleThresholdFor(d)
+		}
+		return staleThresholdFor(defaultInterval)
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/healthz/")
@@ -708,7 +725,7 @@ func InstanceHealthHandler(holder *StateHolder, interval time.Duration) http.Han
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		writeSingleHealthBody(w, slot, threshold)
+		writeSingleHealthBody(w, slot, thresholdFor(name))
 	}
 }
 

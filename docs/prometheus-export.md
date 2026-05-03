@@ -157,7 +157,7 @@ The prefix must be a legal Prometheus metric name segment: letters, digits and u
 { "status": "ok", "last_fetch": "2026-03-16T10:00:00Z", "age_seconds": 1.2 }
 ```
 
-**503 Service Unavailable**: Data is stale (older than 3x the polling interval, minimum 5 seconds):
+**503 Service Unavailable**: Data is stale (older than 3x the polling interval, minimum 5 seconds). In multi-instance mode the threshold is computed per-instance using each instance's effective interval (the per-instance `,interval=` suffix when set, otherwise the global `--interval`):
 
 ```json
 { "status": "stale", "last_fetch": "2026-03-16T09:58:00Z", "age_seconds": 120 }
