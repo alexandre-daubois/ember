@@ -75,7 +75,7 @@ func newWaitInstances(cfg *config) ([]*waitInstance, error) {
 	out := make([]*waitInstance, 0, len(cfg.addrs))
 	for _, spec := range cfg.addrs {
 		f := fetcher.NewHTTPFetcher(spec.url, 0)
-		if err := configureTLS(f, cfg); err != nil {
+		if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 			return nil, err
 		}
 		out = append(out, &waitInstance{name: spec.name, addr: spec.url, fetcher: f})

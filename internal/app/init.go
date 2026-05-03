@@ -55,12 +55,12 @@ admin API to read and optionally write configuration.`,
 				return runInitMulti(ctx, w, cfg)
 			}
 
-			addr := cfg.addrs[0].url
-			f := fetcher.NewHTTPFetcher(addr, 0)
-			if err := configureTLS(f, cfg); err != nil {
+			spec := cfg.addrs[0]
+			f := fetcher.NewHTTPFetcher(spec.url, 0)
+			if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 				return err
 			}
-			return runInit(ctx, w, os.Stdin, f, addr, yes)
+			return runInit(ctx, w, os.Stdin, f, spec.url, yes)
 		},
 	}
 
@@ -222,7 +222,7 @@ func runInitMulti(ctx context.Context, w io.Writer, cfg *config) error {
 func collectInitResult(ctx context.Context, cfg *config, spec addrSpec) initResult {
 	var buf bytes.Buffer
 	f := fetcher.NewHTTPFetcher(spec.url, 0)
-	if err := configureTLS(f, cfg); err != nil {
+	if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 		fmt.Fprintf(&buf, "  ✗ TLS configuration failed (%s)\n", err)
 		return initResult{name: spec.name, output: buf.String(), err: err}
 	}

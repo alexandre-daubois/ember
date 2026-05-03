@@ -10,7 +10,7 @@ ember [flags]
 
 | Flag               | Type | Default | Description |
 |--------------------|------|---------|-------------|
-| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon`, `--json`, `status`, and `wait` modes to monitor multiple instances. Supports `name=url` aliases (see [Multi-instance](#multi-instance-monitoring)). |
+| `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon`, `--json`, `status`, and `wait` modes to monitor multiple instances. Supports `name=url` aliases and per-instance TLS suffixes (`,ca=PATH`, `,cert=PATH`, `,key=PATH`, `,insecure`); see [Multi-instance](#multi-instance-monitoring). |
 | `-i`, `--interval` | duration | `1s` | Polling interval |
 | `--timeout`        | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
@@ -36,7 +36,7 @@ Some flags can be set via environment variables. Explicit flags always take prec
 
 | Variable | Flag | Example |
 |----------|------|---------|
-| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019`, `EMBER_ADDR=unix//run/caddy/admin.sock`, or comma-separated for multi-instance: `EMBER_ADDR=web1=https://a,web2=https://b` |
+| `EMBER_ADDR` | `--addr` | `EMBER_ADDR=http://caddy:2019`, `EMBER_ADDR=unix//run/caddy/admin.sock`, or semicolon-separated for multi-instance: `EMBER_ADDR=web1=https://a;web2=https://b`. The semicolon (not a comma) is the address separator so each entry can carry comma-separated TLS suffixes (e.g. `web1=https://a,ca=/p/ca1.pem;web2=https://b,insecure`). |
 | `EMBER_INTERVAL` | `--interval` | `EMBER_INTERVAL=5s` |
 | `EMBER_EXPOSE` | `--expose` | `EMBER_EXPOSE=:9191` |
 | `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
@@ -97,17 +97,37 @@ ember --daemon --expose :9191 \
   --addr https://web1.fr \
   --addr https://web2.fr
 
-# Comma-separated env var
-EMBER_ADDR=web1=https://a,web2=https://b ember --daemon --expose :9191
+# Semicolon-separated env var (each entry may carry comma-separated TLS suffixes)
+EMBER_ADDR='web1=https://a;web2=https://b' ember --daemon --expose :9191
 ```
 
 When two or more `--addr` values are supplied, every emitted Prometheus metric (except `ember_build_info`) gains an `ember_instance="<name>"` label. With a single `--addr` the output is unchanged: no extra label.
 
+### Per-instance TLS
+
+Each `--addr` value can carry its own TLS knobs as comma-separated suffixes after the URL. Any field omitted falls back to the corresponding global flag (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`).
+
+| Suffix | Equivalent global flag | Notes |
+|--------|------------------------|-------|
+| `,ca=PATH` | `--ca-cert` | CA certificate used to verify the server |
+| `,cert=PATH` | `--client-cert` | Client certificate (mTLS); must be paired with `key=` |
+| `,key=PATH` | `--client-key` | Client private key (mTLS); must be paired with `cert=` |
+| `,insecure` or `,insecure=true\|false` | `--insecure` | Skip TLS verification; explicit `=false` overrides a global `--insecure` |
+
+```bash
+ember --daemon --expose :9191 \
+  --addr web1=https://a,ca=/etc/ca1.pem \
+  --addr web2=https://b,ca=/etc/ca2.pem
+```
+
+On `SIGHUP`, each instance re-reads its own certificate files independently, so per-instance certs can be rotated in place without restarting Ember.
+
 Constraints:
 
+- File paths in suffixes cannot contain a literal comma; the comma is reserved as the suffix separator.
+- TLS suffixes are rejected on `unix//` addresses (no TLS over a Unix socket).
 - `--daemon`, `--json`, `status`, `wait`, and `diff` accept multi-instance input. The TUI default mode and the `init` subcommand refuse repeated `--addr` with an explicit error.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
-- TLS flags (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`) are global and applied uniformly. If you need distinct PKIs per instance, run one Ember process per group.
 - `--frankenphp-pid` is ignored when `--addr` is repeated. Local instances (`localhost`, `127.0.0.1`, `::1` or `unix//`) get per-instance `process_cpu_percent`/`process_rss_bytes` via auto-detection on the admin endpoint; remote instances silently fall back to the `process_*` metrics exposed by Caddy.
 - Plugins are skipped in multi-instance mode (a startup warning is logged).
 

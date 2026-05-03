@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -15,11 +16,28 @@ import (
 type addrSpec struct {
 	name string
 	url  string
+	tls  addrTLS
+}
+
+// addrTLS holds the per-instance TLS knobs parsed from --addr suffixes.
+// insecureSet distinguishes ",insecure=false" (force off, overrides a
+// global --insecure) from omission (fall back to global).
+type addrTLS struct {
+	caCert      string
+	clientCert  string
+	clientKey   string
+	insecure    bool
+	insecureSet bool
+}
+
+func (t addrTLS) any() bool {
+	return t.caCert != "" || t.clientCert != "" || t.clientKey != "" || t.insecureSet
 }
 
 type instance struct {
 	name     string
 	addr     string
+	tls      fetcher.TLSOptions
 	fetcher  *fetcher.HTTPFetcher
 	state    model.State
 	throttle errorThrottle
@@ -61,14 +79,15 @@ func parseAddrs(raws []string) ([]addrSpec, error) {
 }
 
 func parseOneAddr(raw string, validateName bool) (addrSpec, error) {
+	parts := strings.Split(raw, ",")
+	head, suffixes := parts[0], parts[1:]
+
 	var name, url string
-	hasAlias := aliasPrefixRe.MatchString(raw)
+	hasAlias := aliasPrefixRe.MatchString(head)
 	if hasAlias {
-		i := strings.Index(raw, "=")
-		name = raw[:i]
-		url = raw[i+1:]
+		name, url, _ = strings.Cut(head, "=")
 	} else {
-		url = raw
+		url = head
 		name = deriveInstanceName(url)
 	}
 
@@ -89,7 +108,55 @@ func parseOneAddr(raw string, validateName bool) (addrSpec, error) {
 		}
 		return addrSpec{}, fmt.Errorf("instance name %q derived from %q must match [a-zA-Z_][a-zA-Z0-9_]* (use alias=url to set explicitly)", name, raw)
 	}
-	return addrSpec{name: name, url: url}, nil
+
+	tls, err := parseAddrTLS(suffixes)
+	if err != nil {
+		return addrSpec{}, fmt.Errorf("--addr %q: %w", raw, err)
+	}
+	if fetcher.IsUnixAddr(url) && tls.any() {
+		return addrSpec{}, fmt.Errorf("--addr %q: TLS options cannot be used with Unix socket addresses", raw)
+	}
+	return addrSpec{name: name, url: url, tls: tls}, nil
+}
+
+func parseAddrTLS(suffixes []string) (addrTLS, error) {
+	var tls addrTLS
+	paths := map[string]*string{"ca": &tls.caCert, "cert": &tls.clientCert, "key": &tls.clientKey}
+	for _, s := range suffixes {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		key, value, hasValue := strings.Cut(s, "=")
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+
+		if target, ok := paths[key]; ok {
+			if !hasValue || value == "" {
+				return addrTLS{}, fmt.Errorf("suffix %q requires a non-empty path", key)
+			}
+			*target = value
+			continue
+		}
+		if key == "insecure" {
+			tls.insecureSet = true
+			if !hasValue {
+				tls.insecure = true
+				continue
+			}
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				return addrTLS{}, fmt.Errorf("suffix %q expects true|false (got %q)", key, value)
+			}
+			tls.insecure = b
+			continue
+		}
+		return addrTLS{}, fmt.Errorf("unknown suffix %q (allowed: ca, cert, key, insecure)", key)
+	}
+	if (tls.clientCert != "") != (tls.clientKey != "") {
+		return addrTLS{}, fmt.Errorf("suffixes cert= and key= must be set together")
+	}
+	return tls, nil
 }
 
 func deriveInstanceName(url string) string {
@@ -120,10 +187,11 @@ func slugifyHost(s string) string {
 }
 
 // newInstances builds runtime instances ready to poll: each gets its own
-// HTTPFetcher with TLS uniformly applied, plus a recorder when --expose is set.
-// In single-instance mode the lone instance's recorder is also stored on cfg
-// so the TUI metrics handler keeps surfacing self-metrics through the legacy
-// path that reads cfg.recorder.
+// HTTPFetcher with effective TLS options applied (per-instance suffixes
+// override the global flags field by field), plus a recorder when --expose
+// is set. In single-instance mode the lone instance's recorder is also
+// stored on cfg so the TUI metrics handler keeps surfacing self-metrics
+// through the legacy path that reads cfg.recorder.
 func newInstances(ctx context.Context, cfg *config, version string) ([]*instance, error) {
 	instances := make([]*instance, 0, len(cfg.addrs))
 	multi := len(cfg.addrs) >= 2
@@ -137,7 +205,8 @@ func newInstances(ctx context.Context, cfg *config, version string) ([]*instance
 		}
 
 		f := fetcher.NewHTTPFetcher(spec.url, pid)
-		if err := configureTLS(f, cfg); err != nil {
+		opts := effectiveTLS(spec, cfg)
+		if err := configureTLS(f, opts); err != nil {
 			return nil, err
 		}
 
@@ -150,6 +219,7 @@ func newInstances(ctx context.Context, cfg *config, version string) ([]*instance
 		instances = append(instances, &instance{
 			name:     spec.name,
 			addr:     spec.url,
+			tls:      opts,
 			fetcher:  f,
 			recorder: rec,
 		})
@@ -158,6 +228,28 @@ func newInstances(ctx context.Context, cfg *config, version string) ([]*instance
 		cfg.recorder = instances[0].recorder
 	}
 	return instances, nil
+}
+
+func effectiveTLS(spec addrSpec, cfg *config) fetcher.TLSOptions {
+	opts := fetcher.TLSOptions{
+		CACert:     cfg.caCert,
+		ClientCert: cfg.clientCert,
+		ClientKey:  cfg.clientKey,
+		Insecure:   cfg.insecure,
+	}
+	if spec.tls.caCert != "" {
+		opts.CACert = spec.tls.caCert
+	}
+	if spec.tls.clientCert != "" {
+		opts.ClientCert = spec.tls.clientCert
+	}
+	if spec.tls.clientKey != "" {
+		opts.ClientKey = spec.tls.clientKey
+	}
+	if spec.tls.insecureSet {
+		opts.Insecure = spec.tls.insecure
+	}
+	return opts
 }
 
 func resolveFrankenPHPPID(ctx context.Context, cfg *config) int32 {

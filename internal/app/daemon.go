@@ -45,7 +45,7 @@ func (e *errorThrottle) recover(log *slog.Logger) {
 	}
 }
 
-func reloadTLS(f fetcher.Fetcher, cfg *config, log *slog.Logger) {
+func reloadTLS(f fetcher.Fetcher, opts fetcher.TLSOptions, log *slog.Logger) {
 	hf, ok := f.(*fetcher.HTTPFetcher)
 	if !ok {
 		log.Warn("TLS reload not supported for this fetcher")
@@ -55,7 +55,7 @@ func reloadTLS(f fetcher.Fetcher, cfg *config, log *slog.Logger) {
 		log.Info("TLS reload skipped (Unix socket connection)")
 		return
 	}
-	if err := configureTLS(hf, cfg); err != nil {
+	if err := configureTLS(hf, opts); err != nil {
 		log.Error("TLS reload failed", "err", err)
 		return
 	}
@@ -133,7 +133,7 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 				if multi {
 					rlog = log.With("instance", inst.name)
 				}
-				reloadTLS(inst.fetcher, cfg, rlog)
+				reloadTLS(inst.fetcher, inst.tls, rlog)
 			}
 		}
 	}
