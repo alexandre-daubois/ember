@@ -26,7 +26,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Certificates tab: TLS certificate monitoring with expiry tracking, color-coded warnings, and likely auto-renewal indication
 - Upstreams tab: reverse proxy upstream health monitoring with per-upstream status, auto-detected when `reverse_proxy` is configured
-- Logs tab: live access and runtime log streaming in a single view, with a sidepanel tree (Runtime, Access, per-host children, By Route) and a free-text filter. The "By Route" entry aggregates access logs into a sortable table grouped by `(method, normalized URI pattern)`: UUIDs, long hex strings, and numeric IDs are collapsed to `:uuid` / `:hash` / `:id`. Zero-config: Ember hot-registers two transient sinks in Caddy via the admin API (`__ember__` for access logs, `__ember_runtime__` for everything else) and receives logs over TCP with no Caddyfile changes
+- Logs tab: live access and runtime log streaming in a single view, with a sidepanel tree (Runtime, Access, per-host children, [By Route](docs/logs.md#by-route-view) aggregation) and a free-text filter. Zero-config: Ember hot-registers two transient sinks in Caddy via the admin API (`__ember__` for access logs, `__ember_runtime__` for everything else) and receives logs over TCP with no Caddyfile changes
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**
@@ -39,7 +39,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 **Integration & Operations**
 
 - Prometheus metrics export (`/metrics`) with optional basic auth and health endpoint (`/healthz`)
-- [Multi-instance scraping](docs/multi-instance.md) in `--daemon`, `--json`, `status`, `wait`, and `init` modes: a single Ember process aggregates several Caddy instances behind one Prometheus endpoint with an `ember_instance` label
+- [Multi-instance scraping](docs/multi-instance.md) in `--daemon`, `--json`, `status`, `wait`, `init`, and `diff` modes: a single Ember process aggregates several Caddy instances behind one Prometheus endpoint with an `ember_instance` label, per-instance TLS material, and per-instance polling cadence
 - Self-observability: `ember_*` metrics (build info, per-stage scrape totals, errors, durations, last success) so you can monitor the monitor
 - Daemon mode for headless operation, with error throttling and TLS certificate reload via SIGHUP
 - JSON output mode for scripting, with `--once` for single snapshots
@@ -48,8 +48,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Deployment validation: `ember diff before.json after.json` compares snapshots (single-instance JSON or multi-instance JSONL, with one diff block per instance)
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`
-- TLS and mTLS support for secured Caddy admin APIs, with per-instance certs via `--addr web=https://a,ca=/p/ca.pem,cert=/p/c.pem,key=/p/k.pem`
-- Per-instance polling interval via `--addr remote=https://far,interval=10s` so slow instances don't force the global cadence up
+- TLS and mTLS support for secured Caddy admin APIs
 - Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, `EMBER_LOG_LISTEN`, ...) for container deployments
 - `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))

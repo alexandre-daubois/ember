@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/pkg/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -500,6 +501,31 @@ func TestRunDiff_JSONLMultiInstance_NewInstanceAdded(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "== web1 ==")
 	assert.Contains(t, out, "== web2 ==")
+}
+
+func TestRunDiff_JSONLMultiInstance_InstanceRemoved(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeJSONL(t, dir, "before.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 100}, Process: fetcher.ProcessMetrics{}},
+		{
+			Instance: "web2",
+			Derived:  &jsonDerived{RPS: 50},
+			Metrics:  metrics.MetricsSnapshot{HTTPRequestDurationCount: 1000},
+			Process:  fetcher.ProcessMetrics{},
+		},
+	})
+	after := writeJSONL(t, dir, "after.jsonl", []jsonOutput{
+		{Instance: "web1", Derived: &jsonDerived{RPS: 105}, Process: fetcher.ProcessMetrics{}},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.Error(t, err, "instance disappearing from after must surface as a regression so CI fails the deploy")
+	out := buf.String()
+	assert.Contains(t, out, "== web1 ==")
+	assert.Contains(t, out, "== web2 ==", "the gone instance must still get a block so the operator sees it")
 }
 
 func TestRunDiff_SingleInstanceJSON_NoHeader(t *testing.T) {

@@ -110,7 +110,7 @@ ember --daemon --expose :9191 \
 
 ### IPv4 hosts require an alias
 
-Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only, not starting with a digit). A host like `192.168.1.10:2019` slugifies to `192_168_1_10`, which starts with a digit, and is rejected when `--addr` is passed more than once. Same fix: use a `name=url` alias.
+Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only, not starting with a digit). A host like `192.168.1.10:2019` slugifies to `192_168_1_10_2019`, which starts with a digit, and is rejected when `--addr` is passed more than once. Same fix: use a `name=url` alias.
 
 ### Sharing TLS material
 
