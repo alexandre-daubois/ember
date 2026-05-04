@@ -147,7 +147,7 @@ Constraints:
 - `--daemon`, `--json`, `status`, `wait`, `diff`, and `init` (with `-y`) accept multi-instance input. The TUI default mode is single-instance by design and refuses repeated `--addr` with an explicit error pointing at `--daemon` and `--json`.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
 - `--frankenphp-pid` is ignored when `--addr` is repeated. Local instances (`localhost`, `127.0.0.1`, `::1` or `unix//`) get per-instance `process_cpu_percent`/`process_rss_bytes` via auto-detection on the admin endpoint; remote instances silently fall back to the `process_*` metrics exposed by Caddy.
-- Plugins are skipped in multi-instance mode (a startup warning is logged).
+- Plugins are skipped in multi-instance mode unless they opt in by implementing `plugin.MultiInstancePlugin`. Non-aware plugins are disabled with a startup warning. See the [Plugin Development Guide](plugins.md#multi-instance-plugins) for the multi-instance contract.
 
 See [Prometheus Export](prometheus-export.md) for the resulting metric labels and `/healthz` body.
 

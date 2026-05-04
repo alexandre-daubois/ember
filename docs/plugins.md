@@ -127,7 +127,7 @@ func (p *myPlugin) Provision(ctx context.Context, cfg plugin.PluginConfig) error
 }
 ```
 
-`PluginConfig` also carries `CaddyAddr`, the Caddy admin API address Ember is connected to.
+`PluginConfig` also carries `CaddyAddr`, the Caddy admin API address Ember is connected to. In multi-instance mode (`--addr` repeated), `Instances` carries the full list of monitored instances; see [Multi-Instance Plugins](#multi-instance-plugins).
 
 ## Lifecycle
 
@@ -308,9 +308,17 @@ type Plugin interface {
 ```go
 type PluginConfig struct {
     CaddyAddr string
+    Instances []PluginInstance
     Options   map[string]string
 }
+
+type PluginInstance struct {
+    Name string
+    Addr string
+}
 ```
+
+`Instances` is empty in single-instance mode and populated only for plugins that opt in to [multi-instance mode](#multi-instance-plugins) via [`MultiInstancePlugin`](#multiinstanceplugin-optional). `CaddyAddr` is always set: in multi-instance mode it points to the first instance for backwards compatibility.
 
 ### Fetcher (optional)
 
@@ -429,6 +437,16 @@ Implement `Availability` when your plugin's tab(s) should be shown or hidden bas
 
 `Available()` is checked after each successful `Fetch`. When it returns `false`, the plugin's tab(s) are removed from the tab bar. When it returns `true`, they are re-added. If `Available()` panics, the tab stays visible (fail-open).
 
+### MultiInstancePlugin (optional)
+
+```go
+type MultiInstancePlugin interface {
+    EmberMultiInstance()
+}
+```
+
+Opt-in marker for plugins that handle Ember's multi-instance mode (`--addr` repeated). Without this marker, plugins are disabled when more than one `--addr` is passed and a warning is logged. See [Multi-Instance Plugins](#multi-instance-plugins) below for the full contract.
+
 ### TabAvailability (optional)
 
 ```go
@@ -444,6 +462,48 @@ Implement `TabAvailability` in a `MultiRenderer` plugin when individual tabs sho
 If a plugin also implements `Availability`, it acts as a master switch: when `Available()` returns `false`, all tabs are hidden regardless of `TabAvailable` results. When `Available()` returns `true`, `TabAvailable` controls each tab individually.
 
 `TabAvailability` is ignored for single-Renderer plugins (there is only one tab, so `Availability` is sufficient).
+
+## Multi-Instance Plugins
+
+When Ember is launched with several `--addr` flags (`--daemon` or `--json` modes only), it polls and aggregates metrics from multiple Caddy instances behind a single endpoint. By default, plugins are disabled in this mode with a warning, since most are written assuming a single Caddy. To opt in, add the `EmberMultiInstance` marker:
+
+```go
+type myPlugin struct{}
+
+func (p *myPlugin) EmberMultiInstance() {} // marker only, never called
+```
+
+### What changes for the plugin
+
+- **Provision** is still called once per session. `PluginConfig.Instances` now lists every monitored instance (`Name`, `Addr`); `CaddyAddr` is set to the first instance for backwards compatibility but multi-aware plugins should read `Instances`.
+- **Fetch** is called **once per instance, per tick**. The active instance is carried on the context. Read it with `plugin.InstanceFromContext`:
+
+  ```go
+  func (p *myPlugin) Fetch(ctx context.Context) (any, error) {
+      inst, _ := plugin.InstanceFromContext(ctx)
+      // inst.Name, inst.Addr identify the instance being polled right now
+      return queryMyBackend(inst.Addr)
+  }
+  ```
+
+  Per-instance fetches run in parallel; the plugin must not assume a single shared `Fetch` state. Each instance gets its own data passed to `WriteMetrics`.
+
+- **WriteMetrics** is called once per instance with that instance's data. Emit metrics as if the plugin only knew about one Caddy: Ember automatically injects `ember_instance="<name>"` into every emitted line on the way out. `# HELP` and `# TYPE` directives are also deduplicated across instances so the resulting `/metrics` text stays valid.
+
+  ```go
+  func (p *myPlugin) WriteMetrics(w io.Writer, data any, prefix string) {
+      // Just write your metrics naked; Ember adds ember_instance="..." for you.
+      fmt.Fprintln(w, "# HELP my_plugin_requests_total ...")
+      fmt.Fprintln(w, "# TYPE my_plugin_requests_total counter")
+      fmt.Fprintf(w, "my_plugin_requests_total %d\n", count)
+  }
+  ```
+
+- **OnMetrics** (if the plugin implements `MetricsSubscriber`) is also called once per instance per tick, in parallel across instances. The snapshot passed in does **not** carry the source instance: there is no instance identity available in `OnMetrics`. If you need a per-instance reaction to core metrics, do it in `Fetch` (where `InstanceFromContext` is available) rather than in `OnMetrics`, and protect any shared state with a mutex since calls overlap.
+
+### Single-instance behaviour is unchanged
+
+Without the marker, the plugin is disabled in multi-instance mode (warning logged) and behaves exactly as before in single-instance mode. With the marker, single-instance mode is also unchanged: `Instances` is empty, the `Fetch` context carries no `PluginInstance`, and emitted metrics are not labelled.
 
 ## Reusing Prometheus Parsing
 

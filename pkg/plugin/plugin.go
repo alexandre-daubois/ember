@@ -48,12 +48,56 @@ type Plugin interface {
 }
 
 // PluginConfig carries configuration passed to a plugin during Provision.
-// CaddyAddr is the Caddy admin API address Ember is connected to.
+// CaddyAddr is the Caddy admin API address Ember is connected to. In
+// multi-instance mode it is set to the first instance's URL for backwards
+// compatibility; multi-aware plugins should read Instances instead.
+// Instances is populated only in multi-instance mode (--addr repeated) for
+// plugins implementing [MultiInstancePlugin]; it is empty otherwise.
 // Options contains environment variables matching the plugin's name
 // (e.g., EMBER_PLUGIN_RATELIMIT_MAX_RPS=1000 becomes Options["max_rps"]="1000").
 type PluginConfig struct {
 	CaddyAddr string
+	Instances []PluginInstance
 	Options   map[string]string
+}
+
+// PluginInstance describes one Caddy instance Ember is monitoring. Multi-aware
+// plugins receive the full list via [PluginConfig.Instances] at Provision time
+// and one Fetch call per instance carrying the active PluginInstance on the
+// context (see [InstanceFromContext]).
+type PluginInstance struct {
+	Name string
+	Addr string
+}
+
+// MultiInstancePlugin is an opt-in marker for plugins that handle multi-instance
+// mode. Without this marker, plugins are disabled when --addr is repeated and
+// a warning is logged. Implementing the marker indicates the plugin handles
+// per-instance Fetch calls (the active [PluginInstance] is carried on the
+// context via [InstanceFromContext]) and emits per-instance data; Ember
+// automatically labels emitted metrics with ember_instance="<name>".
+//
+// The EmberMultiInstance method is a no-op tag; it must exist so the interface
+// stays distinct from [Plugin].
+type MultiInstancePlugin interface {
+	EmberMultiInstance()
+}
+
+type instanceCtxKey struct{}
+
+// WithInstance returns a context carrying the given PluginInstance, so a
+// [MultiInstancePlugin] Fetch can identify the instance it is being asked
+// about. Used by Ember internals; plugins read it back via [InstanceFromContext].
+func WithInstance(parent context.Context, inst PluginInstance) context.Context {
+	return context.WithValue(parent, instanceCtxKey{}, inst)
+}
+
+// InstanceFromContext returns the PluginInstance attached by Ember when calling
+// Fetch on a [MultiInstancePlugin]. It returns ok=false in single-instance mode
+// or for plugins that do not implement MultiInstancePlugin.
+func InstanceFromContext(ctx context.Context) (PluginInstance, bool) {
+	v, ok := ctx.Value(instanceCtxKey{}).(PluginInstance)
+	return v, ok
 }
 
 // Fetcher is implemented by plugins that collect data on every poll interval.
@@ -136,6 +180,14 @@ type Closer interface {
 //
 // OnMetrics is called synchronously after each successful core fetch, before
 // plugin Fetch calls begin. The snapshot must not be modified.
+//
+// In multi-instance mode, OnMetrics is invoked once per instance per tick, in
+// parallel across instances, with each call carrying that instance's snapshot.
+// The snapshot itself does not identify its source instance: a plugin that
+// also implements [MultiInstancePlugin] and needs to react per-instance is
+// expected to do its bookkeeping in [Fetcher.Fetch] (where [InstanceFromContext]
+// is available) rather than in OnMetrics, and to guard any shared state
+// against concurrent calls.
 type MetricsSubscriber interface {
 	OnMetrics(snap *metrics.Snapshot)
 }

@@ -312,24 +312,32 @@ func warnMultiLimitations(cfg *config, multi bool) {
 // provisionPlugins runs Provision on every registered plugin and returns the
 // ones that succeeded. A plugin whose Provision returns an error is logged as
 // a warning and dropped; Ember continues without it instead of aborting.
-// Plugins are skipped entirely in multi-instance mode.
+// In multi-instance mode, plugins that do not implement
+// [plugin.MultiInstancePlugin] are skipped with a warning; multi-aware plugins
+// receive the full PluginConfig.Instances list at Provision time.
 func provisionPlugins(ctx context.Context, cfg *config, multi bool) []plugin.Plugin {
 	all := plugin.All()
 	if len(all) == 0 {
 		return nil
 	}
-	if multi {
-		for _, p := range all {
-			cfg.logger.Warn("plugin disabled in multi-instance mode (issue #36)", "plugin", p.Name())
-		}
-		return nil
-	}
 
 	var ready []plugin.Plugin
 	for _, p := range all {
+		if multi {
+			if _, ok := p.(plugin.MultiInstancePlugin); !ok {
+				cfg.logger.Warn("plugin disabled: not multi-instance aware (implement plugin.MultiInstancePlugin to opt in)", "plugin", p.Name())
+				continue
+			}
+		}
 		pcfg := plugin.PluginConfig{
 			CaddyAddr: cfg.addrs[0].url,
 			Options:   pluginEnvOptions(p.Name()),
+		}
+		if multi {
+			pcfg.Instances = make([]plugin.PluginInstance, len(cfg.addrs))
+			for i, spec := range cfg.addrs {
+				pcfg.Instances[i] = plugin.PluginInstance{Name: spec.name, Addr: spec.url}
+			}
 		}
 		if err := p.Provision(ctx, pcfg); err != nil {
 			cfg.logger.Warn("plugin disabled: Provision failed",

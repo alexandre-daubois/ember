@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -263,6 +265,106 @@ func countingCaddy(t *testing.T, host string) (*httptest.Server, *atomic.Int64) 
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &hits
+}
+
+// shardCounterPlugin is a multi-aware plugin: its Fetch reads the active
+// PluginInstance from the context, increments a per-instance counter, and
+// returns the instance name as the data payload. WriteMetrics emits a single
+// per-instance counter; transparent label injection should add ember_instance.
+type shardCounterPlugin struct {
+	mu       sync.Mutex
+	counters map[string]int
+	provCfg  plugin.PluginConfig
+}
+
+func (p *shardCounterPlugin) Name() string { return "shard-counter" }
+func (p *shardCounterPlugin) Provision(_ context.Context, cfg plugin.PluginConfig) error {
+	p.provCfg = cfg
+	p.counters = make(map[string]int)
+	return nil
+}
+func (p *shardCounterPlugin) EmberMultiInstance() {}
+
+func (p *shardCounterPlugin) Fetch(ctx context.Context) (any, error) {
+	inst, ok := plugin.InstanceFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("instance missing from context")
+	}
+	p.mu.Lock()
+	p.counters[inst.Name]++
+	count := p.counters[inst.Name]
+	p.mu.Unlock()
+	return shardCount{name: inst.Name, count: count}, nil
+}
+
+func (p *shardCounterPlugin) WriteMetrics(w io.Writer, data any, _ string) {
+	sc, ok := data.(shardCount)
+	if !ok {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "# HELP shard_counter_total per-instance plugin counter\n")
+	_, _ = fmt.Fprintf(w, "# TYPE shard_counter_total counter\n")
+	_, _ = fmt.Fprintf(w, "shard_counter_total %d\n", sc.count)
+}
+
+type shardCount struct {
+	name  string
+	count int
+}
+
+func TestIntegration_Multi_PluginEmitsPerInstanceMetricsWithLabel(t *testing.T) {
+	web1 := fakeCaddy(t, "web1.example", 100)
+	web2 := fakeCaddy(t, "web2.example", 250)
+
+	plugin.Reset()
+	t.Cleanup(plugin.Reset)
+	p := &shardCounterPlugin{}
+	plugin.Register(p)
+
+	cfg := &config{
+		addrs: []addrSpec{
+			{name: "web1", url: web1.URL},
+			{name: "web2", url: web2.URL},
+		},
+		interval: 200 * time.Millisecond,
+		expose:   freePort(t),
+		daemon:   true,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	plugins := provisionPlugins(context.Background(), cfg, true)
+	require.Len(t, plugins, 1, "multi-aware plugin must be provisioned in multi mode")
+	require.Len(t, p.provCfg.Instances, 2, "Provision must receive both instances")
+
+	instances, err := newInstances(context.Background(), cfg, "v-test")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	done := make(chan error, 1)
+	go func() { done <- runDaemon(ctx, instances, cfg, plugins) }()
+
+	url := "http://" + cfg.expose
+	waitForServer(t, url+"/healthz", 3*time.Second)
+
+	body := scrapeUntil(t, url+"/metrics", 5*time.Second, func(b string) bool {
+		return strings.Contains(b, `shard_counter_total{ember_instance="web1"}`) &&
+			strings.Contains(b, `shard_counter_total{ember_instance="web2"}`)
+	})
+
+	assert.Equal(t, 1, strings.Count(body, "# HELP shard_counter_total"),
+		"plugin HELP must be emitted once across instances")
+	assert.Equal(t, 1, strings.Count(body, "# TYPE shard_counter_total"),
+		"plugin TYPE must be emitted once across instances")
+
+	cancel()
+	select {
+	case err := <-done:
+		require.NoError(t, err, "daemon must shut down cleanly on context cancel")
+	case <-time.After(3 * time.Second):
+		t.Fatal("daemon did not exit after cancel")
+	}
 }
 
 // TestIntegration_Multi_DaemonPerInstanceInterval verifies issue #46: when

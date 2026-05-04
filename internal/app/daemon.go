@@ -221,7 +221,8 @@ func pollInstance(ctx context.Context, inst *instance, holder *exporter.StateHol
 	inst.state.Update(snap)
 
 	if multi {
-		holder.StoreInstance(inst.name, inst.addr, inst.state.CopyForExport(), nil, inst.recorder)
+		exports := fetchInstancePluginExports(ctx, dps, inst, snap, ilog)
+		holder.StoreInstance(inst.name, inst.addr, inst.state.CopyForExport(), exports, inst.recorder)
 		return
 	}
 
@@ -232,6 +233,43 @@ func pollInstance(ctx context.Context, inst *instance, holder *exporter.StateHol
 		exports = daemonPluginExports(dps)
 	}
 	holder.StoreAll(inst.state.CopyForExport(), exports)
+}
+
+// fetchInstancePluginExports runs Fetch on every multi-aware plugin with the
+// given instance attached to the context, then returns one PluginExport per
+// plugin so the exporter can emit per-instance metrics. Plugins are filtered
+// at Provision time, so dps here only ever contains MultiInstancePlugin
+// implementations in multi mode. Each call computes its own data slice; we
+// must not write back to dp.data because instance pollers run concurrently.
+func fetchInstancePluginExports(ctx context.Context, dps []daemonPlugin, inst *instance, snap *fetcher.Snapshot, log *slog.Logger) []plugin.PluginExport {
+	if len(dps) == 0 {
+		return nil
+	}
+	pi := plugin.PluginInstance{Name: inst.name, Addr: inst.addr}
+	pctx := plugin.WithInstance(ctx, pi)
+
+	notifyDaemonSubscribers(dps, snap)
+
+	var exports []plugin.PluginExport
+	for _, dp := range dps {
+		if dp.exporter == nil {
+			continue
+		}
+		var data any
+		if dp.fetcher != nil {
+			d, err := plugin.SafeFetch(pctx, dp.fetcher)
+			if err != nil {
+				log.Warn("plugin fetch failed", "plugin", dp.name, "err", err)
+				continue
+			}
+			data = d
+		}
+		exports = append(exports, plugin.PluginExport{
+			Exporter: dp.exporter,
+			Data:     data,
+		})
+	}
+	return exports
 }
 
 type daemonPlugin struct {

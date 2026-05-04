@@ -264,6 +264,81 @@ func TestDaemonPluginExports_Empty(t *testing.T) {
 	assert.Nil(t, exports)
 }
 
+type instanceAwareFetchPlugin struct {
+	testPlugin
+	gotInstance plugin.PluginInstance
+	gotOK       bool
+}
+
+func (p *instanceAwareFetchPlugin) Fetch(ctx context.Context) (any, error) {
+	p.gotInstance, p.gotOK = plugin.InstanceFromContext(ctx)
+	return p.gotInstance.Name, nil
+}
+
+func (p *instanceAwareFetchPlugin) WriteMetrics(w io.Writer, data any, _ string) {
+	if name, ok := data.(string); ok {
+		_, _ = io.WriteString(w, "shard_seen{name=\""+name+"\"} 1\n")
+	}
+}
+
+func (p *instanceAwareFetchPlugin) EmberMultiInstance() {}
+
+func TestFetchInstancePluginExports_AttachesInstanceContextAndReturnsExports(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	p := &instanceAwareFetchPlugin{testPlugin: testPlugin{name: "shard"}}
+	dps := []daemonPlugin{{p: p, name: p.Name(), fetcher: p, exporter: p}}
+
+	inst := &instance{name: "web2", addr: "https://b"}
+	exports := fetchInstancePluginExports(context.Background(), dps, inst, &fetcher.Snapshot{}, log)
+
+	require.Len(t, exports, 1)
+	assert.Equal(t, "web2", exports[0].Data, "data must reflect the per-instance Fetch result")
+	assert.True(t, p.gotOK, "Fetch context must carry a PluginInstance")
+	assert.Equal(t, plugin.PluginInstance{Name: "web2", Addr: "https://b"}, p.gotInstance)
+}
+
+func TestFetchInstancePluginExports_FetchErrorDropsExport(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	p := &daemonFetchPlugin{
+		testPlugin: testPlugin{name: "broken"},
+		fetchErr:   assert.AnError,
+	}
+	exp := &daemonExportPlugin{daemonFetchPlugin: *p}
+	dps := []daemonPlugin{{p: exp, name: exp.Name(), fetcher: exp, exporter: exp}}
+
+	inst := &instance{name: "web1", addr: "https://a"}
+	exports := fetchInstancePluginExports(context.Background(), dps, inst, &fetcher.Snapshot{}, log)
+
+	assert.Empty(t, exports, "a Fetch error must drop the export for that instance")
+	assert.Contains(t, buf.String(), "plugin fetch failed")
+}
+
+type instanceAwareSubPlugin struct {
+	testPlugin
+	calls int
+}
+
+func (p *instanceAwareSubPlugin) OnMetrics(_ *fetcher.Snapshot) { p.calls++ }
+func (p *instanceAwareSubPlugin) EmberMultiInstance()           {}
+
+func TestFetchInstancePluginExports_NotifiesSubscribersOnce(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	sub := &instanceAwareSubPlugin{testPlugin: testPlugin{name: "sub"}}
+	dps := []daemonPlugin{{p: sub, name: sub.Name()}}
+
+	inst := &instance{name: "web1", addr: "https://a"}
+	_ = fetchInstancePluginExports(context.Background(), dps, inst, &fetcher.Snapshot{}, log)
+
+	assert.Equal(t, 1, sub.calls,
+		"each pollInstance call must notify subscribers exactly once for that instance")
+}
+
 type daemonMetricsSubPlugin struct {
 	testPlugin
 	called bool

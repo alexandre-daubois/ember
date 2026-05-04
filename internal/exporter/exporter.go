@@ -157,23 +157,36 @@ func Handler(holder *StateHolder, prefix string, fallbackRecorder *instrumentati
 
 		writeAllSelfMetrics(ctx, entries, multi, fallbackRecorder)
 
+		pluginHelpSeen := make(map[string]struct{})
 		for _, e := range entries {
+			label := ""
+			if multi {
+				label = e.name
+			}
 			for _, pe := range e.slot.pluginExports {
 				if pe.Exporter != nil && pe.Data != nil {
-					safeWriteMetrics(w, pe.Exporter, pe.Data, prefix)
+					safeWriteMetrics(w, pe.Exporter, pe.Data, prefix, label, pluginHelpSeen)
 				}
 			}
 		}
 	}
 }
 
-func safeWriteMetrics(w http.ResponseWriter, e plugin.Exporter, data any, prefix string) {
+// safeWriteMetrics renders one plugin export. When instance is non-empty, the
+// output stream is rewritten on the fly to inject ember_instance="..." into
+// every metric line and to suppress duplicate # HELP / # TYPE lines that the
+// same plugin emits for several instances. Panics in WriteMetrics are converted
+// to a comment line so they cannot take the endpoint down.
+func safeWriteMetrics(w http.ResponseWriter, e plugin.Exporter, data any, prefix, instance string, helpSeen map[string]struct{}) {
+	pw := newPluginWriter(w, instance, helpSeen)
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(w, "# plugin WriteMetrics panic: %v\n", r)
+			return
 		}
+		pw.flush()
 	}()
-	e.WriteMetrics(w, data, prefix)
+	e.WriteMetrics(pw, data, prefix)
 }
 
 func prefixed(prefix, name string) string {
