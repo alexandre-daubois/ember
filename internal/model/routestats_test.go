@@ -1,6 +1,7 @@
 package model
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -167,10 +168,10 @@ func TestSortRoutes_PatternTieBreaksOnHostThenMethod(t *testing.T) {
 		{Key: RouteKey{Host: "a.example", Method: "GET", Pattern: "/x"}},
 	}
 	SortRoutes(stats, SortByRoutePattern)
-	if stats[0].Key.Host != "a.example" || stats[0].Key.Method != "GET" {
+	if stats[0].Key.Host != "a.example" || stats[0].Key.Method != http.MethodGet {
 		t.Errorf("first row = %+v, want a.example GET", stats[0].Key)
 	}
-	if stats[1].Key.Host != "a.example" || stats[1].Key.Method != "POST" {
+	if stats[1].Key.Host != "a.example" || stats[1].Key.Method != http.MethodPost {
 		t.Errorf("second row = %+v, want a.example POST", stats[1].Key)
 	}
 	if stats[2].Key.Host != "b.example" {

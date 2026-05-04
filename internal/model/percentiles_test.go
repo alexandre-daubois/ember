@@ -23,10 +23,10 @@ func TestPercentileTracker_SingleSample(t *testing.T) {
 
 	p50, p90, p95, p99, ok := pt.percentiles(now)
 	assert.True(t, ok)
-	assert.Equal(t, 42.0, p50)
-	assert.Equal(t, 42.0, p90)
-	assert.Equal(t, 42.0, p95)
-	assert.Equal(t, 42.0, p99)
+	assert.InDelta(t, 42.0, p50, 0.001)
+	assert.InDelta(t, 42.0, p90, 0.001)
+	assert.InDelta(t, 42.0, p95, 0.001)
+	assert.InDelta(t, 42.0, p99, 0.001)
 }
 
 func TestPercentileTracker_KnownDistribution(t *testing.T) {
@@ -125,8 +125,8 @@ func TestHistogramPercentiles_Basic(t *testing.T) {
 	// P50 = 50th percentile of 160 reqs -> rank 80, falls in [0.005, 0.01] bucket
 	assert.InDelta(t, 8.0, p50, 1.0, "P50 should be ~8ms")
 	// P95 = rank 152, falls in [0.01, +Inf] -> clamped at 0.01 (last finite bound)
-	assert.True(t, p95 >= 10, "P95 should be >= 10ms")
-	assert.True(t, p99 >= 10, "P99 should be >= 10ms")
+	assert.GreaterOrEqual(t, p95, 10.0, "P95 should be >= 10ms")
+	assert.GreaterOrEqual(t, p99, 10.0, "P99 should be >= 10ms")
 }
 
 func TestHistogramPercentiles_NoPrev(t *testing.T) {
@@ -183,15 +183,15 @@ func TestHistogramPercentiles_UniformDistribution(t *testing.T) {
 	assert.InDelta(t, 850, p90, 10)
 	// P95 = rank 285, falls in [0.5, 1.0] bucket: 0.5 + (1.0-0.5)*(285-200)/100 = 0.925 -> 925ms
 	assert.InDelta(t, 925, p95, 10)
-	assert.True(t, p90 >= p50, "P90 >= P50")
-	assert.True(t, p95 >= p90, "P95 >= P90")
+	assert.GreaterOrEqual(t, p90, p50, "P90 >= P50")
+	assert.GreaterOrEqual(t, p95, p90, "P95 >= P90")
 }
 
 func TestPercentileValue_TwoSamples(t *testing.T) {
 	sorted := []float64{10, 20}
-	assert.Equal(t, 15.0, percentileValue(sorted, 0.5))
-	assert.Equal(t, 10.0, percentileValue(sorted, 0.0))
-	assert.Equal(t, 20.0, percentileValue(sorted, 1.0))
+	assert.InDelta(t, 15.0, percentileValue(sorted, 0.5), 0.001)
+	assert.InDelta(t, 10.0, percentileValue(sorted, 0.0), 0.001)
+	assert.InDelta(t, 20.0, percentileValue(sorted, 1.0), 0.001)
 }
 
 func TestSubtractBuckets_ZeroDelta(t *testing.T) {
@@ -205,8 +205,8 @@ func TestSubtractBuckets_ZeroDelta(t *testing.T) {
 	}
 	delta := subtractBuckets(prev, curr)
 	assert.Len(t, delta, 2)
-	assert.Equal(t, 0.0, delta[0].CumulativeCount)
-	assert.Equal(t, 0.0, delta[1].CumulativeCount)
+	assert.Zero(t, delta[0].CumulativeCount)
+	assert.Zero(t, delta[1].CumulativeCount)
 }
 
 func TestSubtractBuckets_NewBucketInCurr(t *testing.T) {
@@ -219,8 +219,8 @@ func TestSubtractBuckets_NewBucketInCurr(t *testing.T) {
 	}
 	delta := subtractBuckets(prev, curr)
 	assert.Len(t, delta, 2)
-	assert.Equal(t, 30.0, delta[0].CumulativeCount)
-	assert.Equal(t, 120.0, delta[1].CumulativeCount)
+	assert.InDelta(t, 30.0, delta[0].CumulativeCount, 0.001)
+	assert.InDelta(t, 120.0, delta[1].CumulativeCount, 0.001)
 }
 
 func TestSubtractBuckets_NegativeDeltaClamped(t *testing.T) {
@@ -231,7 +231,7 @@ func TestSubtractBuckets_NegativeDeltaClamped(t *testing.T) {
 		{UpperBound: 0.01, CumulativeCount: 50},
 	}
 	delta := subtractBuckets(prev, curr)
-	assert.Equal(t, 0.0, delta[0].CumulativeCount)
+	assert.Zero(t, delta[0].CumulativeCount)
 }
 
 func TestSubtractBuckets_NoPrev(t *testing.T) {
@@ -253,7 +253,7 @@ func TestHistogramQuantile_FallbackLastBucket(t *testing.T) {
 	}
 	// rank=0.5*10=5, bucket[0].count=0 < 5, bucket[1] is +Inf with count=10 >= 5 -> return 0.01
 	result := histogramQuantile(0.5, buckets)
-	assert.Equal(t, 0.01, result)
+	assert.InDelta(t, 0.01, result, 0.0001)
 }
 
 func TestHistogramPercentiles_AllZeroCounts(t *testing.T) {
@@ -276,5 +276,5 @@ func TestHistogramQuantile_RankExceedsAllBuckets(t *testing.T) {
 	// q=0.99 -> rank=0.99, only +Inf has count >= rank
 	// Falls into +Inf bucket -> returns lowerBound (0.05)
 	result := histogramQuantile(0.99, buckets)
-	assert.Equal(t, 0.05, result)
+	assert.InDelta(t, 0.05, result, 0.0001)
 }

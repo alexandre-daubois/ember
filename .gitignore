@@ -1,1 +1,4 @@
 /ember
+coverage.txt
+integration-coverage.txt
+junit.xml

@@ -358,7 +358,7 @@ func TestScroll_OffsetLetsCursorGoBeyondViewport(t *testing.T) {
 
 	assert.True(t, app.logFrozen)
 	assert.Equal(t, 15, app.cursor)
-	assert.Greater(t, app.logScrollOffset, 0, "cursor past the viewport must grow the scroll offset")
+	assert.Positive(t, app.logScrollOffset, "cursor past the viewport must grow the scroll offset")
 }
 
 func TestScroll_FilterClearsScrollOffset(t *testing.T) {

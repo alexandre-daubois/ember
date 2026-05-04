@@ -231,7 +231,7 @@ func TestSortThreads_ByMethod(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByMethod, time.Now())
 
-	assert.Equal(t, "", sorted[0].CurrentMethod, "first should be empty method")
+	assert.Empty(t, sorted[0].CurrentMethod, "first should be empty method")
 	assert.Equal(t, "GET", sorted[1].CurrentMethod, "second should be GET")
 	assert.Equal(t, "POST", sorted[2].CurrentMethod, "third should be POST")
 }
@@ -244,7 +244,7 @@ func TestSortThreads_ByURI(t *testing.T) {
 	}
 	sorted := sortThreads(threads, model.SortByURI, time.Now())
 
-	assert.Equal(t, "", sorted[0].CurrentURI, "first should be empty URI")
+	assert.Empty(t, sorted[0].CurrentURI, "first should be empty URI")
 	assert.Equal(t, "/api/a", sorted[1].CurrentURI, "second should be /api/a")
 	assert.Equal(t, "/api/z", sorted[2].CurrentURI, "third should be /api/z")
 }

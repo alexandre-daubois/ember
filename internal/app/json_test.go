@@ -61,15 +61,15 @@ func TestBuildJSONOutput_WithHosts(t *testing.T) {
 	require.Len(t, out.Hosts, 2)
 
 	assert.Equal(t, "api.example.com", out.Hosts[0].Host)
-	assert.Equal(t, 100.0, out.Hosts[0].RPS)
-	assert.Equal(t, 25.0, out.Hosts[0].AvgTime)
-	assert.Equal(t, 3.0, out.Hosts[0].InFlight)
+	assert.InDelta(t, 100.0, out.Hosts[0].RPS, 0.001)
+	assert.InDelta(t, 25.0, out.Hosts[0].AvgTime, 0.001)
+	assert.InDelta(t, 3.0, out.Hosts[0].InFlight, 0.001)
 	assert.Equal(t, map[int]float64{200: 90, 404: 5}, out.Hosts[0].StatusCodes)
 	assert.Equal(t, map[string]float64{"GET": 80, "POST": 20}, out.Hosts[0].MethodRates)
 	assert.Nil(t, out.Hosts[0].P50)
 
 	assert.Equal(t, "web.example.com", out.Hosts[1].Host)
-	assert.Equal(t, 50.0, out.Hosts[1].RPS)
+	assert.InDelta(t, 50.0, out.Hosts[1].RPS, 0.001)
 	assert.Nil(t, out.Hosts[1].StatusCodes)
 }
 
@@ -92,10 +92,10 @@ func TestBuildJSONOutput_HostPercentiles(t *testing.T) {
 
 	require.Len(t, out.Hosts, 2)
 	require.NotNil(t, out.Hosts[0].P50)
-	assert.Equal(t, 10.0, *out.Hosts[0].P50)
-	assert.Equal(t, 30.0, *out.Hosts[0].P90)
-	assert.Equal(t, 50.0, *out.Hosts[0].P95)
-	assert.Equal(t, 120.0, *out.Hosts[0].P99)
+	assert.InDelta(t, 10.0, *out.Hosts[0].P50, 0.001)
+	assert.InDelta(t, 30.0, *out.Hosts[0].P90, 0.001)
+	assert.InDelta(t, 50.0, *out.Hosts[0].P95, 0.001)
+	assert.InDelta(t, 120.0, *out.Hosts[0].P99, 0.001)
 
 	assert.Nil(t, out.Hosts[1].P50)
 	assert.Nil(t, out.Hosts[1].P90)
@@ -137,7 +137,7 @@ func TestBuildJSONOutput_DerivedErrorRate(t *testing.T) {
 
 	out := buildJSONOutput(snap, &state)
 
-	assert.Equal(t, 4.2, out.Derived.ErrorRate)
+	assert.InDelta(t, 4.2, out.Derived.ErrorRate, 0.001)
 }
 
 func TestBuildJSONOutput_DerivedErrorRate_Zero(t *testing.T) {
@@ -168,8 +168,8 @@ func TestBuildJSONOutput_HostErrorRateAndAvgRequestSize(t *testing.T) {
 	out := buildJSONOutput(snap, &state)
 
 	require.Len(t, out.Hosts, 2)
-	assert.Equal(t, 3.5, out.Hosts[0].ErrorRate)
-	assert.Equal(t, 2048.0, out.Hosts[0].AvgRequestSize)
+	assert.InDelta(t, 3.5, out.Hosts[0].ErrorRate, 0.001)
+	assert.InDelta(t, 2048.0, out.Hosts[0].AvgRequestSize, 0.001)
 	assert.Zero(t, out.Hosts[1].ErrorRate)
 	assert.Zero(t, out.Hosts[1].AvgRequestSize)
 }
@@ -195,10 +195,10 @@ func TestBuildJSONOutput_HostTTFB(t *testing.T) {
 	require.Len(t, out.Hosts, 2)
 
 	require.NotNil(t, out.Hosts[0].TTFBP50)
-	assert.Equal(t, 5.0, *out.Hosts[0].TTFBP50)
-	assert.Equal(t, 15.0, *out.Hosts[0].TTFBP90)
-	assert.Equal(t, 25.0, *out.Hosts[0].TTFBP95)
-	assert.Equal(t, 50.0, *out.Hosts[0].TTFBP99)
+	assert.InDelta(t, 5.0, *out.Hosts[0].TTFBP50, 0.001)
+	assert.InDelta(t, 15.0, *out.Hosts[0].TTFBP90, 0.001)
+	assert.InDelta(t, 25.0, *out.Hosts[0].TTFBP95, 0.001)
+	assert.InDelta(t, 50.0, *out.Hosts[0].TTFBP99, 0.001)
 
 	assert.Nil(t, out.Hosts[1].TTFBP50)
 	assert.Nil(t, out.Hosts[1].TTFBP90)
@@ -219,22 +219,22 @@ func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 	out := buildJSONOutput(snap, &state)
 
 	require.NotNil(t, out.Derived.P50)
-	assert.Equal(t, 12.5, *out.Derived.P50)
-	assert.Equal(t, 30.0, *out.Derived.P90)
-	assert.Equal(t, 45.0, *out.Derived.P95)
-	assert.Equal(t, 120.0, *out.Derived.P99)
+	assert.InDelta(t, 12.5, *out.Derived.P50, 0.001)
+	assert.InDelta(t, 30.0, *out.Derived.P90, 0.001)
+	assert.InDelta(t, 45.0, *out.Derived.P95, 0.001)
+	assert.InDelta(t, 120.0, *out.Derived.P99, 0.001)
 }
 
 func TestRunJSON_Once(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`# TYPE caddy_http_requests_total counter
 caddy_http_requests_total{host="test.com",code="200"} 100
 `))
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()
@@ -276,10 +276,10 @@ func TestRunJSON_Multi_Once(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{host=\"test.com\",code=\"200\"} 1\n"))
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer srv.Close()

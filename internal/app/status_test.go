@@ -166,13 +166,13 @@ func newStatusTestServer(metricsBody string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/metrics":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(metricsBody))
 		case "/config/apps/http/servers":
-			w.WriteHeader(200)
+			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]any{"main": map[string]any{}})
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }
@@ -200,7 +200,7 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 func TestRunStatus_Unreachable(t *testing.T) {
 	// Server that returns errors for everything
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -258,13 +258,13 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 	var result statusJSON
 	require.NoError(t, json.NewDecoder(&buf).Decode(&result))
 	assert.Equal(t, "ok", result.Status)
-	assert.True(t, result.Hosts > 0)
+	assert.Positive(t, result.Hosts)
 	assert.Nil(t, result.FrankenPHP)
 }
 
 func TestRunStatus_JSON_Unreachable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
@@ -374,7 +374,7 @@ caddy_http_request_duration_seconds_sum{server="srv0",host=%q} %f
 caddy_http_request_duration_seconds_count{server="srv0",host=%q} %d
 `, host, cur, host, cur, host, float64(cur)*0.01, host, cur)
 		default:
-			w.WriteHeader(404)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -436,7 +436,7 @@ func TestRunStatusMulti_AllOk_JSON(t *testing.T) {
 func TestRunStatusMulti_OneDown_Text(t *testing.T) {
 	web1 := statusFakeCaddy(t, "web1.example", 100)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(dead.Close)
 
@@ -457,7 +457,7 @@ func TestRunStatusMulti_OneDown_Text(t *testing.T) {
 func TestRunStatusMulti_OneDown_JSON(t *testing.T) {
 	web1 := statusFakeCaddy(t, "web1.example", 100)
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(dead.Close)
 
@@ -480,11 +480,11 @@ func TestRunStatusMulti_OneDown_JSON(t *testing.T) {
 
 func TestRunStatusMulti_AllDown_JSON(t *testing.T) {
 	deadOne := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(deadOne.Close)
 	deadTwo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(deadTwo.Close)
 

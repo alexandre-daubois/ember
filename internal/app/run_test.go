@@ -24,7 +24,7 @@ func newTestConfig(addr string) *config {
 func TestValidate_DaemonRequiresExpose(t *testing.T) {
 	cfg := &config{daemon: true, expose: ""}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--daemon requires --expose")
 }
 
@@ -121,7 +121,7 @@ func TestRun_VersionFlag(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ember 1.2.3-test")
 }
 
@@ -141,12 +141,12 @@ func TestMetricsURL(t *testing.T) {
 
 func TestRun_InvalidFlag(t *testing.T) {
 	err := Run([]string{"--nonexistent"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 func TestRun_DaemonWithoutExpose(t *testing.T) {
 	err := Run([]string{"--daemon"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--daemon requires --expose")
 }
 
@@ -158,7 +158,7 @@ func TestRun_CompletionBash(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ember")
 }
 
@@ -170,7 +170,7 @@ func TestRun_CompletionZsh(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ember")
 }
 
@@ -182,21 +182,21 @@ func TestRun_CompletionFish(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "ember")
 }
 
 func TestValidate_OnceRequiresJSON(t *testing.T) {
 	cfg := &config{once: true, jsonMode: false}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--once requires --json")
 }
 
 func TestValidate_OnceWithDaemon(t *testing.T) {
 	cfg := &config{once: true, jsonMode: true, daemon: true, expose: ":9191"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--once is incompatible with --daemon")
 }
 
@@ -207,14 +207,14 @@ func TestValidate_OnceWithJSONOK(t *testing.T) {
 
 func TestRun_OnceWithoutJSON(t *testing.T) {
 	err := Run([]string{"--once"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--once requires --json")
 }
 
 func TestValidate_IntervalTooLow(t *testing.T) {
 	cfg := &config{interval: 10 * time.Millisecond, addrsRaw: []string{"http://localhost:2019"}}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--interval must be at least")
 }
 
@@ -231,7 +231,7 @@ func TestValidate_IntervalAboveMinimumOK(t *testing.T) {
 func TestValidate_TimeoutBelowInterval(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, timeout: 200 * time.Millisecond, addrsRaw: []string{"http://localhost:2019"}}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--timeout")
 }
 
@@ -252,7 +252,7 @@ func TestValidate_TimeoutBelowPerInstanceInterval(t *testing.T) {
 		addrsRaw: []string{"web1=http://a", "web2=http://b,interval=5s"},
 	}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "5s", "error must mention the largest effective interval")
 }
 
@@ -268,7 +268,7 @@ func TestValidate_TimeoutAboveMaxPerInstanceIntervalOK(t *testing.T) {
 func TestValidate_AddrMissingScheme(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"localhost:2019"}}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
@@ -295,49 +295,49 @@ func TestValidate_AddrUnixSocketTripleSlash(t *testing.T) {
 func TestValidate_AddrUnixSocketEmptyPath(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//"}}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-empty Unix socket path")
 }
 
 func TestValidate_AddrUnixSocketEmptyPathTripleSlash(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix:///"}}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-empty Unix socket path")
 }
 
 func TestValidate_AddrUnixSocketWithTLS(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}, caCert: "ca.pem"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_AddrUnixSocketWithClientCert(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}, clientCert: "cert.pem", clientKey: "key.pem"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_AddrUnixSocketWithInsecure(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"unix//run/caddy/admin.sock"}, insecure: true}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
 func TestValidate_MetricsAuthBadFormat(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: "nopassword"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "user:password format")
 }
 
 func TestValidate_MetricsAuthRequiresExpose(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, metricsAuth: "user:pass"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--metrics-auth requires --expose")
 }
 
@@ -349,21 +349,21 @@ func TestValidate_MetricsAuthOK(t *testing.T) {
 func TestValidate_MetricsAuthColonOnly(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: ":"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "both parts required")
 }
 
 func TestValidate_MetricsAuthEmptyUser(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: ":password"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "both parts required")
 }
 
 func TestValidate_MetricsAuthEmptyPassword(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: "user:"}
 	err := validate(cfg)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "both parts required")
 }
 
@@ -413,25 +413,25 @@ func TestValidate_MetricsPrefix(t *testing.T) {
 
 func TestRun_IntervalTooLow(t *testing.T) {
 	err := Run([]string{"--interval", "10ms"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--interval must be at least")
 }
 
 func TestRun_AddrMissingScheme(t *testing.T) {
 	err := Run([]string{"--addr", "localhost:2019"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestRun_SubcommandValidatesAddr(t *testing.T) {
 	err := Run([]string{"wait", "--addr", "localhost:2019"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--addr must start with http://, https://, or unix//")
 }
 
 func TestRun_SubcommandValidatesInterval(t *testing.T) {
 	err := Run([]string{"status", "--interval", "5ms"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--interval must be at least")
 }
 
@@ -472,7 +472,7 @@ func TestRun_TimeoutFlagAvailable(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "--timeout")
 }
 
@@ -484,7 +484,7 @@ func TestRun_TimeoutInheritedBySubcommands(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "--timeout")
 }
 
@@ -514,7 +514,7 @@ func TestRun_LogFormatFlagAvailable(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "--log-format")
 }
 
@@ -614,7 +614,7 @@ func TestNoColorEnv(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 
 	err := Run([]string{"--addr", "http://192.0.2.1:1", "--timeout", "1s", "status"}, "0.0.0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "NO_COLOR")
 }
 
@@ -626,7 +626,7 @@ func TestRun_HelpContainsKeybindings(t *testing.T) {
 
 	err := cmd.Execute()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	out := buf.String()
 	assert.Contains(t, out, "Keybindings")
 	assert.Contains(t, out, "--addr")

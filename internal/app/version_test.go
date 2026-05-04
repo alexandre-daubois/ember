@@ -78,7 +78,7 @@ func TestCheckLatestVersion_DevBuild(t *testing.T) {
 
 func TestCheckLatestVersion_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 

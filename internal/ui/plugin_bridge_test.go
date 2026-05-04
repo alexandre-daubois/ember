@@ -70,7 +70,7 @@ func (p *minimalPlugin) Provision(_ context.Context, _ plugin.PluginConfig) erro
 func TestSafePluginFetch(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
 	data, err := plugin.SafeFetch(context.Background(), p)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "data", data)
 }
 
@@ -85,7 +85,7 @@ func TestSafePluginFetchPanic(t *testing.T) {
 func TestSafePluginUpdate(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
 	r, err := safePluginUpdate(p, "data", 80, 24)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, r)
 }
 
@@ -111,7 +111,7 @@ func TestSafePluginViewPanic(t *testing.T) {
 func TestSafePluginHandleKey(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
 	consumed, err := safePluginHandleKey(p, tea.KeyMsg{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, consumed)
 }
 
@@ -125,14 +125,14 @@ func TestSafePluginHandleKeyPanic(t *testing.T) {
 func TestSafePluginStatusCount(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
 	s, err := safePluginStatusCount(p)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "5 items", s)
 }
 
 func TestSafePluginStatusCountPanic(t *testing.T) {
 	p := &panicPlugin{stubPlugin: stubPlugin{name: "panic"}}
 	s, err := safePluginStatusCount(p)
-	assert.Equal(t, "", s)
+	assert.Empty(t, s)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plugin panic during StatusCount")
 }
@@ -140,7 +140,7 @@ func TestSafePluginStatusCountPanic(t *testing.T) {
 func TestSafePluginHelpBindings(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
 	hb, err := safePluginHelpBindings(p)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Nil(t, hb)
 }
 
@@ -380,7 +380,7 @@ func TestNewPluginTabs_SingleRenderer_EmptyTabKey(t *testing.T) {
 	pts, _ := newPluginTabs(p, 100)
 
 	require.Len(t, pts, 1)
-	assert.Equal(t, "", pts[0].tabKey)
+	assert.Empty(t, pts[0].tabKey)
 }
 
 func TestNewPluginTabs_TabAvailabilityDetected(t *testing.T) {

@@ -225,8 +225,8 @@ func TestFetchMsg_RecoveryFromStaleZerosRPS(t *testing.T) {
 	app.Update(fetchMsg{snap: recovery})
 
 	assert.False(t, app.stale, "should no longer be stale")
-	assert.Equal(t, float64(0), app.state.Derived.RPS, "RPS should be 0 on first tick after stale recovery")
-	assert.Equal(t, float64(0), app.state.Derived.AvgTime, "AvgTime should be 0 on first tick after stale recovery")
+	assert.Zero(t, app.state.Derived.RPS, "RPS should be 0 on first tick after stale recovery")
+	assert.Zero(t, app.state.Derived.AvgTime, "AvgTime should be 0 on first tick after stale recovery")
 }
 
 func TestFetchMsg_UpstreamsAloneCountAsFreshData(t *testing.T) {
@@ -691,7 +691,7 @@ func TestTabSwitch_PreservesFilterPerTab(t *testing.T) {
 	app.filter = "worker"
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
-	assert.Equal(t, "", app.filter, "Caddy tab should start with empty filter")
+	assert.Empty(t, app.filter, "Caddy tab should start with empty filter")
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyTab})
 	assert.Equal(t, "worker", app.filter, "FrankenPHP tab should restore filter")
@@ -778,7 +778,7 @@ func TestHandleFilterKey_EscCancelsFilter(t *testing.T) {
 	app := &App{mode: viewFilter, filter: "test"}
 	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyEscape})
 	assert.Equal(t, viewList, app.mode)
-	assert.Equal(t, "", app.filter, "esc should clear filter")
+	assert.Empty(t, app.filter, "esc should clear filter")
 }
 
 func TestHandleFilterKey_EnterConfirmsFilter(t *testing.T) {
@@ -798,7 +798,7 @@ func TestHandleFilterKey_BackspaceRemovesLastChar(t *testing.T) {
 func TestHandleFilterKey_BackspaceOnEmptyFilter(t *testing.T) {
 	app := &App{mode: viewFilter, filter: ""}
 	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyBackspace})
-	assert.Equal(t, "", app.filter)
+	assert.Empty(t, app.filter)
 }
 
 func TestHandleFilterKey_TypeCharacter(t *testing.T) {
@@ -828,7 +828,7 @@ func TestHandleConfirmKey_AnyOtherKeyCancels(t *testing.T) {
 	app := &App{mode: viewConfirmRestart, status: "old"}
 	app.handleConfirmRestartKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	assert.Equal(t, viewList, app.mode)
-	assert.Equal(t, "", app.status, "canceling should clear status")
+	assert.Empty(t, app.status, "canceling should clear status")
 }
 
 func TestHandleConfirmKey_EscCancels(t *testing.T) {
@@ -847,7 +847,7 @@ func TestHandleListKey_SlashEntersFilterMode(t *testing.T) {
 	app := &App{mode: viewList, filter: "old"}
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	assert.Equal(t, viewFilter, app.mode)
-	assert.Equal(t, "", app.filter, "/ should reset filter")
+	assert.Empty(t, app.filter, "/ should reset filter")
 }
 
 func TestHandleListKey_PTogglesPause(t *testing.T) {
@@ -1363,7 +1363,7 @@ func TestPluginFetchMsg_UpdatePanicStillUpdatesData(t *testing.T) {
 	app.Update(pluginFetchMsg{groupIndex: 0, data: "new-data", err: nil})
 
 	assert.Equal(t, "new-data", app.pluginGroups[0].data, "data should be updated even when Update panics")
-	assert.Error(t, app.pluginGroups[0].err, "error should be set from Update panic")
+	require.Error(t, app.pluginGroups[0].err, "error should be set from Update panic")
 	assert.Contains(t, app.pluginGroups[0].err.Error(), "plugin panic during Update")
 }
 

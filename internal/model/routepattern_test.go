@@ -23,6 +23,8 @@ func TestNormalizeURI(t *testing.T) {
 		{"trailing slash", "/users/42/", "/users/:id/"},
 		{"query string dropped", "/search?q=42&id=550e8400-e29b-41d4-a716-446655440000", "/search"},
 		{"fragment dropped", "/page#section-42", "/page"},
+		{"leading question mark drops everything", "?foo=bar", ""},
+		{"leading hash drops everything", "#section", ""},
 		{"no leading slash", "items/42", "items/:id"},
 		{"double slash kept", "/a//b/42", "/a//b/:id"},
 		{"numeric host segment", "/v2/api", "/v2/api"},

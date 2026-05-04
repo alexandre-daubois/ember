@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -269,10 +271,10 @@ func TestStatusClassRates_AllClasses(t *testing.T) {
 	codes := map[int]float64{200: 10, 301: 5, 404: 3, 502: 2}
 	classes := statusClassRates(codes)
 
-	assert.Equal(t, 10.0, classes["2xx"])
-	assert.Equal(t, 5.0, classes["3xx"])
-	assert.Equal(t, 3.0, classes["4xx"])
-	assert.Equal(t, 2.0, classes["5xx"])
+	assert.InDelta(t, 10.0, classes["2xx"], 0.001)
+	assert.InDelta(t, 5.0, classes["3xx"], 0.001)
+	assert.InDelta(t, 3.0, classes["4xx"], 0.001)
+	assert.InDelta(t, 2.0, classes["5xx"], 0.001)
 }
 
 func TestStatusClassRates_Empty(t *testing.T) {
@@ -333,6 +335,24 @@ func TestHandler_HostMetrics_SkippedWhenNoHosts(t *testing.T) {
 	assert.NotContains(t, body, "ember_host_latency")
 	assert.NotContains(t, body, "ember_host_inflight")
 	assert.NotContains(t, body, "ember_host_status_rate")
+}
+
+// TestHandler_HostStatusRate_SkippedWhenAllHostsHaveNoStatusCodes ensures
+// the status-rate block is suppressed (HELP/TYPE included) when hosts exist
+// but none reported any status codes. This catches the boundary mutation on
+// `len(hd.StatusCodes) > 0` that would emit the block unconditionally.
+func TestHandler_HostStatusRate_SkippedWhenAllHostsHaveNoStatusCodes(t *testing.T) {
+	holder := &StateHolder{}
+	hosts := []model.HostDerived{
+		{Host: "api.example.com", RPS: 1.0},
+		{Host: "web.example.com", RPS: 0.5},
+	}
+	holder.Store(stateWithHosts(hosts))
+
+	body := get(holder).Body.String()
+	assert.Contains(t, body, "ember_host_rps", "host RPS should still be emitted")
+	assert.NotContains(t, body, "ember_host_status_rate",
+		"status-rate block must be skipped entirely when no host has StatusCodes")
 }
 
 func TestHandler_HostMetrics_SortedDeterministic(t *testing.T) {
@@ -799,6 +819,17 @@ func TestHandler_WithRecorder_GoldenPath(t *testing.T) {
 	assert.Contains(t, body, `myapp_ember_scrape_duration_seconds{stage="threads"} 0.003`)
 	assert.Regexp(t, `myapp_ember_last_successful_scrape_timestamp_seconds\{stage="metrics"\} \d+\.\d+`, body)
 	assert.Regexp(t, `myapp_ember_last_successful_scrape_timestamp_seconds\{stage="process"\} 0\.000`, body)
+
+	// Pin the timestamp magnitude: it must be Unix seconds, not nanoseconds.
+	// A mutation that swaps the `/ 1e9` for `*` would produce ~1e27 here.
+	tsRe := regexp.MustCompile(`myapp_ember_last_successful_scrape_timestamp_seconds\{stage="metrics"\}\s+([\d.eE+\-]+)`)
+	matches := tsRe.FindStringSubmatch(body)
+	require.Len(t, matches, 2, "expected to capture the metrics-stage timestamp")
+	ts, err := strconv.ParseFloat(matches[1], 64)
+	require.NoError(t, err)
+	now := float64(time.Now().Unix())
+	assert.InDelta(t, now, ts, 5.0,
+		"timestamp must be expressed in seconds since the epoch, not nanoseconds")
 
 	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
 	families, err := parser.TextToMetricFamilies(strings.NewReader(body))

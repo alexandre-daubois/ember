@@ -1,6 +1,7 @@
 package model
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -867,13 +868,13 @@ func TestComputeHostDerived_WithPercentiles(t *testing.T) {
 	assert.Len(t, s.HostDerived, 1)
 	hd := s.HostDerived[0]
 	assert.True(t, hd.HasPercentiles)
-	assert.True(t, hd.P50 > 0, "P50 should be computed")
-	assert.True(t, hd.P90 > 0, "P90 should be computed")
-	assert.True(t, hd.P95 > 0, "P95 should be computed")
-	assert.True(t, hd.P99 > 0, "P99 should be computed")
-	assert.True(t, hd.P90 >= hd.P50, "P90 >= P50")
-	assert.True(t, hd.P95 >= hd.P90, "P95 >= P90")
-	assert.True(t, hd.P99 >= hd.P95, "P99 >= P95")
+	assert.Positive(t, hd.P50, "P50 should be computed")
+	assert.Positive(t, hd.P90, "P90 should be computed")
+	assert.Positive(t, hd.P95, "P95 should be computed")
+	assert.Positive(t, hd.P99, "P99 should be computed")
+	assert.GreaterOrEqual(t, hd.P90, hd.P50, "P90 >= P50")
+	assert.GreaterOrEqual(t, hd.P95, hd.P90, "P95 >= P90")
+	assert.GreaterOrEqual(t, hd.P99, hd.P95, "P99 >= P95")
 }
 
 func TestComputeHostDerived_WithTTFB(t *testing.T) {
@@ -929,9 +930,9 @@ func TestComputeHostDerived_WithTTFB(t *testing.T) {
 	require.Len(t, s.HostDerived, 1)
 	hd := s.HostDerived[0]
 	assert.True(t, hd.HasTTFB)
-	assert.True(t, hd.TTFBP50 > 0, "TTFB P50")
-	assert.True(t, hd.TTFBP90 > 0, "TTFB P90")
-	assert.True(t, hd.TTFBP90 >= hd.TTFBP50, "TTFB P90 >= P50")
+	assert.Positive(t, hd.TTFBP50, "TTFB P50")
+	assert.Positive(t, hd.TTFBP90, "TTFB P90")
+	assert.GreaterOrEqual(t, hd.TTFBP90, hd.TTFBP50, "TTFB P90 >= P50")
 }
 
 func TestComputeHostDerived_NoTTFBWithoutBuckets(t *testing.T) {
@@ -1218,12 +1219,12 @@ func TestState_Update_DerivedP90FromHistogram(t *testing.T) {
 	s.Update(curr)
 
 	assert.True(t, s.Derived.HasPercentiles)
-	assert.True(t, s.Derived.P50 > 0, "P50")
-	assert.True(t, s.Derived.P90 > 0, "P90")
-	assert.True(t, s.Derived.P95 > 0, "P95")
-	assert.True(t, s.Derived.P99 > 0, "P99")
-	assert.True(t, s.Derived.P90 >= s.Derived.P50, "P90 >= P50")
-	assert.True(t, s.Derived.P95 >= s.Derived.P90, "P95 >= P90")
+	assert.Positive(t, s.Derived.P50, "P50")
+	assert.Positive(t, s.Derived.P90, "P90")
+	assert.Positive(t, s.Derived.P95, "P95")
+	assert.Positive(t, s.Derived.P99, "P99")
+	assert.GreaterOrEqual(t, s.Derived.P90, s.Derived.P50, "P90 >= P50")
+	assert.GreaterOrEqual(t, s.Derived.P95, s.Derived.P90, "P95 >= P90")
 }
 
 func TestState_Update_ErrorRate(t *testing.T) {
@@ -1540,6 +1541,96 @@ func TestState_CopyForExport_DeepCopiesSnapshotHosts(t *testing.T) {
 		"adding to copy Hosts map should not affect original")
 }
 
+// TestState_NoTraffic_DerivedAreZeroNotNaN: with two snapshots where every
+// counter is unchanged (deltaCount=0), derived rates and averages must read
+// as zero, never NaN. Without strict assertions here, a mutation that flips
+// the `> 0` precondition on the divide branches would slip through because
+// 0/dt is 0 — only the AvgTime path (delta/0 = NaN) and host averages
+// observable behaviour distinguishes the boundary.
+func TestState_NoTraffic_DerivedAreZeroNotNaN(t *testing.T) {
+	now := time.Now()
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads:   dummyThreads,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:                  map[string]*fetcher.WorkerMetrics{},
+			HTTPRequestDurationCount: 100,
+			HTTPRequestDurationSum:   5.0,
+			HTTPRequestsTotal:        100,
+			HTTPRequestErrorsTotal:   3,
+			Hosts: map[string]*fetcher.HostMetrics{
+				"a.example": {
+					Host:              "a.example",
+					DurationCount:     100,
+					DurationSum:       5.0,
+					ErrorsTotal:       3,
+					ResponseSizeSum:   1024,
+					ResponseSizeCount: 100,
+					RequestSizeSum:    512,
+					RequestSizeCount:  100,
+				},
+			},
+		},
+	}
+	// curr is identical to prev (no traffic between polls).
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads:   dummyThreads,
+		Metrics:   prev.Metrics,
+	}
+
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	assertFinite := func(name string, v float64) {
+		t.Helper()
+		assert.False(t, math.IsNaN(v), "%s must not be NaN", name)
+		assert.False(t, math.IsInf(v, 0), "%s must not be infinite", name)
+	}
+
+	// Global derived
+	assertFinite("RPS", s.Derived.RPS)
+	assertFinite("AvgTime", s.Derived.AvgTime)
+	assertFinite("ErrorRate", s.Derived.ErrorRate)
+	assert.Zero(t, s.Derived.RPS, "RPS must be 0 with no traffic")
+	assert.Zero(t, s.Derived.AvgTime, "AvgTime must be 0 with no traffic")
+	assert.Zero(t, s.Derived.ErrorRate, "ErrorRate must be 0 with no traffic")
+
+	// Per-host derived
+	require.Len(t, s.HostDerived, 1)
+	hd := s.HostDerived[0]
+	assertFinite("host RPS", hd.RPS)
+	assertFinite("host AvgTime", hd.AvgTime)
+	assertFinite("host AvgResponseSize", hd.AvgResponseSize)
+	assertFinite("host AvgRequestSize", hd.AvgRequestSize)
+	assert.Zero(t, hd.RPS, "host RPS must be 0 with no traffic")
+	assert.Zero(t, hd.AvgTime, "host AvgTime must be 0 with no traffic")
+}
+
+func TestState_CopyForExport_DeepCopiesSnapshotUpstreams(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{
+				"backend1": {Address: "backend1:8080", Handler: "reverse_proxy", Healthy: 1},
+			},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+	cp := s.CopyForExport()
+
+	cp.Current.Metrics.Upstreams["backend1"].Healthy = 0
+	cp.Current.Metrics.Upstreams["new"] = &fetcher.UpstreamMetrics{Address: "new:80"}
+
+	assert.InDelta(t, 1.0, s.Current.Metrics.Upstreams["backend1"].Healthy, 0.001,
+		"mutating copy Upstreams should not affect original")
+	assert.NotContains(t, s.Current.Metrics.Upstreams, "new",
+		"adding to copy Upstreams map should not affect original")
+}
+
 func TestState_CopyForExport_DeepCopiesSnapshotBuckets(t *testing.T) {
 	snap := &fetcher.Snapshot{
 		Metrics: fetcher.MetricsSnapshot{
@@ -1644,7 +1735,7 @@ func TestState_Update_NoFalseReset(t *testing.T) {
 	s.Update(curr)
 
 	assert.NotNil(t, s.Previous, "Normal increment should not trigger reset")
-	assert.True(t, s.Derived.RPS > 0, "RPS should be computed normally")
+	assert.Positive(t, s.Derived.RPS, "RPS should be computed normally")
 }
 
 func TestState_Update_CounterReset_HostMetrics(t *testing.T) {
@@ -1688,6 +1779,105 @@ func TestDetectCounterReset_NoPrevious(t *testing.T) {
 	}
 	var s State
 	assert.False(t, s.detectCounterReset(snap))
+}
+
+// TestDetectCompletedRequests_BusyButZeroStartIgnored covers the boundary
+// `<= 0` on RequestStartedAt: a busy thread without a recorded start
+// timestamp must be skipped, otherwise the duration calculation would treat
+// the unix epoch as the request start and record absurd values into the
+// percentile tracker. Catches a mutation that flips `<= 0` to `< 0`.
+func TestDetectCompletedRequests_BusyButZeroStartIgnored(t *testing.T) {
+	now := time.Now()
+	prev := &fetcher.Snapshot{
+		FetchedAt: now.Add(-1 * time.Second),
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: true, RequestStartedAt: 0},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	curr := &fetcher.Snapshot{
+		FetchedAt: now,
+		Threads: fetcher.ThreadsResponse{
+			ThreadDebugStates: []fetcher.ThreadDebugState{
+				{Index: 0, IsBusy: false},
+			},
+		},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	var s State
+	s.Update(prev)
+	s.Update(curr)
+
+	// No completed-request percentile should be computed: the previous
+	// snapshot lacked a valid start timestamp.
+	assert.False(t, s.Derived.HasPercentiles,
+		"busy thread with zero RequestStartedAt must not feed the percentile tracker")
+}
+
+// TestDetectCounterReset_EqualCountersNotAReset pins the strict-less-than
+// boundary. Catches mutations that flip `<` to `<=` and would falsely flag
+// a stable counter as having reset.
+func TestDetectCounterReset_EqualCountersNotAReset(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(s *State, snap *fetcher.Snapshot)
+	}{
+		{
+			name: "duration count unchanged",
+			setup: func(s *State, snap *fetcher.Snapshot) {
+				s.Current = &fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{HTTPRequestDurationCount: 1000}}
+				snap.Metrics.HTTPRequestDurationCount = 1000
+			},
+		},
+		{
+			name: "requests total unchanged",
+			setup: func(s *State, snap *fetcher.Snapshot) {
+				s.Current = &fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{HTTPRequestsTotal: 500}}
+				snap.Metrics.HTTPRequestsTotal = 500
+			},
+		},
+		{
+			name: "worker counter unchanged",
+			setup: func(s *State, snap *fetcher.Snapshot) {
+				s.Current = &fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{
+					Workers: map[string]*fetcher.WorkerMetrics{"w": {RequestCount: 42}},
+				}}
+				snap.Metrics.Workers = map[string]*fetcher.WorkerMetrics{"w": {RequestCount: 42}}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var s State
+			snap := &fetcher.Snapshot{}
+			tc.setup(&s, snap)
+			assert.False(t, s.detectCounterReset(snap),
+				"equal counters must not be detected as a reset")
+		})
+	}
+}
+
+// TestDetectCounterReset_OnlyDurationCounterDrops covers the path where
+// the duration count resets in isolation (RequestsTotal and Workers stay
+// flat). Without this, a mutation that disables the duration-count branch
+// (e.g. negating `> 0`) would still show "reset" via the other branches
+// and the test would pass.
+func TestDetectCounterReset_OnlyDurationCounterDrops(t *testing.T) {
+	var s State
+	s.Current = &fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{
+		HTTPRequestDurationCount: 1000,
+		HTTPRequestsTotal:        0, // never seen on this stack
+		Workers:                  map[string]*fetcher.WorkerMetrics{},
+	}}
+	snap := &fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{
+		HTTPRequestDurationCount: 5, // dropped → reset
+		HTTPRequestsTotal:        0,
+		Workers:                  map[string]*fetcher.WorkerMetrics{},
+	}}
+	assert.True(t, s.detectCounterReset(snap),
+		"duration-count drop alone must trigger reset detection")
 }
 
 func TestDetectCounterReset_HTTPRequestsTotal(t *testing.T) {
