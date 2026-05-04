@@ -103,6 +103,10 @@ EMBER_ADDR='web1=https://a;web2=https://b' ember --daemon --expose :9191
 
 When two or more `--addr` values are supplied, every emitted Prometheus metric (except `ember_build_info`) gains an `ember_instance="<name>"` label. With a single `--addr` the output is unchanged: no extra label.
 
+### Why no multi-instance TUI?
+
+The interactive TUI stays single-instance by design. Watching several Caddy hosts at the same time is what `--daemon` (Prometheus aggregation, then visualised with Grafana or any compatible dashboard) and `--json` (one JSONL line per instance per tick, ready for downstream tooling) are for. Passing repeated `--addr` to the default TUI mode fails fast with an explicit error pointing at those modes.
+
 ### Per-instance TLS
 
 Each `--addr` value can carry its own TLS knobs as comma-separated suffixes after the URL. Any field omitted falls back to the corresponding global flag (`--ca-cert`, `--client-cert`, `--client-key`, `--insecure`).
@@ -140,7 +144,7 @@ Constraints:
 - TLS suffixes are rejected on `unix//` addresses (no TLS over a Unix socket).
 - Per-instance `interval=` is allowed on `unix//` addresses (it is not a TLS option).
 - Per-instance `interval=` must be at least `100ms`. When `--timeout` is set, it must be at least the largest effective polling interval (global or per-instance).
-- `--daemon`, `--json`, `status`, `wait`, and `diff` accept multi-instance input. The TUI default mode and the `init` subcommand refuse repeated `--addr` with an explicit error.
+- `--daemon`, `--json`, `status`, `wait`, `diff`, and `init` (with `-y`) accept multi-instance input. The TUI default mode is single-instance by design and refuses repeated `--addr` with an explicit error pointing at `--daemon` and `--json`.
 - Instance names must match `[a-zA-Z_][a-zA-Z0-9_]*` (Prometheus label rules: letters, digits and underscores only — no hyphens or dots). With more than one address, slugified names that start with a digit (typical for raw IPv4 hosts) require an explicit `name=url` alias.
 - `--frankenphp-pid` is ignored when `--addr` is repeated. Local instances (`localhost`, `127.0.0.1`, `::1` or `unix//`) get per-instance `process_cpu_percent`/`process_rss_bytes` via auto-detection on the admin endpoint; remote instances silently fall back to the `process_*` metrics exposed by Caddy.
 - Plugins are skipped in multi-instance mode (a startup warning is logged).

@@ -105,7 +105,7 @@ Keybindings:
 			warnMultiLimitations(&cfg, multi)
 
 			if multi && !cfg.jsonMode && !cfg.daemon {
-				return errMultiNotSupported("the TUI default mode")
+				return fmt.Errorf("the interactive TUI is single-instance by design; use --daemon (Prometheus aggregation) or --json (JSONL stream) to monitor multiple Caddy instances at once. See docs/cli-reference.md#multi-instance-monitoring")
 			}
 
 			instances, err := newInstances(ctx, &cfg, cmd.Version)
@@ -298,12 +298,6 @@ func isValidMetricPrefix(s string) bool {
 		}
 	}
 	return true
-}
-
-// errMultiNotSupported is returned by commands that do not yet accept repeated
-// --addr.
-func errMultiNotSupported(what string) error {
-	return fmt.Errorf("%s does not support multiple --addr (only --daemon, --json, `status`, `wait` and `init` accept repeated --addr; see issue #36)", what)
 }
 
 func warnMultiLimitations(cfg *config, multi bool) {

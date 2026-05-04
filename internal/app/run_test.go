@@ -63,8 +63,9 @@ func TestValidate_MultiAddr_JSONOK(t *testing.T) {
 func TestRun_MultiAddr_TUIRefused(t *testing.T) {
 	err := Run([]string{"--addr", "web1=https://a", "--addr", "web2=https://b"}, "0.0.0")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "TUI default mode")
-	assert.Contains(t, err.Error(), "does not support multiple --addr")
+	assert.Contains(t, err.Error(), "interactive TUI is single-instance by design")
+	assert.Contains(t, err.Error(), "--daemon")
+	assert.Contains(t, err.Error(), "--json")
 }
 
 // TestRun_MultiAddr_WaitAllowed verifies that wait no longer rejects repeated
