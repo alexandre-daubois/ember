@@ -6,7 +6,7 @@ LDFLAGS   := -s -w
 
 GO_TEST_FLAGS := -race -shuffle=on -count=1
 
-.PHONY: build test test-nocolor lint coverage bench check integration fuzz clean help
+.PHONY: build test test-nocolor lint coverage bench check integration integration-docker fuzz clean help
 
 build: ## Build the binary
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY) $(CMD)
@@ -26,6 +26,9 @@ bench: ## Run benchmarks
 integration: ## Run integration tests (requires running Caddy)
 	go test -tags integration $(GO_TEST_FLAGS) -v ./internal/app/
 
+integration-docker: ## Run multi-Caddy smoke test (requires Docker)
+	go test -tags integration_docker $(GO_TEST_FLAGS) -v -run MultiCaddySmoke ./internal/app/
+
 fuzz: ## Run all fuzz targets for 30s each
 	./scripts/run_fuzz.sh 30s
 
@@ -35,4 +38,4 @@ clean: ## Remove build artifacts
 	rm -f $(BINARY) coverage.txt integration-coverage.txt
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'

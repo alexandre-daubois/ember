@@ -141,6 +141,23 @@ jobs:
           files: integration-coverage.txt
           flags: integration
 
+  multi-caddy-smoke:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: Multi-Caddy smoke test
+        run: gotestsum -- -tags integration_docker -race -shuffle=on -count=1 -run MultiCaddySmoke -v ./internal/app/
+
   fuzz:
     # Warn-only at the start: surfaces new crashes without blocking PRs.
     # Promote to required once flake-free for ~2 weeks.
