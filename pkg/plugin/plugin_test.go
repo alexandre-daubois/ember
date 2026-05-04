@@ -343,3 +343,40 @@ func TestEnvPrefix_MatchesNormalizationCollision(t *testing.T) {
 	// prefix, which is exactly why Register rejects the collision.
 	assert.Equal(t, plugin.EnvPrefix("my-plugin"), plugin.EnvPrefix("myplugin"))
 }
+
+type multiAwareFakePlugin struct {
+	fakePlugin
+}
+
+func (p *multiAwareFakePlugin) EmberMultiInstance() {}
+
+func TestMultiInstancePlugin_InterfaceCheck(t *testing.T) {
+	bare := &fakePlugin{name: "bare"}
+	multi := &multiAwareFakePlugin{fakePlugin: fakePlugin{name: "multi"}}
+
+	_, ok := any(bare).(plugin.MultiInstancePlugin)
+	assert.False(t, ok, "plain plugin must not satisfy MultiInstancePlugin")
+
+	_, ok = any(multi).(plugin.MultiInstancePlugin)
+	assert.True(t, ok, "plugin implementing EmberMultiInstance must satisfy MultiInstancePlugin")
+}
+
+func TestWithInstanceAndInstanceFromContext(t *testing.T) {
+	inst := plugin.PluginInstance{Name: "web1", Addr: "https://a"}
+	ctx := plugin.WithInstance(context.Background(), inst)
+
+	got, ok := plugin.InstanceFromContext(ctx)
+	require.True(t, ok)
+	assert.Equal(t, inst, got)
+}
+
+func TestInstanceFromContext_AbsentReturnsFalse(t *testing.T) {
+	_, ok := plugin.InstanceFromContext(context.Background())
+	assert.False(t, ok)
+}
+
+func TestPluginConfig_InstancesEmptyByDefault(t *testing.T) {
+	var cfg plugin.PluginConfig
+	assert.Empty(t, cfg.Instances,
+		"backwards-compat: PluginConfig zero value must have empty Instances")
+}

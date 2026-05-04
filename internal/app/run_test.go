@@ -655,7 +655,7 @@ func TestProvisionPlugins_Empty(t *testing.T) {
 	assert.Nil(t, plugins)
 }
 
-func TestProvisionPlugins_MultiSkipsAndWarns(t *testing.T) {
+func TestProvisionPlugins_MultiSkipsNonMultiAwareWithWarning(t *testing.T) {
 	plugin.Reset()
 	plugin.Register(&testPlugin{name: "ratelimit"})
 
@@ -670,9 +670,54 @@ func TestProvisionPlugins_MultiSkipsAndWarns(t *testing.T) {
 	}
 
 	plugins := provisionPlugins(context.Background(), cfg, true)
-	assert.Empty(t, plugins, "plugins must be skipped in multi-instance mode")
-	assert.Contains(t, buf.String(), "plugin disabled in multi-instance mode")
+	assert.Empty(t, plugins, "non-multi-aware plugins must be skipped in multi-instance mode")
+	assert.Contains(t, buf.String(), "not multi-instance aware")
 	assert.Contains(t, buf.String(), "plugin=ratelimit")
+}
+
+type multiAwareTestPlugin struct {
+	testPlugin
+}
+
+func (p *multiAwareTestPlugin) EmberMultiInstance() {}
+
+func TestProvisionPlugins_MultiKeepsMultiAwarePluginsAndPopulatesInstances(t *testing.T) {
+	plugin.Reset()
+	p := &multiAwareTestPlugin{testPlugin: testPlugin{name: "shard"}}
+	plugin.Register(p)
+
+	var buf bytes.Buffer
+	cfg := &config{
+		addrsRaw: []string{"web1=https://a", "web2=https://b"},
+		addrs: []addrSpec{
+			{name: "web1", url: "https://a"},
+			{name: "web2", url: "https://b"},
+		},
+		logger: slog.New(slog.NewTextHandler(&buf, nil)),
+	}
+
+	plugins := provisionPlugins(context.Background(), cfg, true)
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "shard", plugins[0].Name())
+	assert.Equal(t, "https://a", p.provisionCfg.CaddyAddr,
+		"CaddyAddr keeps the first instance for backwards compatibility")
+	require.Len(t, p.provisionCfg.Instances, 2)
+	assert.Equal(t, plugin.PluginInstance{Name: "web1", Addr: "https://a"}, p.provisionCfg.Instances[0])
+	assert.Equal(t, plugin.PluginInstance{Name: "web2", Addr: "https://b"}, p.provisionCfg.Instances[1])
+	assert.NotContains(t, buf.String(), "not multi-instance aware",
+		"multi-aware plugins must not trigger the disabled warning")
+}
+
+func TestProvisionPlugins_SingleInstanceLeavesInstancesEmpty(t *testing.T) {
+	plugin.Reset()
+	p := &multiAwareTestPlugin{testPlugin: testPlugin{name: "shard"}}
+	plugin.Register(p)
+
+	cfg := newTestConfig("http://localhost:2019")
+	plugins := provisionPlugins(context.Background(), cfg, false)
+	require.Len(t, plugins, 1)
+	assert.Empty(t, p.provisionCfg.Instances,
+		"Instances must be empty in single-instance mode (compat with non-multi-aware plugins)")
 }
 
 func TestWarnMultiLimitations_FrankenphpPID(t *testing.T) {

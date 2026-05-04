@@ -784,6 +784,60 @@ func TestHandler_PluginPanicDoesNotBreakOtherMetrics(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "process_cpu_percent")
 }
 
+type richExporter struct{}
+
+func (e *richExporter) WriteMetrics(w io.Writer, _ any, _ string) {
+	_, _ = io.WriteString(w, "# HELP plugin_metric a description\n")
+	_, _ = io.WriteString(w, "# TYPE plugin_metric gauge\n")
+	_, _ = io.WriteString(w, "plugin_metric 1\n")
+	_, _ = io.WriteString(w, "plugin_metric{kind=\"foo\"} 2\n")
+}
+
+func TestHandler_Multi_PluginMetricsCarryEmberInstanceLabel(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	st := stateWithThreads(nil, nil)
+	exp := &richExporter{}
+	holder.StoreInstance("web1", "https://a", st,
+		[]plugin.PluginExport{{Exporter: exp, Data: "d"}}, nil)
+	holder.StoreInstance("web2", "https://b", st,
+		[]plugin.PluginExport{{Exporter: exp, Data: "d"}}, nil)
+
+	rec := httptest.NewRecorder()
+	Handler(holder, "", nil)(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+
+	assert.Contains(t, body, `plugin_metric{ember_instance="web1"} 1`)
+	assert.Contains(t, body, `plugin_metric{kind="foo",ember_instance="web1"} 2`)
+	assert.Contains(t, body, `plugin_metric{ember_instance="web2"} 1`)
+	assert.Contains(t, body, `plugin_metric{kind="foo",ember_instance="web2"} 2`)
+
+	assert.Equal(t, 1, strings.Count(body, "# HELP plugin_metric"),
+		"HELP must be emitted once across instances")
+	assert.Equal(t, 1, strings.Count(body, "# TYPE plugin_metric"),
+		"TYPE must be emitted once across instances")
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	_, err := parser.TextToMetricFamilies(strings.NewReader(body))
+	require.NoError(t, err, "multi-instance plugin output must remain valid Prometheus text")
+}
+
+func TestHandler_Single_PluginMetricsRemainUnlabelled(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
+		{Exporter: &richExporter{}, Data: "d"},
+	})
+
+	rec := get(holder)
+	body := rec.Body.String()
+	assert.Contains(t, body, "plugin_metric 1\n",
+		"single-instance mode must not inject ember_instance into plugin metrics")
+	assert.NotContains(t, body, "plugin_metric{ember_instance",
+		"no ember_instance label in single-instance mode")
+}
+
 func TestBasicAuth_InvalidUser(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
