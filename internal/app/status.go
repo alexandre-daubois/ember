@@ -108,6 +108,7 @@ type statusJSON struct {
 	Name        string   `json:"name,omitempty"`
 	Status      string   `json:"status"`
 	Addr        string   `json:"addr,omitempty"`
+	Error       string   `json:"error,omitempty"`
 	Hosts       int      `json:"hosts,omitempty"`
 	RPS         float64  `json:"rps"`
 	P99         *float64 `json:"p99,omitempty"`
@@ -228,6 +229,7 @@ type statusResult struct {
 	name       string
 	addr       string
 	reachable  bool
+	err        error
 	line       string
 	payload    statusJSON
 	frankenPHP bool
@@ -273,6 +275,9 @@ func runStatusMulti(ctx context.Context, w io.Writer, cfg *config, jsonMode bool
 			if !r.reachable {
 				r.payload.Status = "unreachable"
 			}
+			if r.err != nil {
+				r.payload.Error = r.err.Error()
+			}
 			body.Instances[i] = r.payload
 		}
 		if err := json.NewEncoder(w).Encode(body); err != nil {
@@ -280,9 +285,12 @@ func runStatusMulti(ctx context.Context, w io.Writer, cfg *config, jsonMode bool
 		}
 	} else {
 		for _, r := range results {
-			if r.reachable {
+			switch {
+			case r.reachable:
 				fmt.Fprintf(w, "[%s] %s\n", r.name, r.line)
-			} else {
+			case r.err != nil:
+				fmt.Fprintf(w, "[%s] Caddy TLS configuration failed (%s) | %s\n", r.name, r.err, r.addr)
+			default:
 				fmt.Fprintf(w, "[%s] Caddy UNREACHABLE | %s\n", r.name, r.addr)
 			}
 		}
@@ -304,6 +312,7 @@ func collectInstanceStatus(ctx context.Context, cfg *config, spec addrSpec) stat
 	res := statusResult{name: spec.name, addr: spec.url}
 	f := fetcher.NewHTTPFetcher(spec.url, 0)
 	if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
+		res.err = err
 		return res
 	}
 	f.DetectFrankenPHP(ctx)

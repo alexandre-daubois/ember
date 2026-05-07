@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -502,6 +503,54 @@ func TestRunStatusMulti_AllDown_JSON(t *testing.T) {
 	for _, inst := range body.Instances {
 		assert.Equal(t, "unreachable", inst.Status)
 	}
+}
+
+func TestRunStatusMulti_TLSError_Text(t *testing.T) {
+	web1 := statusFakeCaddy(t, "web1.example", 100)
+	missingCA := filepath.Join(t.TempDir(), "missing.pem")
+
+	cfg := newMultiCfg(t, []addrSpec{
+		{name: "web1", url: web1.URL},
+		{name: "broken", url: "https://example.invalid", tls: addrTLS{caCert: missingCA}},
+	})
+	var buf bytes.Buffer
+	err := runStatusMulti(context.Background(), &buf, cfg, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "broken")
+
+	out := buf.String()
+	assert.Contains(t, out, "[broken] Caddy TLS configuration failed")
+	assert.Contains(t, out, missingCA)
+	assert.NotContains(t, out, "[broken] Caddy UNREACHABLE")
+	assert.Contains(t, out, "[web1] Caddy OK")
+}
+
+func TestRunStatusMulti_TLSError_JSON(t *testing.T) {
+	web1 := statusFakeCaddy(t, "web1.example", 100)
+	missingCA := filepath.Join(t.TempDir(), "missing.pem")
+
+	cfg := newMultiCfg(t, []addrSpec{
+		{name: "web1", url: web1.URL},
+		{name: "broken", url: "https://example.invalid", tls: addrTLS{caCert: missingCA}},
+	})
+	var buf bytes.Buffer
+	require.Error(t, runStatusMulti(context.Background(), &buf, cfg, true))
+
+	var body statusMultiJSON
+	require.NoError(t, json.NewDecoder(&buf).Decode(&body))
+	assert.Equal(t, "degraded", body.Status)
+	require.Len(t, body.Instances, 2)
+
+	var broken statusJSON
+	for _, inst := range body.Instances {
+		if inst.Name == "broken" {
+			broken = inst
+		}
+	}
+	assert.Equal(t, "broken", broken.Name)
+	assert.Equal(t, "unreachable", broken.Status)
+	assert.NotEmpty(t, broken.Error)
+	assert.Contains(t, broken.Error, missingCA)
 }
 
 func TestRunStatusMulti_AllOk_ExitCodeZero(t *testing.T) {
