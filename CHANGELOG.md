@@ -8,7 +8,18 @@ All notable changes to Ember are documented here.
 
 - Multi-instance monitoring: poll several Caddy/FrankenPHP instances at once, with per-instance TLS, polling interval, health check and PID resolution (#51-#59, #62).
 - `ember init`, `ember diff`, `ember wait`, `ember status` now support multi-instance setups (#52-#55).
+- `ember wait --any`: return as soon as any instance is reachable instead of waiting for all (#53).
+- `MultiInstancePlugin` opt-in marker so plugins can receive per-instance `Fetch` calls; plugins without the marker are disabled in multi-instance mode with a warning (#62).
+- `ember_instance="<name>"` label on every Prometheus metric (except `ember_build_info`) when `--addr` is repeated; single-instance output is unchanged.
 - Access-by-route view (#34).
+
+### Changed
+
+- TUI mode refuses repeated `--addr` with an explicit error pointing at `--daemon` / `--json`; multi-instance is supported only in non-interactive modes.
+
+### Fixed
+
+- `ember status` with multi-instance now distinguishes TLS misconfiguration (`Caddy TLS configuration failed (...)` and a JSON `error` field) from a network outage, instead of reporting both as `UNREACHABLE`.
 
 ## 1.3.0 - 2026-04-22
 
