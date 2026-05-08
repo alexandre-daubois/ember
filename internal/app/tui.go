@@ -247,8 +247,8 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 		watchdogDone.Wait()
 		unregCtx, unregCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer unregCancel()
-		_ = hf.UnregisterEmberLogSink(unregCtx)
-		_ = hf.UnregisterEmberRuntimeLogSink(unregCtx)
+		unregisterWithRetry(unregCtx, "__ember__", hf.UnregisterEmberLogSink, 3)
+		unregisterWithRetry(unregCtx, "__ember_runtime__", hf.UnregisterEmberRuntimeLogSink, 3)
 		restoreAccessLogs(hf, enabled)
 	}, true
 }
