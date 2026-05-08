@@ -138,6 +138,27 @@ scrape_configs:
       - targets: ["localhost:9191"]
 ```
 
+## Caddy logs `broken pipe` after Ember exits
+
+**Symptom:** After Ember exits uncleanly (`kill -9`, OOM, Caddy busy during quit), Caddy keeps writing `broken pipe` to its stderr every 10 seconds.
+
+**Cause:** Ember registers two log sinks in Caddy (`__ember__`, `__ember_runtime__`) pointing at a transient TCP listener. If the unregister step never runs or the admin API is busy when it does, Caddy keeps re-dialling the now-defunct listener address.
+
+**Workaround:** Restart Ember with a fixed listener port so the next launch overwrites the stale entry via PUT:
+
+```bash
+ember --log-listen 127.0.0.1:9210
+```
+
+Or set `EMBER_LOG_LISTEN=127.0.0.1:9210` in the environment.
+
+**Manual cleanup:** Remove the sinks via Caddy's admin API:
+
+```bash
+curl -X DELETE http://127.0.0.1:2019/config/logging/logs/__ember__
+curl -X DELETE http://127.0.0.1:2019/config/logging/logs/__ember_runtime__
+```
+
 ## High memory usage in Ember
 
 **Symptom:** Ember's own RSS is higher than expected.
