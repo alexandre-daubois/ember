@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -245,12 +246,20 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 		cancel()
 		ln.Close()
 		watchdogDone.Wait()
-		unregCtx, unregCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer unregCancel()
-		_ = hf.UnregisterEmberLogSink(unregCtx)
-		_ = hf.UnregisterEmberRuntimeLogSink(unregCtx)
+		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
+		unregisterSink("__ember_runtime__", hf.UnregisterEmberRuntimeLogSink)
 		restoreAccessLogs(hf, enabled)
 	}, true
+}
+
+// unregisterSink calls fn with a fresh 3s timeout and logs any error. Each
+// sink gets its own budget so a slow first call cannot starve the second.
+func unregisterSink(name string, fn func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := fn(ctx); err != nil {
+		slog.Warn("failed to unregister log sink", "sink", name, "err", err)
+	}
 }
 
 // enableAccessLogs walks every HTTP server known to Caddy and turns on access
