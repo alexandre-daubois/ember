@@ -2,7 +2,7 @@
 
 All notable changes to Ember are documented here.
 
-## 1.4.0-dev
+## 1.4.0 - 2026-05-11
 
 ### Added
 
