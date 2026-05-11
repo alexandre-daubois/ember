@@ -708,6 +708,91 @@ func TestTabSwitch_Key2NoOpWithSingleTab(t *testing.T) {
 	assert.Equal(t, tabCaddy, app.activeTab)
 }
 
+func TestTabSelectMode_SwitchesViaT_Then_Digit(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+	// Synthetic 5-tab setup so digit 5 is in range.
+	app.tabs = []tab{tabCaddy, tabFrankenPHP, tabConfig, tabCertificates, tabLogs}
+	app.tabStates = map[tab]*tabState{
+		tabCaddy: {}, tabFrankenPHP: {}, tabConfig: {}, tabCertificates: {}, tabLogs: {},
+	}
+	app.activeTab = tabCaddy
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	assert.True(t, app.pendingTabSelect, "t should enter tab-select mode")
+	assert.Equal(t, tabCaddy, app.activeTab, "t alone must not switch tabs")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
+	assert.False(t, app.pendingTabSelect, "digit should leave tab-select mode")
+	assert.Equal(t, tabLogs, app.activeTab, "digit 5 should switch to 5th tab")
+}
+
+func TestTabSelectMode_EscCancels(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+	app.activeTab = tabCaddy
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	assert.True(t, app.pendingTabSelect)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEsc})
+	assert.False(t, app.pendingTabSelect, "esc should leave tab-select mode")
+	assert.Equal(t, tabCaddy, app.activeTab, "esc must not switch tabs")
+}
+
+func TestTabSelectMode_OutOfRangeIgnored(t *testing.T) {
+	app := newAppWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsWaiting: true}})
+	// 2 tabs only; digit 9 is out of range.
+	app.activeTab = tabCaddy
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	assert.True(t, app.pendingTabSelect)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'9'}})
+	assert.False(t, app.pendingTabSelect, "out-of-range digit should still leave the mode")
+	assert.Equal(t, tabCaddy, app.activeTab, "out-of-range digit must not switch tabs")
+}
+
+func TestTabSelectMode_PluginConsumesT(t *testing.T) {
+	// keyTrackingPlugin returns true from HandleKey: it consumes the `t`.
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	assert.Equal(t, "t", p.lastKey, "plugin should receive the t keystroke first")
+	assert.False(t, app.pendingTabSelect, "plugin consumed t, no tab-select mode")
+}
+
+func TestPluginTab_DigitFallsThroughToTabSwitch(t *testing.T) {
+	// stubPlugin.HandleKey returns false: it does NOT consume the digit. The
+	// digit should fall through to the regular tab-switch behavior so plugins
+	// without a digit handler don't break the keybinding.
+	renderer := &stubPlugin{name: "myplugin"}
+	cfg := Config{Plugins: []plugin.Plugin{renderer}}
+	app := NewApp(nil, cfg)
+	// NewApp builds tabs as [tabCaddy, tabLogs, tabConfig, tabCertificates, tabPluginBase].
+	app.switchTab(tabPluginBase)
+	require.Equal(t, tabPluginBase, app.activeTab, "test precondition: plugin tab active")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	assert.Equal(t, tabCaddy, app.activeTab, "digit 1 should fall through to tab switch when plugin returns false")
+}
+
+func TestPluginTab_DigitConsumedByPlugin(t *testing.T) {
+	// keyTrackingPlugin.HandleKey returns true: it consumes the digit. The
+	// digit must NOT fall through to tab-switch — the plugin owns it.
+	// Regression guard for the early `return a, nil` at app_keys.go:149.
+	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
+	cfg := Config{Plugins: []plugin.Plugin{p}}
+	app := NewApp(nil, cfg)
+	app.switchTab(tabPluginBase)
+	require.Equal(t, tabPluginBase, app.activeTab, "test precondition: plugin tab active")
+
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	assert.Equal(t, "1", p.lastKey, "plugin should receive the digit first")
+	assert.Equal(t, tabPluginBase, app.activeTab, "digit 1 must not switch tabs when plugin consumes it")
+}
+
 func TestEnableFrankenPHP_OnFetch(t *testing.T) {
 	app := &App{
 		activeTab:     tabCaddy,

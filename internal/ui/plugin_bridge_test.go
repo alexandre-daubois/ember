@@ -152,6 +152,25 @@ func TestSafePluginHelpBindingsPanic(t *testing.T) {
 	assert.Contains(t, err.Error(), "plugin panic during HelpBindings")
 }
 
+func TestSafePluginFooterText(t *testing.T) {
+	fr := &footerRendererStub{footer: "custom hint"}
+	s := safePluginFooterText(fr, 80)
+	assert.Equal(t, "custom hint", s)
+}
+
+// panicFooterStub satisfies plugin.FooterRenderer with a FooterText that
+// always panics. Used to verify safePluginFooterText recovers and returns
+// the empty-string fallback documented on the function.
+type panicFooterStub struct{}
+
+func (p *panicFooterStub) FooterText(_ int) string { panic("footer boom") }
+
+func TestSafePluginFooterTextPanic(t *testing.T) {
+	fr := &panicFooterStub{}
+	s := safePluginFooterText(fr, 80)
+	assert.Empty(t, s, "panicking FooterText should be recovered to empty string")
+}
+
 func TestDoPluginFetchCmd(t *testing.T) {
 	p := &stubPlugin{name: "ok"}
 	cmd := doPluginFetch(context.Background(), 0, p)

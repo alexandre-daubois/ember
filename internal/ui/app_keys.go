@@ -20,6 +20,12 @@ func (a *App) handleTabSwitch(key string) (tea.Cmd, bool) {
 			a.switchTab(a.tabs[idx-1])
 		}
 		return a.switchTabCmd(), true
+	case "t":
+		// vim-style tab-select prefix on non-plugin tabs. The plugin-tab
+		// path lives in handleListKey's switch where the plugin gets a
+		// right-of-refusal first.
+		a.pendingTabSelect = true
+		return nil, true
 	}
 	return nil, false
 }
@@ -93,6 +99,25 @@ func (a *App) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Tab-select mode: the user pressed `t`, the next digit selects a tab.
+	// Esc cancels, any other key cancels and falls through to normal routing.
+	if a.pendingTabSelect {
+		a.pendingTabSelect = false
+		s := msg.String()
+		if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+			idx := int(s[0] - '0')
+			if idx >= 1 && idx <= len(a.tabs) {
+				a.switchTab(a.tabs[idx-1])
+				return a, a.switchTabCmd()
+			}
+			return a, nil
+		}
+		if s == "esc" {
+			return a, nil
+		}
+		// other keys: fall through to normal handling below
+	}
+
 	if a.activeTab == tabConfig {
 		return a.handleConfigListKey(msg)
 	}
@@ -116,11 +141,32 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.prevTab()
 		return a, a.switchTabCmd()
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		// If a plugin tab is active, offer digits to the plugin first
+		// (right-of-refusal, same contract as `t`). When the plugin consumes
+		// the digit, no tab switch happens. When it returns false (the default
+		// for plugins without a digit handler), fall through to the normal
+		// tab-switch behavior so the keybinding stays useful on plugin tabs.
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			if consumed, _ := safePluginHandleKey(pt.renderer, msg); consumed {
+				return a, nil
+			}
+		}
 		idx, _ := strconv.Atoi(msg.String())
 		if idx >= 1 && idx <= len(a.tabs) {
 			a.switchTab(a.tabs[idx-1])
 		}
 		return a, a.switchTabCmd()
+	case "t":
+		// vim-style tab-select prefix. On a plugin tab, give the plugin a
+		// right-of-refusal first (in case it owns `t` as a hotkey). When the
+		// plugin consumes `t`, no mode is entered.
+		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+			if consumed, _ := safePluginHandleKey(pt.renderer, msg); consumed {
+				return a, nil
+			}
+		}
+		a.pendingTabSelect = true
+		return a, nil
 	case "up", "k":
 		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
 			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
