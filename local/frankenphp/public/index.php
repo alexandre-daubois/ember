@@ -1,6 +1,6 @@
 <?php
 
-$ms = \random_int(10, 350);
+$ms = \random_int(10, 150);
 \usleep($ms * 1000);
 
 // Vary status codes by path so load.sh produces 200/404/500 like the caddy stack.

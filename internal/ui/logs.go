@@ -40,6 +40,7 @@ func (a *App) renderLogsTab(width, height int) string {
 		if bodyHeight < 1 {
 			bodyHeight = 1
 		}
+
 		visible, localCursor := a.sliceLogViewport(all, bodyHeight)
 		// When the sidepanel owns keyboard focus, suppress the table row
 		// highlight: seeing both the sidepanel selection and a reversed row
@@ -593,6 +594,16 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			a.freezeLogs()
 		}
+	case "enter":
+		if !a.isRoutesView() && a.currentLogsListLen() > 0 {
+			a.mode = viewDetail
+			return a, nil
+		}
+	case "esc":
+		if a.mode == viewDetail {
+			a.mode = viewList
+			return a, nil
+		}
 	case "c":
 		if a.isRoutesView() {
 			if a.routeAggregator != nil {
@@ -627,9 +638,14 @@ func (a *App) currentLogsListLen() int {
 func logsHelpBindings(frozen, routesView bool, routeSort string) []binding {
 	bindings := []binding{
 		{"↑/↓", "navigate"},
-		{"←/→", "panel"},
-		{"/", "filter"},
 	}
+	if !routesView {
+		bindings = append(bindings, binding{"Enter", "detail"})
+	}
+	bindings = append(bindings,
+		binding{"←/→", "panel"},
+		binding{"/", "filter"},
+	)
 	if routesView {
 		bindings = append(bindings, binding{"s/S", "sort(" + routeSort + ")"})
 	} else {
