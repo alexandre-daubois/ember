@@ -558,3 +558,11 @@ Plugin names must:
 ## Panic Safety
 
 Ember wraps all plugin calls (`Fetch`, `Update`, `View`, `HandleKey`, `StatusCount`, `HelpBindings`, `WriteMetrics`) with panic recovery. If your plugin panics, Ember displays an error in the tab instead of crashing. For `WriteMetrics`, a comment line is written to the output instead of crashing the `/metrics` endpoint.
+
+## Community Plugins
+
+A non-exhaustive list of plugins built by the community. Useful both as ready-to-use integrations and as real-world examples when building your own.
+
+- **[ember-crowdsec](https://github.com/rewulff/ember-crowdsec)** by [@rewulff](https://github.com/rewulff): adds a tab backed by the CrowdSec LAPI. Surfaces active decisions and recent alerts, with hotkeys to unban or whitelist a selected IP from the TUI, every write action journalled to an audit log. Background article (German): [wulffit.de/artikel/ember-crowdsec](https://wulffit.de/artikel/ember-crowdsec).
+
+Built a plugin? [Open a discussion](https://github.com/alexandre-daubois/ember/discussions/categories/show-and-tell) to get it listed here!
