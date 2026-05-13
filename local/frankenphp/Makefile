@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: local clean help
+.PHONY: local up down traffic
 
 up: ## Start docker compose via build & up in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
@@ -12,6 +12,13 @@ up: ## Start docker compose via build & up in the local folder
 down: ## Clean docker compose in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
 	docker compose down --remove-orphans
+
+traffic: ## Generate light traffic against instance
+	@for i in $$(seq 1 50); do \
+		curl -s http://localhost:8080/ > /dev/null & \
+		sleep 0.05; \
+	done; wait
+	@echo "  done"
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'

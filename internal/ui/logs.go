@@ -38,6 +38,7 @@ func (a *App) renderLogsTab(width, height int) string {
 	rightStatus := a.buildLogsHeaderStatus()
 
 	var table string
+	var detailPanel string
 	if a.isRoutesView() {
 		table = a.renderRoutesView(tableW, height, rightStatus)
 	} else {
@@ -46,6 +47,27 @@ func (a *App) renderLogsTab(width, height int) string {
 		if bodyHeight < 1 {
 			bodyHeight = 1
 		}
+
+		if a.mode == viewDetail {
+			if width >= detailSideThreshold {
+				tableW -= detailPanelWidth
+				if tableW < 20 {
+					tableW = 20
+				}
+			}
+
+			// Detail panel content
+			if a.cursor >= 0 && a.cursor < len(all) {
+				pWidth := detailPanelWidth
+				pHeight := height
+				if width < detailSideThreshold {
+					pWidth = width
+					pHeight = detailPanelHeight + 6 // Approximate height for log details
+				}
+				detailPanel = renderLogDetailPanel(all[a.cursor], pWidth, pHeight)
+			}
+		}
+
 		visible, localCursor := a.sliceLogViewport(all, bodyHeight)
 		// When the sidepanel owns keyboard focus, suppress the table row
 		// highlight: seeing both the sidepanel selection and a reversed row
@@ -65,7 +87,14 @@ func (a *App) renderLogsTab(width, height int) string {
 
 	selIdx := sidepanelIndex(items, a.logSel)
 	sidepanel := renderSidepanel(items, selIdx, a.logSidepanelFocused, sidepanelW, height)
-	return lipgloss.JoinHorizontal(lipgloss.Top, sidepanel, table)
+	main := lipgloss.JoinHorizontal(lipgloss.Top, sidepanel, table)
+	if detailPanel != "" {
+		if width >= detailSideThreshold {
+			return lipgloss.JoinHorizontal(lipgloss.Top, main, detailPanel)
+		}
+		return lipgloss.JoinVertical(lipgloss.Left, main, detailPanel)
+	}
+	return main
 }
 
 // renderRoutesView aggregates access logs into per-route stats and slices
@@ -543,6 +572,16 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			a.freezeLogs()
 		}
+	case "enter":
+		if !a.isRoutesView() && a.currentLogsListLen() > 0 {
+			a.mode = viewDetail
+			return a, nil
+		}
+	case "esc":
+		if a.mode == viewDetail {
+			a.mode = viewList
+			return a, nil
+		}
 	case "c":
 		if a.isRoutesView() {
 			if a.routeAggregator != nil {
@@ -577,9 +616,14 @@ func (a *App) currentLogsListLen() int {
 func logsHelpBindings(frozen, routesView bool, routeSort string) []binding {
 	bindings := []binding{
 		{"↑/↓", "navigate"},
-		{"←/→", "panel"},
-		{"/", "filter"},
 	}
+	if !routesView {
+		bindings = append(bindings, binding{"Enter", "detail"})
+	}
+	bindings = append(bindings,
+		binding{"←/→", "panel"},
+		binding{"/", "filter"},
+	)
 	if routesView {
 		bindings = append(bindings, binding{"s/S", "sort(" + routeSort + ")"})
 	} else {
