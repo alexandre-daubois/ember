@@ -381,6 +381,7 @@ No regressions detected
 | `Esc` | Close panel / clear search / go back               |
 | `Tab` / `Shift+Tab` | Switch tab                                         |
 | `1` / `2` / `3` | Jump to tab                                        |
+| `t` then `1`..`9` | Tab-select prefix: arm tab-select mode, next digit switches tab (`Esc` cancels) |
 | `Home` / `End` | Jump to first / last item                          |
 | `PgUp` / `PgDn` | Page up / page down                                |
 

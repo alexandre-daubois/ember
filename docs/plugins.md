@@ -348,6 +348,36 @@ type Renderer interface {
 - `StatusCount`: returns a string shown as a badge in the tab bar (e.g., "12 blocked"). Empty string means no badge
 - `HelpBindings`: returns keybindings shown in the `?` help overlay
 
+### Custom footer text (optional)
+
+```go
+type FooterRenderer interface {
+    FooterText(width int) string
+}
+```
+
+Implement `FooterRenderer` on your `Renderer` (or your plugin struct, if it
+also acts as the renderer) to override Ember's footer hint line while your
+tab is active. The width argument is the available footer width in cells:
+useful if you want to elide hints on narrow terminals.
+
+```go
+func (p *yourPlugin) FooterText(width int) string {
+    if p.modal {
+        return "↑/↓ select · enter confirm · esc cancel"
+    }
+    return ""  // use default footer
+}
+```
+
+Returning an empty string falls back to the default footer (Ember's core
+hotkey list, or the tab-select-mode hint when the user is in the tab
+picker). Use this hook when your plugin has modal sub-states with their
+own keybindings: surfacing them in the global footer is more
+discoverable than burning a row of plugin tab real-estate on an inline
+help line. The tab-select-mode hint takes priority over plugin overrides
+so the user can always cancel out.
+
 ### Exporter (optional)
 
 ```go
@@ -525,7 +555,6 @@ The following keys are handled by Ember core and **never** reach your plugin's `
 |--------------------------|-----------------------|
 | `q`, `Ctrl+C`           | Quit                  |
 | `Tab`                    | Switch tab            |
-| `1`-`9`                 | Jump to tab by number |
 | `?`                      | Toggle help overlay   |
 | `g`                      | Toggle graphs         |
 | `p`                      | Pause / resume        |
@@ -541,6 +570,13 @@ The following keys are used by core tabs (Caddy, FrankenPHP) but **forwarded** t
 | `Enter`                  | Open detail panel                |
 | `/`                      | Open filter                      |
 | `r`                      | Restart workers (FrankenPHP)     |
+
+The following keys are offered to your plugin **first** (right-of-refusal): return `true` from `HandleKey` to consume the key, or `false` to let Ember's default behavior run.
+
+| Key                      | Default behavior                   |
+|--------------------------|------------------------------------|
+| `1`-`9`                 | Jump to tab by number              |
+| `t`                      | Arm tab-select mode (then `1`-`9`) |
 
 All other keys reach your plugin's `HandleKey` directly.
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -13,7 +14,25 @@ type binding struct {
 	desc string
 }
 
-func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, upstreamSortBy model.UpstreamSortField, routeSortBy model.RouteSortField, paused bool, width int, activeTab tab, logFrozen, routesView bool) string {
+func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSortBy model.CertSortField, upstreamSortBy model.UpstreamSortField, routeSortBy model.RouteSortField, paused bool, width int, activeTab tab, logFrozen, routesView, tabSelect bool, activePlugin *pluginTab) string {
+	if tabSelect {
+		hint := helpKeyStyle.Render("1-9") + helpStyle.Render(" switch tab") +
+			helpStyle.Render("  ·  ") +
+			helpKeyStyle.Render("Esc") + helpStyle.Render(" cancel")
+		return helpStyle.Width(width).Render(" Tab select: " + hint)
+	}
+
+	// Plugin-Override: while a plugin tab is active and the plugin implements
+	// FooterRenderer, give it first refusal on the footer line. Empty return
+	// falls through to the default footer below.
+	if activePlugin != nil && activePlugin.renderer != nil {
+		if fr, ok := activePlugin.renderer.(plugin.FooterRenderer); ok {
+			if hint := safePluginFooterText(fr, width); hint != "" {
+				return helpStyle.Width(width).Render(" " + hint)
+			}
+		}
+	}
+
 	pauseLabel := "pause"
 	if paused {
 		pauseLabel = "resume"
@@ -112,6 +131,7 @@ func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool, plug
 		{"Esc", "Close / clear search"},
 		{"Tab/S-Tab", "Switch tab"},
 		{tabHint, "Jump to tab"},
+		{"t", "Enter tab-select mode (then 1-9 to switch)"},
 		{"Home/End", "Jump to first/last"},
 		{"PgUp/PgDn", "Page up/down"},
 	}

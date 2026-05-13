@@ -150,6 +150,17 @@ type HelpBinding struct {
 	Desc string
 }
 
+// FooterRenderer is implemented by plugins that want to override Ember's
+// global footer hint line while the plugin's tab is active. Returning an
+// empty string falls back to the default footer (Ember's core hotkey list
+// or the tab-select-mode hint).
+//
+// Use this to surface plugin-specific keybindings to the operator without
+// burning a row of plugin tab real-estate on an inline help line.
+type FooterRenderer interface {
+	FooterText(width int) string
+}
+
 // Exporter is implemented by plugins that contribute Prometheus metrics
 // to Ember's /metrics endpoint.
 //

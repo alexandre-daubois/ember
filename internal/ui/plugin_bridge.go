@@ -124,6 +124,18 @@ func safePluginStatusCount(r plugin.Renderer) (_ string, err error) {
 	return r.StatusCount(), nil
 }
 
+// safePluginFooterText calls fr.FooterText and recovers from panics. A
+// panicking plugin yields an empty hint, which falls back to the default
+// footer in renderHelp.
+func safePluginFooterText(fr plugin.FooterRenderer, width int) (s string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			s = ""
+		}
+	}()
+	return fr.FooterText(width)
+}
+
 func safePluginHelpBindings(r plugin.Renderer) (_ []plugin.HelpBinding, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {

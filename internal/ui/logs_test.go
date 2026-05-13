@@ -402,12 +402,12 @@ func TestHeader_FrozenShowsPausedPill(t *testing.T) {
 
 func TestHeader_FollowBindingAppearsOnlyWhenFrozen(t *testing.T) {
 	// Live: help shows pause, no follow.
-	help := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, false, false))
+	help := stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, false, false, false, nil))
 	assert.Contains(t, help, "pause")
 	assert.NotContains(t, help, "follow")
 
 	// Frozen: help shows resume + follow hint.
-	help = stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, true, false))
+	help = stripANSI(renderHelp(model.SortByIndex, model.SortByHost, model.SortByCertDomain, model.SortByUpstreamAddress, model.SortByRouteCount, false, 120, tabLogs, true, false, false, nil))
 	assert.Contains(t, help, "resume")
 	assert.Contains(t, help, "follow")
 }

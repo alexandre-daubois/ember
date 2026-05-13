@@ -134,6 +134,10 @@ type App struct {
 	pluginGroups []*pluginGroup
 	ctx          context.Context
 	cancel       context.CancelFunc
+
+	// pendingTabSelect is set after the user pressed `t` and indicates that
+	// the next digit (1..9) selects a tab. Esc or any non-digit cancels.
+	pendingTabSelect bool
 }
 
 const tabPluginBase tab = 100
@@ -282,7 +286,7 @@ func (a *App) View() string {
 		}
 	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts, a.pluginTabs)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.routeSortBy, a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView())
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.routeSortBy, a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView(), a.pendingTabSelect, a.activePluginTab())
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
