@@ -2,6 +2,19 @@
 
 All notable changes to Ember are documented here.
 
+## 1.4.1 - 2026-05-25
+
+### Added
+
+- Vim-style tab-select mode: press `t` then `1`-`9` to jump to a tab, `Esc` to cancel.
+- `FooterRenderer` plugin interface: plugins can override Ember's global footer hint line while their tab is active by implementing `FooterText(width int) string`.
+- Right-of-refusal for `1`-`9` and `t` keys on plugin tabs: the active plugin's `HandleKey` sees them first and can consume them before the default tab-switch.
+- Community Plugins section in the plugins documentation!
+
+### Changed
+
+- Bump dependencies
+
 ## 1.4.0 - 2026-05-11
 
 ### Added
