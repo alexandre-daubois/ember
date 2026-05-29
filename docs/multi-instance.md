@@ -2,7 +2,7 @@
 
 A single Ember process can scrape several Caddy instances at once and aggregate their metrics behind one `/metrics` endpoint. This page is the end-to-end tutorial: architecture, copy-paste walk-through, scrape config, a Grafana panel, the pitfalls that bite, and the recommended Kubernetes pattern.
 
-For the reference flag syntax see [CLI Reference: Multi-instance monitoring](cli-reference.md#multi-instance-monitoring). For the resulting metric labels see [Prometheus Export: Multi-instance label](prometheus-export.md#multi-instance-label).
+For the reference flag syntax see [CLI Reference: Multi-instance monitoring](cli-reference.md#multi-instance-monitoring). For the resulting metric labels see [Prometheus Export: Multi-instance label](prometheus-export.md#multi-instance-label). To declare the fleet once in a file instead of repeating `--addr`, see [CLI Reference: Config file](cli-reference.md#config-file).
 
 ## When to use it
 

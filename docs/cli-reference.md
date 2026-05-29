@@ -25,6 +25,7 @@ ember [flags]
 | `--client-cert`    | string | _(none)_ | Path to client certificate for mTLS |
 | `--client-key`     | string | _(none)_ | Path to client private key for mTLS |
 | `--insecure`       | bool | `false` | Skip TLS certificate verification |
+| `-f`, `--config`   | string | `.ember.toml` | Path to the Ember config file (TOML). Read only when neither `--addr` nor `EMBER_ADDR` is set. See [Config file](#config-file). |
 | `--metrics-auth`   | string | _(none)_ | Basic auth for the metrics endpoint (`user:password`). Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
 | `--log-listen`     | string | _(auto)_ | Bind a TCP listener at this address (e.g. `:9210`) and ask Caddy to push its logs to it via two hot-registered sinks (access + runtime). Required when Caddy is on a remote host; auto-bound on a free loopback port otherwise. See [Logs](logs.md). |
 | `--no-color`       | bool | `false` | Disable colors. Also enabled by the `NO_COLOR` env var (see [no-color.org](https://no-color.org/)). |
@@ -42,8 +43,43 @@ Some flags can be set via environment variables. Explicit flags always take prec
 | `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
 | `EMBER_METRICS_AUTH` | `--metrics-auth` | `EMBER_METRICS_AUTH=admin:secret` |
 | `EMBER_LOG_LISTEN` | `--log-listen` | `EMBER_LOG_LISTEN=:9210` |
+| `EMBER_CONFIG` | `--config` | `EMBER_CONFIG=/etc/ember/prod.toml` |
 
 This is especially useful in container deployments where flags are less convenient than environment variables. Using `EMBER_METRICS_AUTH` is recommended over the flag to avoid exposing credentials in `ps` output.
+
+## Config file
+
+Instead of repeating `--addr` on every run, the fleet can be described once in a TOML file (`.ember.toml` in the current directory by default). Point at another file with `-f`/`--config` or `EMBER_CONFIG`, which is handy for per-environment fleets (`.ember.prod.toml`, `.ember.staging.toml`).
+
+```toml
+default = "production"   # optional, used by the TUI only
+
+# Top-level keys are global fallbacks for every endpoint.
+interval = "2s"
+ca_cert = "/etc/ca.pem"
+
+[[endpoints]]
+name = "production"
+addr = "https://prod:2019"
+
+[[endpoints]]
+name = "staging"
+addr = "https://staging:2019"
+insecure = true          # overrides the global for this instance only
+```
+
+The per-endpoint keys (`ca_cert`, `cert`, `key`, `insecure`, `interval`) mirror the `--addr` suffixes; a key set inside an `[[endpoints]]` table overrides the same top-level key, exactly like `,ca=` overrides `--ca-cert`.
+
+### Precedence
+
+`--addr` > `EMBER_ADDR` > config file > built-in default (`http://localhost:2019`). If `--addr` or `EMBER_ADDR` is set, the file is ignored entirely (no merge). A missing default `.ember.toml` falls back silently to `http://localhost:2019`; an explicit `-f`/`EMBER_CONFIG` that is missing, or any malformed file, is a hard error.
+
+### How each mode consumes the file
+
+- **TUI** (`ember`): single-instance. Zero endpoints uses the built-in default; one endpoint uses it; two or more with `default` set use that one; two or more without `default` show a small picker before the dashboard mounts.
+- **`--daemon`, `--json`, `status`, `wait`, `init`**: the file expands to N endpoints, exactly as if each had been passed as `--addr name=url`.
+
+`diff` and `version` never read the file.
 
 ## Examples
 
@@ -367,6 +403,15 @@ Global
     ...
 
 No regressions detected
+```
+
+### `ember config use <name>`
+
+Sets the top-level `default` key in the [config file](#config-file) to `<name>`, so the single-instance TUI connects to that endpoint instead of showing the picker. Only the `default` line is rewritten; comments and formatting are left intact. `<name>` must match one of the file's endpoints.
+
+```bash
+ember config use production
+ember -f .ember.staging.toml config use staging
 ```
 
 ## Keybindings

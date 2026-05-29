@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -38,6 +39,9 @@ type config struct {
 	metricsAuth   string
 	recorder      *instrumentation.Recorder
 	logListen     string
+	configPath    string
+	configDefault string
+	addrsFromFile bool
 }
 
 func Run(args []string, version string) error {
@@ -93,6 +97,9 @@ Keybindings:
 				cfg.noColor = true
 			}
 			initLogger(&cfg)
+			if err := loadConfigFile(cmd, &cfg); err != nil {
+				return err
+			}
 			return validate(&cfg)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,11 +109,23 @@ Keybindings:
 			defer tCancel()
 
 			multi := len(cfg.addrs) >= 2
-			warnMultiLimitations(&cfg, multi)
 
 			if multi && !cfg.jsonMode && !cfg.daemon {
-				return fmt.Errorf("the interactive TUI is single-instance by design; use --daemon (Prometheus aggregation) or --json (JSONL stream) to monitor multiple Caddy instances at once. See docs/cli-reference.md#multi-instance-monitoring")
+				if !cfg.addrsFromFile {
+					return fmt.Errorf("the interactive TUI is single-instance by design; use --daemon (Prometheus aggregation) or --json (JSONL stream) to monitor multiple Caddy instances at once. See docs/cli-reference.md#multi-instance-monitoring")
+				}
+				spec, err := selectEndpoint(&cfg)
+				if err != nil {
+					if errors.Is(err, errPickerAborted) {
+						return nil
+					}
+					return err
+				}
+				cfg.addrs = []addrSpec{spec}
+				multi = false
 			}
+
+			warnMultiLimitations(&cfg, multi)
 
 			instances, err := newInstances(ctx, &cfg, cmd.Version)
 			if err != nil {
@@ -139,6 +158,7 @@ Keybindings:
 	pf.StringVar(&cfg.clientCert, "client-cert", "", "Path to client certificate for mTLS")
 	pf.StringVar(&cfg.clientKey, "client-key", "", "Path to client private key for mTLS")
 	pf.BoolVar(&cfg.insecure, "insecure", false, "Skip TLS certificate verification")
+	pf.StringVarP(&cfg.configPath, "config", "f", ".ember.toml", "Path to the Ember config file (TOML); used only when --addr/EMBER_ADDR is unset")
 
 	f := cmd.Flags()
 	f.IntVar(&cfg.slowThreshold, "slow-threshold", 500, "Slow request threshold in ms")
@@ -157,6 +177,7 @@ Keybindings:
 	cmd.AddCommand(newVersionCmd(version))
 	cmd.AddCommand(newDiffCmd(&cfg))
 	cmd.AddCommand(newInitCmd(&cfg))
+	cmd.AddCommand(newConfigCmd(&cfg))
 	cmd.SetVersionTemplate("ember {{.Version}}\n")
 
 	return cmd
@@ -199,8 +220,13 @@ var envBindings = map[string]string{
 	"metrics-prefix": "EMBER_METRICS_PREFIX",
 	"metrics-auth":   "EMBER_METRICS_AUTH",
 	"log-listen":     "EMBER_LOG_LISTEN",
+	"config":         "EMBER_CONFIG",
 }
 
+// bindEnv applies EMBER_* variables to flags the user did not set on the
+// command line. Value.Set does not flip Changed, so we set it explicitly once a
+// value lands: env-provided values must win over the config file, which is
+// skipped precisely when the addr (or per-key) flag is Changed.
 func bindEnv(cmd *cobra.Command) {
 	for name, env := range envBindings {
 		f := cmd.Flag(name)
@@ -217,11 +243,15 @@ func bindEnv(cmd *cobra.Command) {
 				if v == "" {
 					continue
 				}
-				_ = f.Value.Set(v)
+				if f.Value.Set(v) == nil {
+					f.Changed = true
+				}
 			}
 			continue
 		}
-		_ = f.Value.Set(val)
+		if f.Value.Set(val) == nil {
+			f.Changed = true
+		}
 	}
 }
 
