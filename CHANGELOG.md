@@ -2,6 +2,12 @@
 
 All notable changes to Ember are documented here.
 
+## 1.4.2 - 2026-06-22
+
+### Security
+
+- Neutralize terminal control and escape sequences (CWE-150) in attacker-controlled fields rendered by the TUI (request URI, host and method, raw log lines, in-flight FrankenPHP requests, certificate subject and issuer), so untrusted log and metric values can no longer inject ANSI/OSC/CSI sequences into the operator's terminal.
+
 ## 1.4.1 - 2026-05-25
 
 ### Added

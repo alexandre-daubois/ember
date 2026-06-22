@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -163,6 +162,6 @@ func TestLogsEmptyHintNeutralizesHost(t *testing.T) {
 	app.logSel = logSel{kind: logSelAccessHost, host: evil}
 
 	hint := app.logsEmptyHint(0)
-	assert.True(t, strings.Contains(hint, "No access logs yet for"), "expected the per-host empty hint")
+	assert.Contains(t, hint, "No access logs yet for", "expected the per-host empty hint")
 	assertNoEscapeInjection(t, "logsEmptyHint", hint)
 }
