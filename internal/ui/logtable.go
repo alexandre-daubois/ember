@@ -19,6 +19,10 @@ func fitCellLeft(s string, cells int) string {
 	if cells <= 0 {
 		return ""
 	}
+	// Strip terminal control bytes before the width math: log fields are
+	// attacker-controlled (request URI/host/method, raw lines) and would
+	// otherwise inject escape sequences into the operator's terminal (CWE-150).
+	s = sanitizeControl(s)
 	truncated := runewidth.Truncate(s, cells, "…")
 	pad := cells - runewidth.StringWidth(truncated)
 	if pad > 0 {
@@ -34,6 +38,7 @@ func fitCellRight(s string, cells int) string {
 	if cells <= 0 {
 		return ""
 	}
+	s = sanitizeControl(s)
 	truncated := runewidth.Truncate(s, cells, "…")
 	pad := cells - runewidth.StringWidth(truncated)
 	if pad > 0 {

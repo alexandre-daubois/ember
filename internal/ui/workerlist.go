@@ -138,11 +138,14 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 
 	method := "—"
 	uri := "—"
+	// CurrentMethod/CurrentURI are the in-flight request a worker is serving —
+	// attacker-controlled and rendered through raw fmt.Sprintf, so neutralise
+	// control bytes here (CWE-150).
 	if t.IsBusy && t.CurrentMethod != "" {
-		method = t.CurrentMethod
+		method = sanitizeControl(t.CurrentMethod)
 	}
 	if t.IsBusy && t.CurrentURI != "" {
-		uri = t.CurrentURI
+		uri = sanitizeControl(t.CurrentURI)
 		if len(uri) > uriW {
 			uri = uri[:uriW-1] + "…"
 		}

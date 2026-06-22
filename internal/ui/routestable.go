@@ -122,7 +122,9 @@ func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, selec
 		prefix = ">"
 	}
 
-	method := s.Key.Method
+	// Method bypasses fitCellLeft (it goes straight through padCellRight), so
+	// neutralise it here; pattern/host are sanitised via fitCellLeft below.
+	method := sanitizeControl(s.Key.Method)
 	if method == "" {
 		method = "—"
 	}

@@ -22,6 +22,7 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 	if host == "*" {
 		host = "* (All traffic)"
 	}
+	host = sanitizeControl(host)
 	crumb := greyStyle.Render("Caddy › ")
 	avail := inner - lipgloss.Width(crumb)
 	if avail < 1 {
@@ -98,7 +99,7 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 			if totalRate > 0 {
 				pct = fmt.Sprintf(" (%d%%)", int(m.rate/totalRate*100+0.5))
 			}
-			lines = append(lines, detailKV(m.method, fmt.Sprintf("%s/s%s", formatRate(m.rate), pct)))
+			lines = append(lines, detailKV(sanitizeControl(m.method), fmt.Sprintf("%s/s%s", formatRate(m.rate), pct)))
 		}
 	}
 

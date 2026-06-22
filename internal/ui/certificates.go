@@ -91,6 +91,9 @@ func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected bool) st
 	if len(c.DNSNames) > 0 {
 		domain = c.DNSNames[0]
 	}
+	// Certificate subject/issuer fields are rendered through fmt.Sprintf rather
+	// than fitCellLeft, so strip control bytes here (CWE-150).
+	domain = sanitizeControl(domain)
 	if len(domain) > domW-1 {
 		domain = domain[:domW-2] + "…"
 	}
@@ -103,7 +106,7 @@ func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected bool) st
 	}
 
 	src := strings.ToUpper(c.Source)
-	issuer := c.Issuer
+	issuer := sanitizeControl(c.Issuer)
 	if len(issuer) > colCertIssuer-1 {
 		issuer = issuer[:colCertIssuer-2] + "…"
 	}

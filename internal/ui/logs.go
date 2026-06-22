@@ -214,7 +214,9 @@ func (a *App) logsEmptyHint(visibleCount int) string {
 		return "No matching log lines (filter: " + a.filter + ")"
 	}
 	if sourceLen > 0 && a.logSel.kind == logSelAccessHost {
-		return "No access logs yet for " + a.logSel.host
+		// logSel.host is an access-log host name (attacker-controlled) echoed
+		// outside the fitCellLeft path, so neutralise it here.
+		return "No access logs yet for " + sanitizeControl(a.logSel.host)
 	}
 	if a.logSource != "" {
 		return "Listening on " + a.logSource + " — waiting for log lines (it can take up to 30s)..."

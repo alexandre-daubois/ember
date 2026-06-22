@@ -231,6 +231,9 @@ func renderSidepanel(items []sidepanelItem, selectedIdx int, focused bool, width
 // header and row labels so the column edges align and the border renders
 // cleanly at a fixed width.
 func padOrTrunc(s string, width int) string {
+	// Sidepanel labels include access-log host names, which are attacker-
+	// controlled; neutralise control bytes before they reach the terminal.
+	s = sanitizeControl(s)
 	w := lipgloss.Width(s)
 	if w == width {
 		return s

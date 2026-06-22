@@ -54,10 +54,11 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 		lines = append(lines, "")
 		lines = append(lines, sectionHeader("Request", inner))
 		if t.CurrentMethod != "" {
-			lines = append(lines, detailKV("Method", t.CurrentMethod))
+			lines = append(lines, detailKV("Method", sanitizeControl(t.CurrentMethod)))
 		}
 		if t.CurrentURI != "" {
-			uri := truncateURI(t.CurrentURI, inner-10)
+			// In-flight request URI: attacker-controlled, neutralise before render.
+			uri := truncateURI(sanitizeControl(t.CurrentURI), inner-10)
 			lines = append(lines, detailKV("URI", uri))
 		}
 		if t.RequestStartedAt > 0 {

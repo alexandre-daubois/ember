@@ -90,6 +90,9 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected bool, hostRPS
 	if host == "*" {
 		host = "* (All traffic)"
 	}
+	// Host comes from Caddy's per-host metric label, ultimately the request
+	// Host header; strip control bytes before this raw fmt.Sprintf row.
+	host = sanitizeControl(host)
 	if len(host) > hostW-1 {
 		host = host[:hostW-2] + "…"
 	}

@@ -363,9 +363,12 @@ func (a *App) View() string {
 
 	var statusLine string
 	if a.status != "" {
-		statusLine = helpStyle.Render(" " + a.status)
+		// status/error strings concatenate .Error() output, which can carry
+		// bytes from external sources (e.g. a metrics parse error echoing an
+		// attacker-influenced host label); neutralise before the terminal.
+		statusLine = helpStyle.Render(" " + sanitizeControl(a.status))
 	} else if a.err != nil {
-		statusLine = helpStyle.Render(" ⚠ " + a.err.Error())
+		statusLine = helpStyle.Render(" ⚠ " + sanitizeControl(a.err.Error()))
 	}
 
 	var filterLine string
