@@ -41,6 +41,7 @@ type LogEntry struct {
 	RemoteIP   string
 	RawLine    string
 	ParseError bool
+	Attributes map[string]any
 }
 
 // caddyLogLine mirrors the JSON shape Caddy emits for access logs.
@@ -109,27 +110,41 @@ func ParseLogLine(line string) LogEntry {
 		return LogEntry{ParseError: true, RawLine: line, Timestamp: time.Now().UTC()}
 	}
 
-	var parsed caddyLogLine
-	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
 		return LogEntry{ParseError: true, RawLine: trimmed, Timestamp: time.Now().UTC()}
 	}
+
+	var parsed caddyLogLine
+	_ = json.Unmarshal([]byte(trimmed), &parsed)
 
 	ts := parsed.Timestamp.Time
 	if ts.IsZero() {
 		ts = time.Now().UTC()
 	}
 
+	// Remove known fields to keep only extra attributes
+	delete(raw, "ts")
+	delete(raw, "level")
+	delete(raw, "logger")
+	delete(raw, "msg")
+	delete(raw, "request")
+	delete(raw, "status")
+	delete(raw, "duration")
+	delete(raw, "size")
+
 	return LogEntry{
-		Timestamp: ts,
-		Level:     parsed.Level,
-		Logger:    parsed.Logger,
-		Message:   parsed.Message,
-		Host:      parsed.Request.Host,
-		Method:    parsed.Request.Method,
-		URI:       parsed.Request.URI,
-		Status:    parsed.Status,
-		Duration:  parsed.Duration,
-		Size:      parsed.Size,
-		RemoteIP:  parsed.Request.RemoteIP,
+		Timestamp:  ts,
+		Level:      parsed.Level,
+		Logger:     parsed.Logger,
+		Message:    parsed.Message,
+		Host:       parsed.Request.Host,
+		Method:     parsed.Request.Method,
+		URI:        parsed.Request.URI,
+		Status:     parsed.Status,
+		Duration:   parsed.Duration,
+		Size:       parsed.Size,
+		RemoteIP:   parsed.Request.RemoteIP,
+		Attributes: raw,
 	}
 }
