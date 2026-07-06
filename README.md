@@ -50,6 +50,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`
 - TLS and mTLS support for secured Caddy admin APIs
 - Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, `EMBER_LOG_LISTEN`, ...) for container deployments
+- [Config file](docs/cli-reference.md#config-file) (`.ember.toml`): declare a fleet of named endpoints once instead of repeating `--addr`. The TUI connects to one (a saved `default` or an interactive picker); `--daemon`, `--json`, `status`, `wait`, and `init` fan out across all of them. `ember config use <name>` sets the TUI default
 - `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))
 - Cross-platform binaries (Linux, macOS, Windows), Homebrew tap, and Docker image

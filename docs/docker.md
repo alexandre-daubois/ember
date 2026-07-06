@@ -140,6 +140,19 @@ services:
 
 Every emitted Prometheus metric (except `ember_build_info`) carries an `ember_instance="blue"` or `ember_instance="green"` label. See [Prometheus Export](prometheus-export.md#multi-instance-label) for details and a recommended `metric_relabel_configs` snippet.
 
+Instead of expanding the fleet inline in `EMBER_ADDR`, mount a [config file](cli-reference.md#config-file) and point `EMBER_CONFIG` at it:
+
+```yaml
+  ember:
+    image: alexandredaubois/ember
+    environment:
+      EMBER_CONFIG: /etc/ember/fleet.toml
+    volumes:
+      - ./fleet.toml:/etc/ember/fleet.toml:ro
+    ports:
+      - "9191:9191"
+```
+
 ## See Also
 
 - [Getting Started](getting-started.md)
