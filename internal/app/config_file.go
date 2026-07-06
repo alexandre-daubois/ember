@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -120,17 +121,44 @@ func applyFileEndpoints(cfg *config, fc *fileConfig) error {
 	}
 	raws := make([]string, len(fc.Endpoints))
 	for i, e := range fc.Endpoints {
-		if e.Name == "" {
-			return fmt.Errorf("config file: endpoint #%d: name is required", i+1)
-		}
-		if e.Addr == "" {
-			return fmt.Errorf("config file: endpoint %q: addr is required", e.Name)
+		if err := e.validate(i); err != nil {
+			return err
 		}
 		raws[i] = e.toAddrArg()
 	}
 	cfg.addrsRaw = raws
 	cfg.addrsFromFile = true
 	cfg.configDefault = fc.Default
+	return nil
+}
+
+var fileEndpointNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+
+// validate rejects field values that would break the name=url,suffix rendering
+// of toAddrArg: a comma would be re-parsed as a suffix separator (silently
+// injecting TLS options), and a name outside the alias grammar would misparse
+// with an error phrased in flag terms the user never typed.
+func (e fileEndpoint) validate(i int) error {
+	if e.Name == "" {
+		return fmt.Errorf("config file: endpoint #%d: name is required", i+1)
+	}
+	if !fileEndpointNameRe.MatchString(e.Name) {
+		return fmt.Errorf("config file: endpoint name %q must start with a letter and contain only letters, digits and underscores", e.Name)
+	}
+	if e.Addr == "" {
+		return fmt.Errorf("config file: endpoint %q: addr is required", e.Name)
+	}
+	for _, f := range []struct{ key, value string }{
+		{"addr", e.Addr},
+		{"ca_cert", e.CACert},
+		{"cert", e.Cert},
+		{"key", e.Key},
+		{"interval", e.Interval},
+	} {
+		if strings.Contains(f.value, ",") {
+			return fmt.Errorf("config file: endpoint %q: %s must not contain a comma", e.Name, f.key)
+		}
+	}
 	return nil
 }
 

@@ -68,7 +68,7 @@ addr = "https://staging:2019"
 insecure = true          # overrides the global for this instance only
 ```
 
-The per-endpoint keys (`ca_cert`, `cert`, `key`, `insecure`, `interval`) mirror the `--addr` suffixes; a key set inside an `[[endpoints]]` table overrides the same top-level key, exactly like `,ca=` overrides `--ca-cert`.
+The per-endpoint keys (`ca_cert`, `cert`, `key`, `insecure`, `interval`) mirror the `--addr` suffixes; a key set inside an `[[endpoints]]` table overrides the same top-level key, exactly like `,ca=` overrides `--ca-cert`. Endpoint names must start with a letter and contain only letters, digits and underscores.
 
 ### Precedence
 

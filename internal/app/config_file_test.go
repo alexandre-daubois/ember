@@ -115,6 +115,42 @@ func TestApplyFileEndpoints_MissingAddr(t *testing.T) {
 	assert.Contains(t, err.Error(), "addr is required")
 }
 
+func TestApplyFileEndpoints_InvalidName(t *testing.T) {
+	for _, name := range []string{"web.prod", "web,prod", "web prod", "web=prod", "1web", "-web"} {
+		err := applyFileEndpoints(&config{}, &fileConfig{Endpoints: []fileEndpoint{{Name: name, Addr: "http://a"}}})
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), "config file: endpoint name", name)
+	}
+}
+
+func TestApplyFileEndpoints_ValidNames(t *testing.T) {
+	for _, name := range []string{"web", "web_1", "Web2"} {
+		cfg := &config{}
+		require.NoError(t, applyFileEndpoints(cfg, &fileConfig{Endpoints: []fileEndpoint{{Name: name, Addr: "http://a"}}}))
+		assert.Equal(t, []string{name + "=http://a"}, cfg.addrsRaw)
+	}
+}
+
+func TestApplyFileEndpoints_CommaInjectionRejected(t *testing.T) {
+	cases := []struct {
+		field string
+		ep    fileEndpoint
+	}{
+		{"addr", fileEndpoint{Name: "web", Addr: "https://h,ca=/evil.pem"}},
+		{"ca_cert", fileEndpoint{Name: "web", Addr: "https://h", CACert: "/a,cert=/evil.pem"}},
+		{"cert", fileEndpoint{Name: "web", Addr: "https://h", Cert: "/a,key=/evil.pem"}},
+		{"key", fileEndpoint{Name: "web", Addr: "https://h", Key: "/a,insecure=true"}},
+		{"interval", fileEndpoint{Name: "web", Addr: "https://h", Interval: "2s,insecure=true"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.field, func(t *testing.T) {
+			err := applyFileEndpoints(&config{}, &fileConfig{Endpoints: []fileEndpoint{tc.ep}})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.field+" must not contain a comma")
+		})
+	}
+}
+
 func TestApplyFileGlobals_AppliesWhenFlagsUnset(t *testing.T) {
 	cmd := newRootCmd("0.0.0")
 	cfg := &config{interval: time.Second}

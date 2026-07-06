@@ -2,6 +2,12 @@
 
 All notable changes to Ember are documented here.
 
+## Unreleased
+
+### Added
+
+- Config file support (`.ember.toml`): declare a fleet of named endpoints once instead of repeating `--addr`. New `-f`/`--config` flag and `EMBER_CONFIG` env var; `--daemon`, `--json`, `status`, `wait` and `init` fan out across all endpoints; the TUI connects to the saved `default` or shows an interactive picker. `ember config use <name>` sets the TUI default.
+
 ## 1.4.2 - 2026-06-22
 
 ### Security
