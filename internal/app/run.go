@@ -289,8 +289,20 @@ func validate(cfg *config) error {
 		}
 	}
 
-	for _, spec := range cfg.addrs {
-		if fetcher.IsUnixAddr(spec.url) && (cfg.caCert != "" || cfg.clientCert != "" || cfg.clientKey != "" || cfg.insecure) {
+	// Global TLS options are meaningless only when every endpoint is a Unix
+	// socket: configureTLS short-circuits them for unix, and per-endpoint TLS
+	// suffixes on a unix addr are already rejected by parseOneAddr. In a mixed
+	// fleet the global options legitimately apply to the http(s) endpoints, so
+	// reject only when no endpoint could use them.
+	if cfg.caCert != "" || cfg.clientCert != "" || cfg.clientKey != "" || cfg.insecure {
+		allUnix := true
+		for _, spec := range cfg.addrs {
+			if !fetcher.IsUnixAddr(spec.url) {
+				allUnix = false
+				break
+			}
+		}
+		if allUnix {
 			return fmt.Errorf("TLS options cannot be used with Unix socket addresses")
 		}
 	}

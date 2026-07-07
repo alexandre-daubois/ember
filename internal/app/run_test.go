@@ -328,6 +328,18 @@ func TestValidate_AddrUnixSocketWithInsecure(t *testing.T) {
 	assert.Contains(t, err.Error(), "TLS options cannot be used with Unix socket addresses")
 }
 
+func TestValidate_MixedFleetGlobalTLSWithUnixEndpoint(t *testing.T) {
+	// A global --ca-cert applies to the http(s) endpoints of a mixed fleet and
+	// is harmlessly ignored for the unix one, so this must not be rejected.
+	cfg := &config{
+		interval: 1 * time.Second,
+		addrsRaw: []string{"web=https://localhost:2019", "sock=unix//run/caddy/admin.sock"},
+		caCert:   "ca.pem",
+	}
+	err := validate(cfg)
+	require.NoError(t, err)
+}
+
 func TestValidate_MetricsAuthBadFormat(t *testing.T) {
 	cfg := &config{interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}, expose: ":9191", metricsAuth: "nopassword"}
 	err := validate(cfg)
