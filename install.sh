@@ -62,12 +62,35 @@ printf "Latest version: %s\n" "$VERSION"
 
 ARCHIVE="ember_${VERSION}_${OS}_${ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/checksums.txt"
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
 printf "Downloading %s...\n" "$ARCHIVE"
 download "${TMPDIR}/${ARCHIVE}" "$DOWNLOAD_URL"
+
+verify_checksum() {
+    if command -v sha256sum > /dev/null 2>&1; then
+        actual=$(sha256sum "${TMPDIR}/${ARCHIVE}" | awk '{print $1}')
+    elif command -v shasum > /dev/null 2>&1; then
+        actual=$(shasum -a 256 "${TMPDIR}/${ARCHIVE}" | awk '{print $1}')
+    else
+        printf "warning: no sha256 tool found, skipping checksum verification\n" >&2
+        return
+    fi
+    expected=$(fetch "$CHECKSUMS_URL" | awk -v f="$ARCHIVE" '$2 == f {print $1}')
+    if [ -z "$expected" ]; then
+        fail "could not find ${ARCHIVE} in checksums.txt"
+    fi
+    if [ "$actual" != "$expected" ]; then
+        fail "checksum mismatch for ${ARCHIVE} (expected ${expected}, got ${actual})"
+    fi
+    printf "Checksum verified.\n"
+}
+
+printf "Verifying checksum...\n"
+verify_checksum
 
 printf "Extracting...\n"
 tar -xzf "${TMPDIR}/${ARCHIVE}" -C "$TMPDIR"
