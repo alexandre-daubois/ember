@@ -70,6 +70,22 @@ func TestParseConfigFile_Malformed(t *testing.T) {
 	assert.Contains(t, err.Error(), "config file")
 }
 
+func TestParseConfigFile_UnknownKeyIsHardError(t *testing.T) {
+	// Singular [[endpoint]] and a misspelt key must fail loudly instead of
+	// silently falling back to the default endpoint.
+	for _, tc := range []struct{ name, body, want string }{
+		{"singular endpoint table", "[[endpoint]]\nname = \"web\"\naddr = \"http://a\"\n", "endpoint"},
+		{"misspelt interval", "intervall = \"2s\"\n", "intervall"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseConfigFile(writeConfigFile(t, tc.body))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown key")
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
 func TestParseConfigFile_Missing(t *testing.T) {
 	_, err := parseConfigFile(filepath.Join(t.TempDir(), "absent.toml"))
 	require.ErrorIs(t, err, os.ErrNotExist)

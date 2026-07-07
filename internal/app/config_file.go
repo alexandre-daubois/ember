@@ -43,8 +43,19 @@ func parseConfigFile(path string) (*fileConfig, error) {
 		return nil, err
 	}
 	var fc fileConfig
-	if err := toml.Unmarshal(data, &fc); err != nil {
+	md, err := toml.Decode(string(data), &fc)
+	if err != nil {
 		return nil, fmt.Errorf("config file %s: %w", path, err)
+	}
+	// Surface unknown keys (e.g. the singular [[endpoint]] or a misspelt
+	// "intervall") as a hard error instead of silently ignoring them and
+	// falling back to the default endpoint.
+	if undecoded := md.Undecoded(); len(undecoded) > 0 {
+		keys := make([]string, len(undecoded))
+		for i, k := range undecoded {
+			keys[i] = k.String()
+		}
+		return nil, fmt.Errorf("config file %s: unknown key(s): %s", path, strings.Join(keys, ", "))
 	}
 	return &fc, nil
 }
