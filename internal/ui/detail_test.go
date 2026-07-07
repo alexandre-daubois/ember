@@ -57,6 +57,38 @@ func TestRenderDetailPanel_ContainsThreadInfo(t *testing.T) {
 	assert.Contains(t, panel, "BUSY")
 }
 
+// panelContentLines returns the 1-based index of the last non-empty content
+// line, ignoring box borders and trailing padding.
+func panelContentLines(panel string) int {
+	last := 0
+	for i, l := range strings.Split(panel, "\n") {
+		if strings.TrimSpace(strings.Trim(l, "│╭╮╰╯─ ")) != "" {
+			last = i + 1
+		}
+	}
+	return last
+}
+
+func TestRenderDetailPanel_LongURIDoesNotWrap(t *testing.T) {
+	base := fetcher.ThreadDebugState{
+		Index: 1, Name: "Thread 1", IsBusy: true,
+		CurrentMethod:    "GET",
+		CurrentURI:       "/x",
+		RequestStartedAt: time.Now().Add(-time.Second).UnixMilli(),
+		MemoryUsage:      5 << 20,
+		RequestCount:     10,
+	}
+	long := base
+	long.CurrentURI = "/" + strings.Repeat("a", 200)
+
+	const width, height = 44, 100
+	shortLines := panelContentLines(renderDetailPanel(base, width, height, nil, time.Now()))
+	longLines := panelContentLines(renderDetailPanel(long, width, height, nil, time.Now()))
+
+	assert.Equal(t, shortLines, longLines,
+		"a long URI must be truncated to fit one line, not wrap and grow the panel by a line")
+}
+
 func TestRenderDetailPanel_IdleThread(t *testing.T) {
 	thread := fetcher.ThreadDebugState{
 		Index:                    2,
