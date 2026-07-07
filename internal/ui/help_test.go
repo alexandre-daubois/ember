@@ -79,9 +79,10 @@ func TestRenderHelp_ConfigTab(t *testing.T) {
 	assert.Contains(t, out, "expand/collapse all")
 	assert.Contains(t, out, "search")
 	assert.Contains(t, out, "help")
+	assert.Contains(t, out, "n/N")
+	assert.Contains(t, out, "next/prev match")
 	assert.NotContains(t, out, "sort")
 	assert.NotContains(t, out, "detail")
-	assert.NotContains(t, out, "next/prev match")
 	assert.NotContains(t, out, "refresh")
 	assert.Contains(t, out, "quit")
 }
