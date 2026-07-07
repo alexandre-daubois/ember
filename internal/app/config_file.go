@@ -131,10 +131,18 @@ func applyFileEndpoints(cfg *config, fc *fileConfig) error {
 		return nil
 	}
 	raws := make([]string, len(fc.Endpoints))
+	seen := make(map[string]int, len(fc.Endpoints))
 	for i, e := range fc.Endpoints {
 		if err := e.validate(i); err != nil {
 			return err
 		}
+		// Catch duplicates here so the error speaks in TOML terms rather than
+		// the "use explicit aliases like name=url" message parseAddrs emits for
+		// the --addr syntax.
+		if prev, dup := seen[e.Name]; dup {
+			return fmt.Errorf("config file: duplicate endpoint name %q (endpoints #%d and #%d)", e.Name, prev+1, i+1)
+		}
+		seen[e.Name] = i
 		raws[i] = e.toAddrArg()
 	}
 	cfg.addrsRaw = raws
