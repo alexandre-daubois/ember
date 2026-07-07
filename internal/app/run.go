@@ -68,15 +68,15 @@ Keybindings:
   Up / Down / j / k Navigate list
   Home / End        Jump to first / last item
   PgUp / PgDn       Page navigation
-  Enter              Open detail panel
-  s / S              Cycle sort field
-  p                  Pause / resume
-  r                  Restart workers (FrankenPHP)
-  /                  Filter
-  g                  Full-screen graphs
-  ?                  Help overlay
-  q                  Quit`,
-		Example: `  ember                                  # default: localhost:2019
+  Enter             Open detail panel
+  s / S             Cycle sort field
+  p                 Pause / resume
+  r                 Restart workers (FrankenPHP)
+  /                 Filter
+  g                 Full-screen graphs
+  ?                 Help overlay
+  q                 Quit`,
+		Example: `  ember                                   # default: localhost:2019
   ember --addr http://prod:2019           # custom address
   ember --addr unix//run/caddy/admin.sock # Unix socket
   ember --json                            # pipe-friendly JSON output
