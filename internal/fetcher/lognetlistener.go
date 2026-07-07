@@ -217,6 +217,18 @@ func (l *LogNetListener) handle(ctx context.Context, conn net.Conn, onBatch func
 			flush()
 			flushTimer.Reset(logBatchFlushInterval)
 		case err := <-doneCh:
+			// The reader goroutine has finished scanning: every line it read is
+			// already buffered in lineCh. Drain what is left before the final
+			// flush, otherwise lines produced just before the connection closed
+			// are dropped when the select happens to pick doneCh over lineCh.
+			for drained := true; drained; {
+				select {
+				case line := <-lineCh:
+					batch = append(batch, ParseLogLine(line))
+				default:
+					drained = false
+				}
+			}
 			flush()
 			if err != nil && !errors.Is(err, net.ErrClosed) {
 				l.setErr(err)

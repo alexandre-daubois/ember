@@ -297,6 +297,82 @@ func TestLogNetListener_OversizedLineDropped(t *testing.T) {
 	<-done
 }
 
+func TestLogNetListener_DrainsBufferedLinesOnDisconnect(t *testing.T) {
+	listener, err := NewLogNetListener("127.0.0.1:0")
+	require.NoError(t, err)
+
+	// The first flush blocks until released. This lets us stuff lineCh with
+	// lines the main loop has not consumed yet and then close the connection,
+	// so doneCh and lineCh become ready at the same time: exactly the window
+	// where unconsumed lines used to be dropped.
+	firstCall := make(chan struct{})
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var got []LogEntry
+	var calls int
+	onBatch := func(b []LogEntry) {
+		mu.Lock()
+		calls++
+		first := calls == 1
+		got = append(got, b...)
+		mu.Unlock()
+		if first {
+			close(firstCall)
+			<-release
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		listener.Start(ctx, onBatch)
+		close(done)
+	}()
+
+	conn, err := net.Dial("tcp", listener.Addr())
+	require.NoError(t, err)
+
+	// One full batch triggers the first flush, which then blocks.
+	for range logBatchSize {
+		_, err = conn.Write([]byte(makeJSONLine("GET", "h.com", "/", 200) + "\n"))
+		require.NoError(t, err)
+	}
+	<-firstCall
+
+	// Queue more lines while the flush is blocked, then close: the reader
+	// pushes them into lineCh (well under its 64 capacity) and signals doneCh.
+	const buffered = 40
+	for range buffered {
+		_, err = conn.Write([]byte(makeJSONLine("GET", "h.com", "/", 200) + "\n"))
+		require.NoError(t, err)
+	}
+	_ = conn.Close()
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+
+	// Wait for delivery before cancelling: the ctx.Done() path does not drain
+	// lineCh, so cancelling early would race the disconnect drain we test here.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		total := len(got)
+		mu.Unlock()
+		if total >= logBatchSize+buffered {
+			break
+		}
+		if time.Now().After(deadline) {
+			assert.Equal(t, logBatchSize+buffered, total,
+				"lines buffered in lineCh when the connection closed must be flushed, not dropped")
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cancel()
+	<-done
+}
+
 func TestLogNetListener_CloseUnblocksFullChannel(t *testing.T) {
 	// Verify that Close() without ctx cancel does not leave the reader
 	// goroutine stranded when lineCh is full: the l.done select case
