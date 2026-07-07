@@ -50,8 +50,13 @@ when all instances are reachable.`,
 				return runStatusMulti(ctx, cmd.OutOrStdout(), cfg, statusJSONFlag)
 			}
 
+			spec := cfg.addrs[0]
 			pid := int32(cfg.frankenphpPID)
-			if pid == 0 {
+			// Only scan local processes for CPU/RSS when the admin endpoint is on
+			// this host: a remote addr's process metrics must not be attributed to
+			// an unrelated local Caddy/FrankenPHP, which would make an unreachable
+			// remote look "reachable".
+			if pid == 0 && fetcher.IsLocalAddr(spec.url) {
 				detected, err := fetcher.FindFrankenPHPProcess(ctx)
 				if err != nil {
 					detected, _ = fetcher.FindCaddyProcess(ctx)
@@ -59,7 +64,6 @@ when all instances are reachable.`,
 				pid = detected
 			}
 
-			spec := cfg.addrs[0]
 			f := fetcher.NewHTTPFetcher(spec.url, pid)
 			if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 				return err

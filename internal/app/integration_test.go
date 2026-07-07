@@ -97,7 +97,7 @@ func TestIntegration_Status(t *testing.T) {
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, addr, 500*time.Millisecond, false)
+	err := runStatus(ctx, 0, &buf, f, addr, 500*time.Millisecond, false)
 
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Caddy OK")
@@ -468,7 +468,7 @@ func TestIntegration_StatusJSON(t *testing.T) {
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, addr, 500*time.Millisecond, true)
+	err := runStatus(ctx, 0, &buf, f, addr, 500*time.Millisecond, true)
 
 	require.NoError(t, err)
 
@@ -506,7 +506,7 @@ func TestIntegration_Status_Unreachable(t *testing.T) {
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, addr, 200*time.Millisecond, false)
+	err := runStatus(ctx, 0, &buf, f, addr, 200*time.Millisecond, false)
 
 	require.Error(t, err, "status should fail when Caddy is unreachable")
 	assert.Contains(t, err.Error(), "unreachable")
@@ -523,7 +523,7 @@ func TestIntegration_Status_Unreachable_JSON(t *testing.T) {
 	defer cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, addr, 200*time.Millisecond, true)
+	err := runStatus(ctx, 0, &buf, f, addr, 200*time.Millisecond, true)
 
 	require.Error(t, err)
 
