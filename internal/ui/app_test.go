@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -551,6 +552,36 @@ func TestView_NoDataWithErrorShowsConnectionError(t *testing.T) {
 	out := stripANSI(app.View())
 	assert.Contains(t, out, "Cannot reach the Caddy admin API")
 	assert.Contains(t, out, "connection refused")
+}
+
+func TestView_BottomDetailFitsWithinHeight(t *testing.T) {
+	hosts := []model.HostDerived{{
+		Host: "a.com", RPS: 10, InFlight: 2,
+		HasPercentiles: true, P50: 5, P90: 10, P95: 20, P99: 50, AvgTime: 8,
+		StatusCodes: map[int]float64{200: 5, 404: 1, 500: 1},
+		MethodRates: map[string]float64{"GET": 8, "POST": 2},
+	}}
+	for _, h := range []int{24, 30} {
+		app := newAppWithHosts(hosts)
+		app.width = 100 // below detailSideThreshold -> stacked layout
+		app.height = h
+		app.mode = viewDetail
+		app.cursor = 0
+		lines := strings.Count(app.View(), "\n") + 1
+		assert.LessOrEqualf(t, lines, h,
+			"host detail panel must not push content past the %d-line terminal", h)
+	}
+
+	for _, h := range []int{24, 30} {
+		app := newAppWithThreads(make([]fetcher.ThreadDebugState, 5))
+		app.width = 100
+		app.height = h
+		app.mode = viewDetail
+		app.cursor = 0
+		lines := strings.Count(app.View(), "\n") + 1
+		assert.LessOrEqualf(t, lines, h,
+			"thread detail panel must not push content past the %d-line terminal", h)
+	}
 }
 
 func TestHome_GoesToStart(t *testing.T) {

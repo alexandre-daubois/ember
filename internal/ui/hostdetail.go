@@ -117,14 +117,7 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 	lines = append(lines, "")
 	lines = append(lines, helpStyle.Render("  "+helpKeyStyle.Render("Esc")+" close"))
 
-	content := strings.Join(lines, "\n")
-
-	contentHeight := lipgloss.Height(content)
-	boxChrome := 2
-	available := height - boxChrome
-	if contentHeight < available {
-		content += strings.Repeat("\n", available-contentHeight)
-	}
+	content := fitPanelContent(strings.Join(lines, "\n"), height)
 
 	return boxStyle.Width(width - 2).Render(content)
 }

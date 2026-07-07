@@ -14,6 +14,11 @@ const (
 	detailPanelWidth    = 44
 	detailPanelHeight   = 14
 	detailSideThreshold = 120
+
+	// detailBottomListMin keeps a few list rows visible above a stacked detail
+	// panel; detailBottomMinHeight is the floor for that panel.
+	detailBottomListMin   = 3
+	detailBottomMinHeight = 6
 )
 
 var (
@@ -88,16 +93,28 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 	lines = append(lines, "")
 	lines = append(lines, helpStyle.Render("  "+helpKeyStyle.Render("r")+" restart  "+helpKeyStyle.Render("Esc")+" close"))
 
-	content := strings.Join(lines, "\n")
-
-	contentHeight := lipgloss.Height(content)
-	boxChrome := 2
-	available := height - boxChrome
-	if contentHeight < available {
-		content += strings.Repeat("\n", available-contentHeight)
-	}
+	content := fitPanelContent(strings.Join(lines, "\n"), height)
 
 	return boxStyle.Width(width - 2).Render(content)
+}
+
+// fitPanelContent pads or truncates content so the bordered detail panel is
+// exactly height lines tall. Truncating (rather than only padding) keeps a
+// stacked panel from overflowing the terminal and scrolling the dashboard and
+// tab bar off the top.
+func fitPanelContent(content string, height int) string {
+	available := height - 2 // top and bottom border
+	if available < 1 {
+		available = 1
+	}
+	lines := strings.Split(content, "\n")
+	switch {
+	case len(lines) > available:
+		content = strings.Join(lines[:available], "\n")
+	case len(lines) < available:
+		content += strings.Repeat("\n", available-len(lines))
+	}
+	return content
 }
 
 func renderStateBadge(t fetcher.ThreadDebugState) string {
