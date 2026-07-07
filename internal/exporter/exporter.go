@@ -225,6 +225,9 @@ func labels(parts ...string) string {
 }
 
 func writeThreadMetrics(ctx *metricCtx, entries []renderEntry) {
+	// Despite the _total suffix (which promtool reserves for counters) this is a
+	// gauge: it reports the current thread count by state, not a monotonic total.
+	// The name is kept as-is to avoid breaking existing dashboards and alerts.
 	name := prefixed(ctx.prefix, "frankenphp_threads_total")
 	ctx.help(name, "Number of FrankenPHP threads by state", "gauge")
 	for _, e := range entries {
