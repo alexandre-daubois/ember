@@ -936,6 +936,19 @@ mymodule_cache_hits 1234
 	assert.Len(t, fam.GetMetric(), 2)
 }
 
+func TestParsePrometheus_UpstreamsHealthyNotInExtra(t *testing.T) {
+	// caddy_reverse_proxy_upstreams_healthy is consumed by the parser into
+	// Upstreams, so it must not leak into Extra (families the core parser ignores).
+	input := `# TYPE caddy_reverse_proxy_upstreams_healthy gauge
+caddy_reverse_proxy_upstreams_healthy{upstream="backend:80"} 1
+`
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.NotContains(t, snap.Extra, "caddy_reverse_proxy_upstreams_healthy")
+	assert.Contains(t, snap.Upstreams, "backend:80")
+}
+
 func TestParsePrometheus_NoExtraWhenAllKnown(t *testing.T) {
 	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
 	require.NoError(t, err)
