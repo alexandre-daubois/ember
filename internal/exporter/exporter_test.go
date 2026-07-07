@@ -751,6 +751,12 @@ func (e *panicExporter) WriteMetrics(_ io.Writer, _ any, _ string) {
 	panic("exporter boom")
 }
 
+type multilinePanicExporter struct{}
+
+func (e *multilinePanicExporter) WriteMetrics(_ io.Writer, _ any, _ string) {
+	panic("boom line one\nnot a comment 123\nline three")
+}
+
 func TestHandler_PluginMetrics(t *testing.T) {
 	holder := &StateHolder{}
 	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
@@ -782,6 +788,26 @@ func TestHandler_PluginPanicDoesNotBreakOtherMetrics(t *testing.T) {
 
 	rec := get(holder)
 	assert.Contains(t, rec.Body.String(), "process_cpu_percent")
+}
+
+func TestHandler_PluginMultilinePanicStaysCommented(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
+		{Exporter: &multilinePanicExporter{}, Data: "data"},
+	})
+
+	rec := get(holder)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// A multi-line panic message must be flattened onto a single comment line;
+	// no fragment may leak out as an uncommented (invalid) metric line.
+	for _, line := range strings.Split(strings.TrimRight(rec.Body.String(), "\n"), "\n") {
+		if strings.Contains(line, "not a comment") || strings.Contains(line, "line three") {
+			assert.True(t, strings.HasPrefix(line, "#"),
+				"panic message fragment leaked as a non-comment line: %q", line)
+		}
+	}
+	assert.Contains(t, rec.Body.String(), "# plugin WriteMetrics panic: boom line one not a comment 123 line three")
 }
 
 type richExporter struct{}
