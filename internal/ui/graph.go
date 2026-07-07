@@ -18,6 +18,14 @@ type graphPanel struct {
 
 const graphPanelHeight = 8
 
+// graphPanelChrome is the number of lines each rendered panel adds on top of
+// the chart itself: a leading blank line, the title line and asciigraph's
+// bottom axis line.
+const graphPanelChrome = 3
+
+// graphPanelMinHeight keeps a chart readable even on very short terminals.
+const graphPanelMinHeight = 3
+
 func renderGraphPanels(width, height int, cpu, rps, rss, queue, busy []float64, hasFrankenPHP bool) string {
 	panels := []graphPanel{
 		{title: "CPU", unit: "%", values: cpu, color: asciigraph.Red},
@@ -32,20 +40,40 @@ func renderGraphPanels(width, height int, cpu, rps, rss, queue, busy []float64, 
 	}
 
 	colWidth := width / 2
+	panelHeight := panelHeightFor(height, len(panels))
 
 	var rows []string
 	for i := 0; i < len(panels); i += 2 {
 		if i+1 < len(panels) {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top,
-				renderSingleGraph(panels[i], colWidth, graphPanelHeight),
-				renderSingleGraph(panels[i+1], colWidth, graphPanelHeight),
+				renderSingleGraph(panels[i], colWidth, panelHeight),
+				renderSingleGraph(panels[i+1], colWidth, panelHeight),
 			))
 		} else {
-			rows = append(rows, renderSingleGraph(panels[i], colWidth, graphPanelHeight))
+			rows = append(rows, renderSingleGraph(panels[i], colWidth, panelHeight))
 		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+}
+
+// panelHeightFor divides the available height across the panel rows (two
+// panels per row) so the whole view fits instead of overflowing and being
+// truncated from the top by the terminal. Falls back to graphPanelHeight when
+// there is ample room.
+func panelHeightFor(height, panelCount int) int {
+	if panelCount == 0 {
+		return graphPanelHeight
+	}
+	rows := (panelCount + 1) / 2
+	h := height/rows - graphPanelChrome
+	if h > graphPanelHeight {
+		h = graphPanelHeight
+	}
+	if h < graphPanelMinHeight {
+		h = graphPanelMinHeight
+	}
+	return h
 }
 
 func renderSingleGraph(p graphPanel, width, height int) string {

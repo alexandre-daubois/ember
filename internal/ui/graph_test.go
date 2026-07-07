@@ -21,6 +21,27 @@ func TestRenderGraphPanels_NoColorEmitsNoANSI(t *testing.T) {
 		"NO_COLOR must emit no ANSI escapes, including asciigraph's own series colours")
 }
 
+func TestRenderGraphPanels_FitsWithinHeight(t *testing.T) {
+	data := []float64{1, 5, 3, 8, 2, 6, 4}
+	cases := []struct {
+		name          string
+		height        int
+		hasFrankenPHP bool
+	}{
+		{"80x24 with frankenphp", 24, true},
+		{"80x24 without frankenphp", 24, false},
+		{"tall terminal", 50, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := renderGraphPanels(80, tc.height, data, data, data, data, data, tc.hasFrankenPHP)
+			lines := strings.Count(out, "\n") + 1
+			assert.LessOrEqual(t, lines, tc.height,
+				"graph panels must fit within the requested height, not overflow and get truncated")
+		})
+	}
+}
+
 func TestRenderGraphPanels_AllEmpty(t *testing.T) {
 	out := renderGraphPanels(80, 40, nil, nil, nil, nil, nil, true)
 	assert.Contains(t, out, "no data")
