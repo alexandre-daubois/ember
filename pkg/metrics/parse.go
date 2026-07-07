@@ -66,10 +66,10 @@ func ParsePrometheus(r io.Reader) (snap MetricsSnapshot, err error) {
 	}
 
 	// Caddy HTTP metrics (available with `metrics` directive)
-	snap.HTTPRequestErrorsTotal = sumCounter(families, "caddy_http_request_errors_total")
-	snap.HTTPRequestsTotal = sumCounter(families, "caddy_http_requests_total")
+	snap.HTTPRequestErrorsTotal = sumSeries(families, "caddy_http_request_errors_total")
+	snap.HTTPRequestsTotal = sumSeries(families, "caddy_http_requests_total")
 	snap.HTTPRequestDurationSum, snap.HTTPRequestDurationCount, snap.DurationBuckets = histogramData(families, "caddy_http_request_duration_seconds")
-	snap.HTTPRequestsInFlight = scalarValue(families, "caddy_http_requests_in_flight")
+	snap.HTTPRequestsInFlight = sumSeries(families, "caddy_http_requests_in_flight")
 	snap.HasHTTPMetrics = snap.HTTPRequestsTotal > 0 || snap.HTTPRequestDurationCount > 0
 
 	snap.ProcessCPUSecondsTotal = scalarValue(families, "process_cpu_seconds_total")
@@ -159,7 +159,10 @@ func (s *MetricsSnapshot) getOrCreateWorker(name string) *WorkerMetrics {
 	return wm
 }
 
-func sumCounter(families map[string]*dto.MetricFamily, name string) float64 {
+// sumSeries totals every series of a metric family. Caddy labels HTTP metrics
+// per server/handler, so a multi-server instance exposes several series that
+// must be added together rather than reading only the first one.
+func sumSeries(families map[string]*dto.MetricFamily, name string) float64 {
 	fam, ok := families[name]
 	if !ok {
 		return 0

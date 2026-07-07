@@ -253,6 +253,22 @@ func TestPerHostMetrics_GroupsByHost(t *testing.T) {
 	assert.Equal(t, float64(12), api.ErrorsTotal, "per-host ErrorsTotal")
 }
 
+func TestParsePrometheus_InFlightSumsAcrossServers(t *testing.T) {
+	// Caddy labels caddy_http_requests_in_flight per server, so a multi-server
+	// instance exposes one series per server. The global gauge must be their
+	// sum, not the first series encountered.
+	input := `# TYPE caddy_http_requests_in_flight gauge
+caddy_http_requests_in_flight{handler="subroute",server="srv0"} 3
+caddy_http_requests_in_flight{handler="subroute",server="srv1"} 6
+caddy_http_requests_in_flight{handler="subroute",server="srv2"} 4
+`
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.Equal(t, float64(13), snap.HTTPRequestsInFlight,
+		"in-flight must be summed across all server series")
+}
+
 func TestPerHostMetrics_IgnoresServerOnlyLeftoversWhenPerHostActive(t *testing.T) {
 	// Reproduces the "srv0 appears alongside real hosts" symptom users hit
 	// after enabling `per_host` on a running Caddy: the earlier server-only
