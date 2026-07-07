@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -113,6 +114,41 @@ func TestBuildJSONOutput_NoHosts_NoPercentiles(t *testing.T) {
 	assert.Nil(t, out.Derived.P95)
 	assert.Nil(t, out.Derived.P99)
 	assert.Empty(t, out.Errors)
+}
+
+func TestBuildJSONOutput_DoesNotMutateSharedHostBuckets(t *testing.T) {
+	host := &fetcher.HostMetrics{
+		Host: "api.example.com",
+		DurationBuckets: []fetcher.HistogramBucket{
+			{UpperBound: 0.1, CumulativeCount: 5},
+			{UpperBound: 0.5, CumulativeCount: 10},
+			{UpperBound: math.Inf(1), CumulativeCount: 12},
+		},
+		TTFBBuckets: []fetcher.HistogramBucket{
+			{UpperBound: 0.05, CumulativeCount: 3},
+			{UpperBound: math.Inf(1), CumulativeCount: 8},
+		},
+	}
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now(),
+		Metrics:   fetcher.MetricsSnapshot{Hosts: map[string]*fetcher.HostMetrics{"api.example.com": host}},
+	}
+	var state model.State
+	state.Update(snap)
+
+	out := buildJSONOutput(snap, &state)
+
+	// The JSON payload must drop the non-finite bucket.
+	require.Len(t, out.Metrics.Hosts["api.example.com"].DurationBuckets, 2)
+	require.Len(t, out.Metrics.Hosts["api.example.com"].TTFBBuckets, 1)
+
+	// The snapshot shared with state.Current must keep its +Inf bucket intact,
+	// otherwise the next tick computes percentiles against a truncated
+	// histogram (total collapses to the last finite bucket).
+	require.Len(t, host.DurationBuckets, 3)
+	assert.True(t, math.IsInf(host.DurationBuckets[2].UpperBound, 1))
+	require.Len(t, host.TTFBBuckets, 2)
+	assert.True(t, math.IsInf(host.TTFBBuckets[1].UpperBound, 1))
 }
 
 func TestBuildJSONOutput_WithErrors(t *testing.T) {
