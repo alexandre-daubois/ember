@@ -35,7 +35,7 @@ func TestTruncateURI(t *testing.T) {
 	assert.Equal(t, "/short", truncateURI("/short", 20))
 	assert.Equal(t, "/api/v1/very/long…", truncateURI("/api/v1/very/long/path/here", 18))
 	assert.Equal(t, "/a…", truncateURI("/abcdef", 3))
-	assert.Equal(t, "", truncateURI("/abcdef", 0))
+	assert.Empty(t, truncateURI("/abcdef", 0))
 	// Wide runes count as two cells and are never split mid-rune.
 	assert.Equal(t, "/世世世世…", truncateURI("/"+strings.Repeat("世", 20), 10),
 		"truncation must be cell-aware and rune-safe")
