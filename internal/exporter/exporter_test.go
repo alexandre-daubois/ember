@@ -1033,6 +1033,22 @@ func TestHealthHandler_Multi_NoDataYetReturns503(t *testing.T) {
 	assert.Equal(t, "no data yet", body["status"])
 }
 
+func TestHealthHandler_Multi_NoSlotsReturns503(t *testing.T) {
+	// Every instance was unreachable at startup, so no slot was ever
+	// registered. A readiness probe must report not-ready rather than
+	// falsely returning 200 with an empty instance list.
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+
+	rec := healthz(holder, time.Second)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "no data yet", body["status"])
+	assert.Empty(t, body["instances"])
+}
+
 // TestHealthHandler_Multi_PerInstanceStaleness covers the issue #46 acceptance
 // criterion: an instance polled on its own (slow) interval must not be marked
 // stale just because its last fetch is older than the global threshold.
