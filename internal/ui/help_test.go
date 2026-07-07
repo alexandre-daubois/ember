@@ -118,7 +118,8 @@ func TestRenderHelp_SeparatorsPresent(t *testing.T) {
 }
 
 func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
-	out := stripANSI(renderHelpOverlay(120, 40, false, true, nil, nil))
+	tabs := []tab{tabCaddy, tabFrankenPHP, tabLogs, tabConfig, tabCertificates}
+	out := stripANSI(renderHelpOverlay(120, 40, true, nil, tabs))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Actions")
@@ -137,7 +138,8 @@ func TestRenderHelpOverlay_ContainsBindings(t *testing.T) {
 }
 
 func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
-	out := stripANSI(renderHelpOverlay(120, 40, false, false, nil, nil))
+	tabs := []tab{tabCaddy, tabLogs, tabConfig, tabCertificates}
+	out := stripANSI(renderHelpOverlay(120, 40, false, nil, tabs))
 
 	assert.Contains(t, out, "Navigation")
 	assert.Contains(t, out, "Toggle graphs")
@@ -146,6 +148,15 @@ func TestRenderHelpOverlay_WithoutFrankenPHP(t *testing.T) {
 	assert.NotContains(t, out, "1/2/3/4/5")
 	assert.Contains(t, out, "Refresh config/certs")
 	assert.NotContains(t, out, "restart workers")
+}
+
+func TestRenderHelpOverlay_JumpHintCountsPluginTabs(t *testing.T) {
+	// Six core tabs plus two plugin tabs: the jump hint must span all of them
+	// (1-8), not cap at 6.
+	tabs := []tab{tabCaddy, tabFrankenPHP, tabUpstreams, tabLogs, tabConfig, tabCertificates, tab(100), tab(101)}
+	out := stripANSI(renderHelpOverlay(120, 40, true, nil, tabs))
+
+	assert.Contains(t, out, "1/2/3/4/5/6/7/8")
 }
 
 // Plugin tab is active and the plugin returns a non-empty FooterText hint.

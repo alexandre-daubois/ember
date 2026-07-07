@@ -444,7 +444,7 @@ func (a *App) View() string {
 	}
 
 	if a.mode == viewHelp {
-		return renderHelpOverlay(a.width, a.height, a.hasUpstreams, a.hasFrankenPHP, a.pluginTabs, a.tabs)
+		return renderHelpOverlay(a.width, a.height, a.hasFrankenPHP, a.pluginTabs, a.tabs)
 	}
 
 	return base
