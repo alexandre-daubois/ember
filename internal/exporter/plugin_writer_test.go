@@ -76,7 +76,28 @@ func TestPluginWriter_FlushHandlesPartialFinalLine(t *testing.T) {
 	pw := newPluginWriter(&out, "web1", helpSeen)
 	_, _ = pw.Write([]byte("foo 1"))
 	pw.flush()
-	assert.Equal(t, "foo{ember_instance=\"web1\"} 1", out.String())
+	assert.Equal(t, "foo{ember_instance=\"web1\"} 1\n", out.String(),
+		"an unterminated final line must be newline-terminated so the next render does not fuse onto it")
+}
+
+func TestPluginWriter_SequentialRendersDoNotFuse(t *testing.T) {
+	// Two plugins (or two instances) render one after another into the same
+	// output. If the first does not terminate its final line, its last metric
+	// must not fuse with the first line of the next render.
+	helpSeen := make(map[string]struct{})
+	var out bytes.Buffer
+
+	first := newPluginWriter(&out, "web1", helpSeen)
+	_, _ = first.Write([]byte("foo 1")) // no trailing newline
+	first.flush()
+
+	second := newPluginWriter(&out, "web1", helpSeen)
+	_, _ = second.Write([]byte("bar 2\n"))
+	second.flush()
+
+	assert.Equal(t,
+		"foo{ember_instance=\"web1\"} 1\nbar{ember_instance=\"web1\"} 2\n",
+		out.String())
 }
 
 func TestPluginWriter_HandlesQuotedBraceInLabelValue(t *testing.T) {
@@ -112,7 +133,7 @@ func TestPluginWriter_BuffersAcrossMultipleWriteCalls(t *testing.T) {
 	_, _ = pw.Write([]byte("foo "))
 	_, _ = pw.Write([]byte("1\nbar 2"))
 	pw.flush()
-	assert.Equal(t, "foo{ember_instance=\"web1\"} 1\nbar{ember_instance=\"web1\"} 2", out.String())
+	assert.Equal(t, "foo{ember_instance=\"web1\"} 1\nbar{ember_instance=\"web1\"} 2\n", out.String())
 }
 
 func TestHelpTypeKey_RecognizesHelp(t *testing.T) {
