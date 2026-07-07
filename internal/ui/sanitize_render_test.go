@@ -37,16 +37,16 @@ func TestRenderSinksNeutralizeControlBytes(t *testing.T) {
 		out  func() string
 	}{
 		{"formatLogRow access URI", func() string {
-			return formatLogRow(fetcher.LogEntry{Method: "GET", Host: "h", URI: evil, Status: 200}, 120, 60, false, false)
+			return formatLogRow(fetcher.LogEntry{Method: "GET", Host: "h", URI: evil, Status: 200}, 120, false, false)
 		}},
 		{"formatLogRow access URI selected", func() string {
-			return formatLogRow(fetcher.LogEntry{Method: "GET", Host: "h", URI: evil, Status: 200}, 120, 60, true, false)
+			return formatLogRow(fetcher.LogEntry{Method: "GET", Host: "h", URI: evil, Status: 200}, 120, true, false)
 		}},
 		{"formatLogRow host+method", func() string {
-			return formatLogRow(fetcher.LogEntry{Method: evil, Host: evil, URI: "/", Status: 500}, 120, 60, false, false)
+			return formatLogRow(fetcher.LogEntry{Method: evil, Host: evil, URI: "/", Status: 500}, 120, false, false)
 		}},
 		{"formatLogRow parse error raw line", func() string {
-			return formatLogRow(fetcher.LogEntry{ParseError: true, RawLine: evil}, 120, 60, false, false)
+			return formatLogRow(fetcher.LogEntry{ParseError: true, RawLine: evil}, 120, false, false)
 		}},
 		{"formatRuntimeLogRow message+logger", func() string {
 			return formatRuntimeLogRow(fetcher.LogEntry{Level: "info", Logger: evil, Message: evil}, 120, 60, false)

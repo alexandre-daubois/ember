@@ -53,7 +53,12 @@ const (
 	colLogMethod = 8
 	colLogHost   = 22
 	colLogDur    = 9
-	colLogFixed  = 1 + colLogTime + colLogStatus + colLogMethod + colLogHost + colLogDur
+
+	// minLogHostWidth / minLogURIWidth are the floors the flexible Host and URI
+	// columns shrink to on narrow terminals before the row is allowed to
+	// overflow.
+	minLogHostWidth = 8
+	minLogURIWidth  = 10
 
 	// logHeaderHeight is the number of visual rows consumed by the header:
 	// one row of column labels plus one row for the bottom border. Shared
@@ -77,15 +82,37 @@ var logHeaderLabelsStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(subtle)
 
-func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, rightStatus, emptyHint string, hideHost bool) string {
-	fixed := colLogFixed
+// logColumnLayout distributes width across the flexible access-table columns.
+// The fixed columns (time, status, method, duration and the two-space gutter)
+// always render at full width; the Host column shrinks toward minLogHostWidth
+// before the URI so the row fits its width instead of overflowing and wrapping
+// the whole table. hideHost drops the Host column (per-host view). The returned
+// widths are the text widths of the Host and URI cells.
+func logColumnLayout(width int, hideHost bool) (hostW, uriW int) {
+	fixed := 1 + colLogTime + colLogStatus + colLogMethod + colLogDur + 2 // prefix + gutter
+	flex := width - fixed
+	if flex < minLogURIWidth {
+		flex = minLogURIWidth
+	}
 	if hideHost {
-		fixed -= colLogHost
+		return 0, flex
 	}
-	uriW := width - fixed
-	if uriW < 10 {
-		uriW = 10
+	hostW = colLogHost
+	if hostW > flex-minLogURIWidth {
+		hostW = flex - minLogURIWidth
 	}
+	if hostW < minLogHostWidth {
+		hostW = minLogHostWidth
+	}
+	uriW = flex - hostW
+	if uriW < minLogURIWidth {
+		uriW = minLogURIWidth
+	}
+	return hostW, uriW
+}
+
+func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, rightStatus, emptyHint string, hideHost bool) string {
+	hostW, uriW := logColumnLayout(width, hideHost)
 
 	var labels string
 	if hideHost {
@@ -94,16 +121,16 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, right
 			colLogStatus, "Code",
 			colLogMethod, "Method",
 			colLogDur, "Duration",
-			uriW-2, "URI",
+			uriW, "URI",
 		)
 	} else {
 		labels = fmt.Sprintf(" %-*s%-*s%-*s%-*s%*s  %-*s",
 			colLogTime, "Time",
 			colLogStatus, "Code",
 			colLogMethod, "Method",
-			colLogHost, "Host",
+			hostW, "Host",
 			colLogDur, "Duration",
-			uriW-2, "URI",
+			uriW, "URI",
 		)
 	}
 	headerLine := renderLogHeader(labels, rightStatus, width)
@@ -124,7 +151,7 @@ func renderLogTable(entries []fetcher.LogEntry, cursor, width, height int, right
 	}
 
 	for i, e := range visible {
-		rows = append(rows, formatLogRow(e, width, uriW, i == cursor, hideHost))
+		rows = append(rows, formatLogRow(e, width, i == cursor, hideHost))
 	}
 
 	for len(rows) < bodyHeight {
@@ -277,7 +304,9 @@ func formatRuntimeLogRow(e fetcher.LogEntry, width, msgW int, selected bool) str
 	return timePart + styledLevel + loggerPart + msgPart
 }
 
-func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, hideHost bool) string {
+func formatLogRow(e fetcher.LogEntry, width int, selected, hideHost bool) string {
+	hostW, uriW := logColumnLayout(width, hideHost)
+
 	prefix := " "
 	if selected {
 		prefix = ">"
@@ -326,9 +355,9 @@ func formatLogRow(e fetcher.LogEntry, width, uriW int, selected, hideHost bool) 
 	timePart := prefix + fitCellLeft(timeStr, colLogTime)
 	statusPart := fitCellLeft(statusStr, colLogStatus)
 	methodPart := fitCellLeft(method, colLogMethod)
-	hostPart := fitCellLeft(host, colLogHost)
+	hostPart := fitCellLeft(host, hostW)
 	durPart := fitCellRight(durStr, colLogDur) + "  "
-	uriPart := fitCellLeft(uri, uriW-2)
+	uriPart := fitCellLeft(uri, uriW)
 
 	if selected {
 		var row string

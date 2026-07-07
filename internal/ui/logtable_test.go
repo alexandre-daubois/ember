@@ -12,19 +12,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRenderLogTable_FitsNarrowWidth(t *testing.T) {
+	e := fetcher.LogEntry{
+		Timestamp: time.Now(), Status: 200, Method: "GET",
+		Host: "verylonghostname.example.com", URI: "/api/v1/some/long/resource/path", Duration: 0.012,
+	}
+	// tableW on an 80-column terminal is 80 - sidepanelFixedWidth = 58: the
+	// fixed columns alone used to exceed this, wrapping every row.
+	const tableW = 58
+	for _, hideHost := range []bool{false, true} {
+		out := renderLogTable([]fetcher.LogEntry{e, e}, -1, tableW, 20, "", "none", hideHost)
+		for _, line := range strings.Split(out, "\n") {
+			assert.LessOrEqualf(t, lipgloss.Width(line), tableW,
+				"log row overflows the %d-col table area (hideHost=%v): %q", tableW, hideHost, stripANSI(line))
+		}
+	}
+}
+
 func TestFormatLogRow_ParseError_Truncates(t *testing.T) {
 	entry := fetcher.LogEntry{
 		ParseError: true,
 		RawLine:    strings.Repeat("x", 200),
 	}
-	row := stripANSI(formatLogRow(entry, 40, 20, false, false))
+	row := stripANSI(formatLogRow(entry, 40, false, false))
 	assert.Contains(t, row, "…", "very long parse-error raw line must be ellipsised")
 	assert.LessOrEqual(t, lipgloss.Width(row), 40)
 }
 
 func TestFormatLogRow_ParseError_Selected(t *testing.T) {
 	entry := fetcher.LogEntry{ParseError: true, RawLine: "boom"}
-	row := stripANSI(formatLogRow(entry, 40, 20, true, false))
+	row := stripANSI(formatLogRow(entry, 40, true, false))
 	assert.Contains(t, row, ">")
 	assert.Contains(t, row, "boom")
 }
@@ -49,7 +66,7 @@ func TestFormatLogRow_StatusColors(t *testing.T) {
 				Status:    c.status,
 				Duration:  0.005,
 			}
-			row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+			row := stripANSI(formatLogRow(entry, 120, false, false))
 			assert.Contains(t, row, "h.com")
 			assert.Contains(t, row, "GET")
 		})
@@ -65,7 +82,7 @@ func TestFormatLogRow_LongHostTruncates(t *testing.T) {
 		URI:       "/x",
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, false, false))
 	assert.Contains(t, row, "…", "host longer than its column must be ellipsised")
 	assert.NotContains(t, row, longHost)
 }
@@ -79,14 +96,14 @@ func TestFormatLogRow_LongURITruncates(t *testing.T) {
 		URI:       longURI,
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, false, false))
 	assert.Contains(t, row, "…")
 	assert.NotContains(t, row, longURI)
 }
 
 func TestFormatLogRow_MissingFieldsRenderDashes(t *testing.T) {
 	entry := fetcher.LogEntry{Timestamp: time.Now()}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, false, false))
 	assert.Contains(t, row, "—")
 }
 
@@ -98,7 +115,7 @@ func TestFormatLogRow_LongMethodTruncates(t *testing.T) {
 		URI:       "/x",
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	row := stripANSI(formatLogRow(entry, 120, false, false))
 	assert.NotContains(t, row, "VERYLONGMETHOD")
 }
 
@@ -110,7 +127,7 @@ func TestFormatLogRow_SelectedShowsCursor(t *testing.T) {
 		URI:       "/",
 		Status:    200,
 	}
-	row := stripANSI(formatLogRow(entry, 120, uriWidth(120), true, false))
+	row := stripANSI(formatLogRow(entry, 120, true, false))
 	assert.Contains(t, row, ">")
 }
 
@@ -122,8 +139,8 @@ func TestFormatLogRow_HideHostDropsHostColumn(t *testing.T) {
 		URI:       "/path",
 		Status:    200,
 	}
-	hidden := stripANSI(formatLogRow(entry, 120, uriWidth(120)+colLogHost, false, true))
-	visible := stripANSI(formatLogRow(entry, 120, uriWidth(120), false, false))
+	hidden := stripANSI(formatLogRow(entry, 120, false, true))
+	visible := stripANSI(formatLogRow(entry, 120, false, false))
 	assert.NotContains(t, hidden, "visible.example", "host column must disappear when hideHost=true")
 	assert.Contains(t, visible, "visible.example")
 }
@@ -269,7 +286,7 @@ func TestFormatLogRow_EmojiInURIFitsColumnWidth(t *testing.T) {
 		Status:    200,
 	}
 	width := 120
-	row := formatLogRow(entry, width, uriWidth(width), false, false)
+	row := formatLogRow(entry, width, false, false)
 	assert.LessOrEqual(t, lipgloss.Width(row), width,
 		"a URI containing an emoji must not push the row past the requested width")
 }
