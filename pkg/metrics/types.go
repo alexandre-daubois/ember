@@ -14,6 +14,10 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
+// ThreadDebugState is the live state of a single FrankenPHP thread from the
+// FrankenPHP debug endpoint. WaitingSinceMilliseconds is a duration in
+// milliseconds; RequestStartedAt is a Unix timestamp in milliseconds;
+// MemoryUsage is in bytes.
 type ThreadDebugState struct {
 	Index                    int    `json:"Index"`
 	Name                     string `json:"Name"`
@@ -29,11 +33,16 @@ type ThreadDebugState struct {
 	RequestCount     int64  `json:"RequestCount,omitempty"`
 }
 
+// ThreadsResponse is the FrankenPHP thread debug payload: the per-thread states
+// plus the number of reserved (allocated but not yet started) threads.
 type ThreadsResponse struct {
 	ThreadDebugStates   []ThreadDebugState `json:"ThreadDebugStates"`
 	ReservedThreadCount int                `json:"ReservedThreadCount"`
 }
 
+// WorkerMetrics holds the FrankenPHP worker-pool metrics for a single worker
+// script, mirroring the frankenphp_worker_* families. Total/Busy/Ready are
+// current counts; Crashes/Restarts/RequestCount are cumulative counters.
 type WorkerMetrics struct {
 	Worker       string  `json:"worker"`
 	Total        float64 `json:"total"`
@@ -59,6 +68,10 @@ type UpstreamMetrics struct {
 	Healthy float64 `json:"healthy"`
 }
 
+// HostMetrics holds Caddy HTTP metrics aggregated for one host. The paired
+// *Sum/*Count fields are Prometheus histogram/summary components: durations are
+// in seconds, sizes in bytes. DurationBuckets and TTFBBuckets are cumulative
+// histogram buckets. StatusCodes and Methods map a code/method to its rate.
 type HostMetrics struct {
 	Host              string             `json:"host"`
 	RequestsTotal     float64            `json:"requestsTotal"`
@@ -78,6 +91,11 @@ type HostMetrics struct {
 	TTFBBuckets       []HistogramBucket  `json:"ttfbBuckets,omitempty"`
 }
 
+// MetricsSnapshot is the parsed view of a single Caddy /metrics scrape, grouped
+// by source: FrankenPHP thread/worker counters, Caddy HTTP metrics (global and
+// per-host), reverse-proxy upstream health, Go process metrics, and config
+// reload status. Duration fields are in seconds and size fields in bytes,
+// matching Caddy's Prometheus families.
 type MetricsSnapshot struct {
 	// FrankenPHP-specific (require frankenphp metrics)
 	TotalThreads float64                   `json:"totalThreads"`
@@ -116,11 +134,18 @@ type MetricsSnapshot struct {
 	Extra map[string]*dto.MetricFamily `json:"-"`
 }
 
+// HistogramBucket is one cumulative Prometheus histogram bucket: CumulativeCount
+// is the number of observations less than or equal to UpperBound (the +Inf
+// bucket carries the total). UpperBound units follow the source metric
+// (seconds for duration histograms).
 type HistogramBucket struct {
 	UpperBound      float64 `json:"upperBound"`
 	CumulativeCount float64 `json:"cumulativeCount"`
 }
 
+// ProcessMetrics holds OS-level metrics for the monitored server process.
+// RSS is in bytes; CPUPercent is a percentage of a single core over the last
+// sampling interval; CreateTime is a Unix timestamp in milliseconds.
 type ProcessMetrics struct {
 	PID        int32         `json:"pid"`
 	CPUPercent float64       `json:"cpuPercent"`
@@ -129,6 +154,9 @@ type ProcessMetrics struct {
 	Uptime     time.Duration `json:"uptime"`
 }
 
+// Snapshot is a complete point-in-time view returned by a fetch: FrankenPHP
+// thread states, parsed Caddy metrics, process stats, the fetch time, and any
+// non-fatal errors collected while assembling it.
 type Snapshot struct {
 	Threads       ThreadsResponse `json:"threads"`
 	Metrics       MetricsSnapshot `json:"metrics"`
