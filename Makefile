@@ -6,7 +6,7 @@ LDFLAGS   := -s -w
 
 GO_TEST_FLAGS := -race -shuffle=on -count=1
 
-.PHONY: build test test-nocolor lint coverage bench check integration integration-docker fuzz clean help
+.PHONY: build test test-nocolor lint bench check integration integration-docker fuzz clean help
 
 build: ## Build the binary
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY) $(CMD)
