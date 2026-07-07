@@ -76,6 +76,26 @@ func TestCheckLatestVersion_DevBuild(t *testing.T) {
 	assert.Contains(t, buf.String(), "Development build")
 }
 
+func TestCheckLatestVersion_DefaultDevVersion(t *testing.T) {
+	// The unstamped `go install` default is "dev" (no "-dev" suffix); it must
+	// take the development-build branch, not "a newer version is available".
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(githubRelease{TagName: "v1.0.0", HTMLURL: "https://github.com/test/releases/v1.0.0"})
+	}))
+	defer srv.Close()
+
+	origURL := latestReleaseURL
+	setLatestReleaseURL(srv.URL)
+	defer setLatestReleaseURL(origURL)
+
+	var buf bytes.Buffer
+	err := checkLatestVersion(context.Background(), &buf, "dev")
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Development build")
+	assert.NotContains(t, buf.String(), "newer version")
+}
+
 func TestCheckLatestVersion_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

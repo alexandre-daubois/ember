@@ -64,8 +64,9 @@ func checkLatestVersion(ctx context.Context, w io.Writer, current string) error 
 		return nil
 	}
 
-	// dev builds always show as outdated
-	if strings.Contains(currentClean, "-dev") {
+	// Unstamped `go install` builds report "dev"; stamped dev builds may carry
+	// a "-dev" suffix. Match both so neither is mislabelled as an outdated release.
+	if strings.Contains(currentClean, "dev") {
 		fmt.Fprintf(w, "Development build. Latest release: %s\n  %s\n", latest.TagName, latest.HTMLURL)
 		return nil
 	}
