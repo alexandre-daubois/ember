@@ -245,10 +245,21 @@ func convertThreads(t fetcher.ThreadsResponse) jsonThreadsResponse {
 
 func sanitizeForJSON(out *jsonOutput) {
 	out.Metrics.DurationBuckets = sanitizeBuckets(out.Metrics.DurationBuckets)
-	for _, h := range out.Metrics.Hosts {
-		h.DurationBuckets = sanitizeBuckets(h.DurationBuckets)
-		h.TTFBBuckets = sanitizeBuckets(h.TTFBBuckets)
+	if out.Metrics.Hosts == nil {
+		return
 	}
+	// out.Metrics.Hosts shares its *HostMetrics with state.Current (map of
+	// pointers). Rebuild the map with copies so stripping the +Inf bucket for
+	// the JSON payload does not mutate the histogram that percentiles are
+	// computed from on the next tick.
+	hosts := make(map[string]*fetcher.HostMetrics, len(out.Metrics.Hosts))
+	for name, h := range out.Metrics.Hosts {
+		clone := *h
+		clone.DurationBuckets = sanitizeBuckets(clone.DurationBuckets)
+		clone.TTFBBuckets = sanitizeBuckets(clone.TTFBBuckets)
+		hosts[name] = &clone
+	}
+	out.Metrics.Hosts = hosts
 }
 
 func sanitizeBuckets(buckets []fetcher.HistogramBucket) []fetcher.HistogramBucket {
