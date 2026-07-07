@@ -220,10 +220,10 @@ type TabDescriptor struct {
 // Each tab gets its own [Renderer], but all tabs share the same [Fetcher] data.
 //
 // Tabs returns the list of tabs this plugin provides. It is called once
-// after Init. The order determines the tab order in the tab bar.
+// after Provision. The order determines the tab order in the tab bar.
 //
 // RendererForTab returns the initial Renderer for the given tab key.
-// It is called once per tab after Init.
+// It is called once per tab after Provision.
 //
 // A plugin should implement either [Renderer] or MultiRenderer, not both.
 // If both are present, MultiRenderer takes priority.
