@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strconv"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -329,12 +330,13 @@ func (a *App) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.logScrollOffset = 0
 	case "backspace":
 		if len(a.filter) > 0 {
-			a.filter = a.filter[:len(a.filter)-1]
+			_, size := utf8.DecodeLastRuneInString(a.filter)
+			a.filter = a.filter[:len(a.filter)-size]
 			a.cursor = 0
 			a.logScrollOffset = 0
 		}
 	default:
-		if len(msg.String()) == 1 {
+		if utf8.RuneCountInString(msg.String()) == 1 {
 			a.filter += msg.String()
 			a.cursor = 0
 			a.logScrollOffset = 0

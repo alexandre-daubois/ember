@@ -596,6 +596,19 @@ func TestEnter_EmptyListStaysInList(t *testing.T) {
 	assert.Equal(t, viewList, app2.mode, "Enter on an empty thread list must not enter detail mode")
 }
 
+func TestHandleFilterKey_AcceptsNonASCII(t *testing.T) {
+	app := &App{mode: viewFilter}
+
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("é")})
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("à")})
+	assert.Equal(t, "éà", app.filter, "multi-byte runes must be accepted into the filter")
+
+	// Backspace must drop the last rune, not a single byte (which would corrupt
+	// the multi-byte character).
+	app.handleFilterKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, "é", app.filter, "backspace must remove a whole rune")
+}
+
 func TestHome_GoesToStart(t *testing.T) {
 	app := newAppWithThreads(make([]fetcher.ThreadDebugState, 10))
 	app.cursor = 5
