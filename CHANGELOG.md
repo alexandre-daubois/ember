@@ -71,7 +71,7 @@ All notable changes to Ember are documented here.
 - Upstreams tab.
 - Ember self-metrics so operators can monitor the monitor.
 - P90 in JSON streaming output derived metrics.
-- Shortcut `i` to change the polling interval at runtime.
+- `-i` short flag as an alias for `--interval`.
 
 ### Changed
 
