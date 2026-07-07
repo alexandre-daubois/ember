@@ -92,7 +92,9 @@ Keybindings:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			bindEnv(cmd)
+			if err := bindEnv(cmd); err != nil {
+				return err
+			}
 			if _, ok := os.LookupEnv("NO_COLOR"); ok {
 				cfg.noColor = true
 			}
@@ -227,7 +229,7 @@ var envBindings = map[string]string{
 // command line. Value.Set does not flip Changed, so we set it explicitly once a
 // value lands: env-provided values must win over the config file, which is
 // skipped precisely when the addr (or per-key) flag is Changed.
-func bindEnv(cmd *cobra.Command) {
+func bindEnv(cmd *cobra.Command) error {
 	for name, env := range envBindings {
 		f := cmd.Flag(name)
 		if f == nil || f.Changed {
@@ -243,16 +245,21 @@ func bindEnv(cmd *cobra.Command) {
 				if v == "" {
 					continue
 				}
-				if f.Value.Set(v) == nil {
-					f.Changed = true
+				if err := f.Value.Set(v); err != nil {
+					return fmt.Errorf("%s=%q: %w", env, v, err)
 				}
+				f.Changed = true
 			}
 			continue
 		}
-		if f.Value.Set(val) == nil {
-			f.Changed = true
+		// A malformed value (e.g. EMBER_INTERVAL=5 with no unit) must fail
+		// loudly rather than being dropped and leaving the flag at its default.
+		if err := f.Value.Set(val); err != nil {
+			return fmt.Errorf("%s=%q: %w", env, val, err)
 		}
+		f.Changed = true
 	}
+	return nil
 }
 
 const minInterval = 100 * time.Millisecond

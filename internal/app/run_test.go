@@ -535,9 +535,18 @@ func TestBindEnv_AddrFromEnv(t *testing.T) {
 	t.Setenv("EMBER_ADDR", "http://remote:2019")
 
 	cmd := newRootCmd("0.0.0")
-	bindEnv(cmd)
+	require.NoError(t, bindEnv(cmd))
 
 	assert.Equal(t, "[http://remote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_InvalidIntervalIsError(t *testing.T) {
+	t.Setenv("EMBER_INTERVAL", "5") // missing unit: not a valid duration
+
+	cmd := newRootCmd("0.0.0")
+	err := bindEnv(cmd)
+	require.Error(t, err, "a malformed EMBER_INTERVAL must not be silently ignored")
+	assert.Contains(t, err.Error(), "EMBER_INTERVAL")
 }
 
 func TestBindEnv_AddrFromEnv_SemicolonSeparated(t *testing.T) {
