@@ -16,6 +16,16 @@ import (
 
 var emptyOpts = upstreamRenderOpts{viewTime: time.Now()}
 
+func TestFormatUpstreamRow_WideRuneStaysAligned(t *testing.T) {
+	const addrW = 20
+	ascii := stripANSI(formatUpstreamRow(model.UpstreamDerived{Address: strings.Repeat("a", 60)}, 120, addrW, false, nil, emptyOpts))
+	cjk := stripANSI(formatUpstreamRow(model.UpstreamDerived{Address: strings.Repeat("世", 60)}, 120, addrW, false, nil, emptyOpts))
+
+	assert.Equal(t, lipgloss.Width(ascii), lipgloss.Width(cjk),
+		"a wide-rune upstream address must stay column-aligned")
+	assert.NotContains(t, cjk, "�", "no mojibake from mid-rune truncation")
+}
+
 func TestRenderUpstreamTable_Header(t *testing.T) {
 	out := stripANSI(renderUpstreamTable(nil, 0, 100, 20, model.SortByUpstreamAddress, emptyOpts))
 	assert.Contains(t, out, "Upstream")

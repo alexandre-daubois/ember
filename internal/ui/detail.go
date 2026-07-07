@@ -8,6 +8,7 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 const (
@@ -201,14 +202,14 @@ func renderMemSparkline(samples []int64, maxWidth int) string {
 	return greyStyle.Render(b.String())
 }
 
-func truncateURI(uri string, maxLen int) string {
-	if len(uri) <= maxLen {
-		return uri
+// truncateURI shortens uri to at most maxCells display columns, rune-safe (no
+// mid-rune cut / mojibake) and cell-aware (a wide rune counts as 2 cells so the
+// rendered line never overflows the column).
+func truncateURI(uri string, maxCells int) string {
+	if maxCells <= 0 {
+		return ""
 	}
-	if maxLen < 4 {
-		return uri[:maxLen]
-	}
-	return uri[:maxLen-1] + "…"
+	return runewidth.Truncate(uri, maxCells, "…")
 }
 
 func formatBytes(b int64) string {

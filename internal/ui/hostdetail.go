@@ -8,6 +8,7 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 func renderHostDetailPanel(h model.HostDerived, width, height int) string {
@@ -22,15 +23,14 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 	if host == "*" {
 		host = "* (All traffic)"
 	}
-	host = sanitizeControl(host)
 	crumb := greyStyle.Render("Caddy › ")
 	avail := inner - lipgloss.Width(crumb)
 	if avail < 1 {
 		avail = 1
 	}
-	if len(host) > avail {
-		host = host[:avail-1] + "…"
-	}
+	// Rune-safe, cell-aware truncation so a multi-byte host header is never cut
+	// mid-rune (which renders as ). sanitizeControl neutralises control bytes.
+	host = runewidth.Truncate(sanitizeControl(host), avail, "…")
 	lines = append(lines, crumb+titleStyle.Render(host))
 
 	lines = append(lines, "")

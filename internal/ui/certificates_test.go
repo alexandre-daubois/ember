@@ -381,6 +381,19 @@ func TestFormatCertRow_Truncation(t *testing.T) {
 	assert.Contains(t, row, "…")
 }
 
+func TestFormatCertRow_WideRuneStaysAligned(t *testing.T) {
+	const domW = 20
+	mk := func(dns string) string {
+		return stripANSI(formatCertRow(fetcher.CertificateInfo{DNSNames: []string{dns}, NotAfter: time.Now()}, 120, domW, false))
+	}
+	ascii := mk(strings.Repeat("a", 60))
+	cjk := mk(strings.Repeat("世", 60))
+
+	assert.Equal(t, lipgloss.Width(ascii), lipgloss.Width(cjk),
+		"a wide-rune (IDN/CJK) certificate domain must stay column-aligned")
+	assert.NotContains(t, cjk, "�", "no mojibake from mid-rune truncation")
+}
+
 func TestFormatCertRow_AutoRenew(t *testing.T) {
 	c := fetcher.CertificateInfo{
 		Subject:   "example.com",

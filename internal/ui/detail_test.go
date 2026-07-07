@@ -34,7 +34,11 @@ func TestFormatBytes(t *testing.T) {
 func TestTruncateURI(t *testing.T) {
 	assert.Equal(t, "/short", truncateURI("/short", 20))
 	assert.Equal(t, "/api/v1/very/long…", truncateURI("/api/v1/very/long/path/here", 18))
-	assert.Equal(t, "/ab", truncateURI("/abcdef", 3))
+	assert.Equal(t, "/a…", truncateURI("/abcdef", 3))
+	assert.Equal(t, "", truncateURI("/abcdef", 0))
+	// Wide runes count as two cells and are never split mid-rune.
+	assert.Equal(t, "/世世世世…", truncateURI("/"+strings.Repeat("世", 20), 10),
+		"truncation must be cell-aware and rune-safe")
 }
 
 func TestRenderDetailPanel_ContainsThreadInfo(t *testing.T) {
@@ -87,6 +91,20 @@ func TestRenderDetailPanel_LongURIDoesNotWrap(t *testing.T) {
 
 	assert.Equal(t, shortLines, longLines,
 		"a long URI must be truncated to fit one line, not wrap and grow the panel by a line")
+}
+
+func TestRenderDetailPanel_WideRuneURINoMojibake(t *testing.T) {
+	thread := fetcher.ThreadDebugState{
+		Index: 1, IsBusy: true, CurrentMethod: "GET",
+		CurrentURI: "/" + strings.Repeat("世", 80),
+	}
+	panel := renderDetailPanel(thread, 44, 40, nil, time.Now())
+	assert.NotContains(t, panel, "�", "URI must be truncated on a rune boundary, not mid-byte")
+}
+
+func TestRenderHostDetailPanel_WideRuneHostNoMojibake(t *testing.T) {
+	panel := renderHostDetailPanel(model.HostDerived{Host: strings.Repeat("世", 80)}, 44, 30)
+	assert.NotContains(t, panel, "�", "host title must be truncated on a rune boundary, not mid-byte")
 }
 
 func TestRenderDetailPanel_IdleThread(t *testing.T) {
