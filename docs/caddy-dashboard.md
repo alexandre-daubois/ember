@@ -51,7 +51,7 @@ Press `Esc` to close the detail panel.
 
 ## Config Inspector
 
-The **Caddy Config** tab (accessible via `Tab` or `2`) fetches the live Caddy configuration via the admin API (`GET /config/`) and displays it as an interactive collapsible JSON tree. The config is refreshed by pressing `r`.
+The **Caddy Config** tab (accessible via `Tab`, or its number key which depends on how many optional tabs are shown) fetches the live Caddy configuration via the admin API (`GET /config/`) and displays it as an interactive collapsible JSON tree. The config is refreshed by pressing `r`.
 
 Navigation in the Caddy Config tab:
 
