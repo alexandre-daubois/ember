@@ -297,6 +297,23 @@ func (a *App) View() string {
 	if a.mode == viewFilter {
 		contentAreaHeight--
 	}
+	// In the stacked (non side-panel) detail layout the panel is appended below
+	// the list. Reserve its height from the list so the two together fit the
+	// terminal instead of pushing the dashboard and tab bar off the top.
+	bottomDetailHeight := 0
+	if a.mode == viewDetail && !sidePanel {
+		bottomDetailHeight = detailPanelHeight
+		if a.activeTab == tabCaddy {
+			bottomDetailHeight = detailPanelHeight + 6
+		}
+		if maxPanel := contentAreaHeight - detailBottomListMin; bottomDetailHeight > maxPanel {
+			bottomDetailHeight = maxPanel
+		}
+		if bottomDetailHeight < detailBottomMinHeight {
+			bottomDetailHeight = detailBottomMinHeight
+		}
+		contentAreaHeight -= bottomDetailHeight
+	}
 	if contentAreaHeight < 5 {
 		contentAreaHeight = 5
 	}
@@ -407,8 +424,8 @@ func (a *App) View() string {
 					panel := renderHostDetailPanel(h, panelWidth, a.height)
 					return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
 				}
-				panel := renderHostDetailPanel(h, a.width, detailPanelHeight+6)
-				return lipgloss.JoinVertical(lipgloss.Left, base, panel)
+				panel := renderHostDetailPanel(h, a.width, bottomDetailHeight)
+				return clampHeight(lipgloss.JoinVertical(lipgloss.Left, base, panel), a.height)
 			}
 		} else if a.cursor >= 0 && a.cursor < len(threads) {
 			t := threads[a.cursor]
@@ -417,8 +434,8 @@ func (a *App) View() string {
 				panel := renderDetailPanel(t, panelWidth, a.height, samples, a.viewTime)
 				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
 			}
-			panel := renderDetailPanel(t, a.width, detailPanelHeight, samples, a.viewTime)
-			return lipgloss.JoinVertical(lipgloss.Left, base, panel)
+			panel := renderDetailPanel(t, a.width, bottomDetailHeight, samples, a.viewTime)
+			return clampHeight(lipgloss.JoinVertical(lipgloss.Left, base, panel), a.height)
 		}
 	}
 
@@ -431,6 +448,20 @@ func (a *App) View() string {
 	}
 
 	return base
+}
+
+// clampHeight keeps at most height lines from the top of s, so a stacked
+// detail layout can never scroll the dashboard and tab bar off the top of the
+// terminal even when the panel below would otherwise make it too tall.
+func clampHeight(s string, height int) string {
+	if height < 1 {
+		height = 1
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > height {
+		return strings.Join(lines[:height], "\n")
+	}
+	return s
 }
 
 func renderConfirmOverlay(base string, width, height int) string {
