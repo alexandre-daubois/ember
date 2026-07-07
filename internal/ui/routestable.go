@@ -74,7 +74,7 @@ func buildRoutesHeader(sortBy model.RouteSortField, patternW, gap int) string {
 	return " " +
 		padCellRight(routeSortLabel("Count", sortBy, model.SortByRouteCount), colRouteCount) +
 		padCellRight("Method", colRouteMethod) +
-		padCellRight(routeSortLabel("Pattern", sortBy, model.SortByRoutePattern), patternW) +
+		fitCellLeft(routeSortLabel("Pattern", sortBy, model.SortByRoutePattern), patternW) +
 		strings.Repeat(" ", gap) +
 		padCellLeft(statusLabel("2xx", okStyle), colRouteStatus1) +
 		padCellLeft("3xx", colRouteStatus1) +

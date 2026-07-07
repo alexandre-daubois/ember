@@ -6,9 +6,21 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildRoutesHeader_FitsSqueezedPatternColumn(t *testing.T) {
+	// When the terminal squeezes the Pattern column to a few cells, the header
+	// must truncate the "Pattern" label instead of overflowing its budget and
+	// wrapping onto an extra line (which desyncs the row slicer).
+	for _, patternW := range []int{1, 3, 5} {
+		header := buildRoutesHeader(model.SortByRoutePattern, patternW, 0)
+		assert.LessOrEqualf(t, lipgloss.Width(header), colRouteFixedNonPattern+patternW,
+			"routes header overflows its column budget at patternW=%d", patternW)
+	}
+}
 
 func TestRenderRoutesTable_HeaderColumnOrder(t *testing.T) {
 	out := stripANSI(renderRoutesTable(nil, 0, 160, 4, model.SortByRouteCount, false, "", ""))
