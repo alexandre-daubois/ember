@@ -2,6 +2,7 @@ package ui
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/model"
@@ -109,20 +110,15 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 	return helpStyle.Width(width).Render(content)
 }
 
-func renderHelpOverlay(width, height int, hasUpstreams, hasFrankenPHP bool, pluginTabs []*pluginTab, visibleTabs []tab) string {
-	tabCount := 4
-	if hasUpstreams {
-		tabCount++
+func renderHelpOverlay(width, height int, hasFrankenPHP bool, pluginTabs []*pluginTab, visibleTabs []tab) string {
+	// Number keys 1-9 jump to visibleTabs[n-1], so the hint must count every
+	// visible tab (core and plugin), capped at the 9 available number keys.
+	tabCount := min(len(visibleTabs), 9)
+	nums := make([]string, tabCount)
+	for i := range nums {
+		nums[i] = strconv.Itoa(i + 1)
 	}
-	if hasFrankenPHP {
-		tabCount++
-	}
-	tabHint := "1/2/3/4"
-	if tabCount == 5 {
-		tabHint = "1/2/3/4/5"
-	} else if tabCount >= 6 {
-		tabHint = "1/2/3/4/5/6"
-	}
+	tabHint := strings.Join(nums, "/")
 
 	nav := []binding{
 		{"↑/↓ j/k", "Move cursor"},
