@@ -290,7 +290,11 @@ func newDaemonPlugins(plugins []plugin.Plugin) []daemonPlugin {
 		if e, ok := p.(plugin.Exporter); ok {
 			dp.exporter = e
 		}
-		if dp.fetcher != nil || dp.exporter != nil {
+		// A plugin implementing only MetricsSubscriber must still be retained:
+		// notifyDaemonSubscribers has to reach it after each poll, matching the
+		// OnMetrics contract and the TUI.
+		_, subscriber := p.(plugin.MetricsSubscriber)
+		if dp.fetcher != nil || dp.exporter != nil || subscriber {
 			dps = append(dps, dp)
 		}
 	}
