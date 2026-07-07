@@ -691,6 +691,12 @@ func HealthHandler(holder *StateHolder, defaultInterval time.Duration, perInstan
 
 		bodies := make([]healthInstanceBody, 0, len(entries))
 		worst := healthOK
+		if len(entries) == 0 {
+			// No slots registered yet: every instance was unreachable at
+			// startup. A readiness probe must report not-ready, mirroring the
+			// single-instance branch instead of falsely returning 200.
+			worst = healthNoDataYet
+		}
 		for _, e := range entries {
 			status, lastFetch, age := instanceHealth(e.slot, thresholdFor(e.name))
 			bodies = append(bodies, healthInstanceBody{
