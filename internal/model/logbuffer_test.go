@@ -83,6 +83,35 @@ func TestLogBuffer_Dropped(t *testing.T) {
 	assert.EqualValues(t, 7, b.Dropped(), "writeCount (10) minus capacity (3)")
 }
 
+func TestLogBuffer_DroppedResetsAfterClear(t *testing.T) {
+	b := NewLogBuffer(3)
+
+	for i := 1; i <= 10; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+	require.EqualValues(t, 7, b.Dropped())
+	require.EqualValues(t, 10, b.WriteCount())
+
+	b.Clear()
+
+	// WriteCount stays monotonic for freeze-mode diffing, but nothing has been
+	// evicted since the clear.
+	assert.EqualValues(t, 10, b.WriteCount(), "WriteCount must stay monotonic across Clear")
+	assert.EqualValues(t, 0, b.Dropped(), "no evictions right after a clear")
+
+	// Refill to capacity without wrapping: still nothing evicted since clear.
+	for i := 11; i <= 13; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+	assert.EqualValues(t, 0, b.Dropped(), "at capacity post-clear but not yet wrapped")
+
+	// One more wraps the post-clear buffer: exactly one eviction, not the
+	// whole pre-clear history.
+	b.Append(makeEntry(14, "a", "GET", 200))
+	assert.EqualValues(t, 1, b.Dropped(), "first post-clear wrap evicts one entry")
+	assert.EqualValues(t, 14, b.WriteCount())
+}
+
 func TestLogBuffer_Snapshot_NewestFirst(t *testing.T) {
 	b := NewLogBuffer(10)
 	for i := 1; i <= 5; i++ {

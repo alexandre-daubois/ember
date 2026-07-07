@@ -23,6 +23,7 @@ type LogBuffer struct {
 	head       int   // next write index
 	full       bool  // true once the buffer has wrapped at least once
 	writeCount int64 // monotonic total ever appended; survives Clear so diffs against a snapshot stay meaningful
+	clearBase  int64 // writeCount at the last Clear; evictions are counted only past this baseline
 }
 
 // NewLogBuffer creates a buffer that keeps at most capacity entries.
@@ -84,7 +85,7 @@ func (b *LogBuffer) Dropped() int64 {
 	if !b.full {
 		return 0
 	}
-	return b.writeCount - int64(b.capacity)
+	return b.writeCount - b.clearBase - int64(b.capacity)
 }
 
 // Capacity returns the maximum number of entries the buffer can hold.
@@ -98,6 +99,7 @@ func (b *LogBuffer) Clear() {
 	defer b.mu.Unlock()
 	b.head = 0
 	b.full = false
+	b.clearBase = b.writeCount
 }
 
 // LogFilter restricts the entries returned by Snapshot. Search is matched
