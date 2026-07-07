@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -76,6 +77,19 @@ func TestSidepanelItems_HidesByRouteWhenNoAggregator(t *testing.T) {
 		assert.NotEqual(t, logSelRoutes, it.kind, "By Route must not appear without an aggregator")
 		assert.NotEqual(t, logSelRoutesHost, it.kind)
 	}
+}
+
+func TestRenderSidepanel_ScrollsSelectionIntoView(t *testing.T) {
+	items := make([]sidepanelItem, 20)
+	for i := range items {
+		name := fmt.Sprintf("host-%02d", i)
+		items[i] = sidepanelItem{kind: logSelAccessHost, label: name, host: name, indent: 1}
+	}
+	// Select an entry well past what fits in a 10-row panel.
+	out := stripANSI(renderSidepanel(items, 18, true, sidepanelFixedWidth, 10))
+
+	assert.Contains(t, out, "host-18", "the selected entry must be scrolled into view")
+	assert.NotContains(t, out, "host-00", "entries scrolled off the top must not be rendered")
 }
 
 func TestNormalizeLogSel_StaleHostFallsBackToAccess(t *testing.T) {

@@ -195,7 +195,27 @@ func renderSidepanel(items []sidepanelItem, selectedIdx int, focused bool, width
 	lines = append(lines, strings.Repeat(" ", innerWidth))
 	lines = append(lines, strings.Repeat(" ", innerWidth))
 
-	for i, item := range items {
+	// Scroll the list so the selected entry stays visible: with more hosts
+	// than rows, rendering from the top would push the selection off-screen
+	// while it still drives the table (blind navigation).
+	visibleRows := height - len(lines)
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	offset := 0
+	if len(items) > visibleRows && selectedIdx >= visibleRows {
+		offset = selectedIdx - visibleRows + 1
+	}
+	if maxOffset := len(items) - visibleRows; offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	end := min(offset+visibleRows, len(items))
+
+	for i := offset; i < end; i++ {
+		item := items[i]
 		// Prefix mirrors the ">" used by the log table rows so NO_COLOR
 		// users have a redundant textual cue even when reverse video is
 		// attenuated or stripped.
