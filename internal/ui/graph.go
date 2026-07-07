@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/guptarohit/asciigraph"
+	"github.com/muesli/termenv"
 )
 
 type graphPanel struct {
@@ -86,16 +87,21 @@ func renderSingleGraph(p graphPanel, width, height int) string {
 		upperBound = 1
 	}
 
-	chart := asciigraph.Plot(plotData,
+	opts := []asciigraph.Option{
 		asciigraph.Height(height),
 		asciigraph.Width(chartWidth),
-		asciigraph.SeriesColors(p.color),
 		asciigraph.LowerBound(0),
 		asciigraph.UpperBound(math.Ceil(upperBound)),
 		asciigraph.YAxisValueFormatter(func(v float64) string {
 			return fmt.Sprintf("%.0f", v)
 		}),
-	)
+	}
+	// asciigraph writes raw ANSI colour codes that bypass lipgloss, so honour
+	// NO_COLOR (Ascii profile) by dropping series colours entirely.
+	if lipgloss.ColorProfile() != termenv.Ascii {
+		opts = append(opts, asciigraph.SeriesColors(p.color))
+	}
+	chart := asciigraph.Plot(plotData, opts...)
 
 	header := lipgloss.NewStyle().Bold(true).Foreground(ember).Render(label)
 	content := "\n" + header + "\n" + chart

@@ -4,8 +4,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestRenderGraphPanels_NoColorEmitsNoANSI(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	defer lipgloss.SetColorProfile(prev)
+	lipgloss.SetColorProfile(termenv.Ascii)
+
+	data := []float64{1, 5, 3, 8, 2, 6, 4}
+	out := renderGraphPanels(120, 50, data, data, data, data, data, true)
+
+	assert.NotContains(t, out, "\x1b[",
+		"NO_COLOR must emit no ANSI escapes, including asciigraph's own series colours")
+}
 
 func TestRenderGraphPanels_AllEmpty(t *testing.T) {
 	out := renderGraphPanels(80, 40, nil, nil, nil, nil, nil, true)
