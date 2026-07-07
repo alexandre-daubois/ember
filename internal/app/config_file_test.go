@@ -117,6 +117,16 @@ func TestApplyFileEndpoints_Single(t *testing.T) {
 	assert.True(t, cfg.addrsFromFile)
 }
 
+func TestApplyFileEndpoints_DuplicateName(t *testing.T) {
+	err := applyFileEndpoints(&config{}, &fileConfig{Endpoints: []fileEndpoint{
+		{Name: "web", Addr: "http://a"},
+		{Name: "web", Addr: "http://b"},
+	}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate endpoint name")
+	assert.NotContains(t, err.Error(), "name=url", "the message must speak in TOML terms, not --addr syntax")
+}
+
 func TestApplyFileEndpoints_MissingName(t *testing.T) {
 	cfg := &config{}
 	err := applyFileEndpoints(cfg, &fileConfig{Endpoints: []fileEndpoint{{Addr: "http://a"}}})
