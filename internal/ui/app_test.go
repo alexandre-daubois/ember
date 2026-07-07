@@ -584,6 +584,18 @@ func TestView_BottomDetailFitsWithinHeight(t *testing.T) {
 	}
 }
 
+func TestEnter_EmptyListStaysInList(t *testing.T) {
+	app := newAppWithHosts(nil)
+	app.mode = viewList
+	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, viewList, app.mode, "Enter on an empty host list must not enter detail mode")
+
+	app2 := newAppWithThreads(nil)
+	app2.mode = viewList
+	app2.handleListKey(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, viewList, app2.mode, "Enter on an empty thread list must not enter detail mode")
+}
+
 func TestHome_GoesToStart(t *testing.T) {
 	app := newAppWithThreads(make([]fetcher.ThreadDebugState, 10))
 	app.cursor = 5

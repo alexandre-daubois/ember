@@ -237,10 +237,18 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		a.paused = !a.paused
 	case "enter":
-		if a.activeTab == tabCaddy || a.activeTab == tabFrankenPHP {
+		// Only open the detail view when there is a row to show: entering it on
+		// an empty list changes nothing visible but traps the user in viewDetail
+		// (they would have to press q twice to quit).
+		switch {
+		case a.activeTab == tabCaddy && len(a.filteredHosts()) > 0:
 			a.mode = viewDetail
-		} else if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
-			safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+		case a.activeTab == tabFrankenPHP && len(a.filteredThreads()) > 0:
+			a.mode = viewDetail
+		default:
+			if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
+				safePluginHandleKey(pt.renderer, msg) //nolint:errcheck // consumed status is informational
+			}
 		}
 	case "r":
 		if a.activeTab == tabFrankenPHP {
