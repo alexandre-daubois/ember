@@ -45,6 +45,10 @@ type instance struct {
 	state    model.State
 	throttle errorThrottle
 	recorder *instrumentation.Recorder
+	// pluginData caches the last successful Fetch result per plugin name so a
+	// transient fetch error keeps exporting the previous data (Fetcher godoc
+	// contract). Only touched by this instance's poll goroutine.
+	pluginData map[string]any
 }
 
 var (

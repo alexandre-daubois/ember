@@ -255,19 +255,25 @@ func fetchInstancePluginExports(ctx context.Context, dps []daemonPlugin, inst *i
 		if dp.exporter == nil {
 			continue
 		}
-		var data any
-		if dp.fetcher != nil {
-			d, err := plugin.SafeFetch(pctx, dp.fetcher)
-			if err != nil {
-				log.Warn("plugin fetch failed", "plugin", dp.name, "err", err)
-				continue
-			}
-			data = d
+		if dp.fetcher == nil {
+			exports = append(exports, plugin.PluginExport{Exporter: dp.exporter})
+			continue
 		}
-		exports = append(exports, plugin.PluginExport{
-			Exporter: dp.exporter,
-			Data:     data,
-		})
+		d, err := plugin.SafeFetch(pctx, dp.fetcher)
+		if err != nil {
+			log.Warn("plugin fetch failed", "plugin", dp.name, "err", err)
+			// Keep exporting the last successful data (Fetcher godoc contract).
+			// A plugin that has never succeeded has nothing to export yet.
+			if cached, ok := inst.pluginData[dp.name]; ok {
+				exports = append(exports, plugin.PluginExport{Exporter: dp.exporter, Data: cached})
+			}
+			continue
+		}
+		if inst.pluginData == nil {
+			inst.pluginData = make(map[string]any, len(dps))
+		}
+		inst.pluginData[dp.name] = d
+		exports = append(exports, plugin.PluginExport{Exporter: dp.exporter, Data: d})
 	}
 	return exports
 }

@@ -322,7 +322,31 @@ func TestFetchInstancePluginExports_FetchErrorDropsExport(t *testing.T) {
 	inst := &instance{name: "web1", addr: "https://a"}
 	exports := fetchInstancePluginExports(context.Background(), dps, inst, &fetcher.Snapshot{}, log)
 
-	assert.Empty(t, exports, "a Fetch error must drop the export for that instance")
+	assert.Empty(t, exports, "a Fetch error with no prior successful data must drop the export")
+	assert.Contains(t, buf.String(), "plugin fetch failed")
+}
+
+func TestFetchInstancePluginExports_FetchErrorKeepsPreviousData(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	exp := &daemonExportPlugin{daemonFetchPlugin: daemonFetchPlugin{
+		testPlugin: testPlugin{name: "sticky"},
+		fetchData:  "good",
+	}}
+	dps := []daemonPlugin{{p: exp, name: exp.Name(), fetcher: exp, exporter: exp}}
+	inst := &instance{name: "web1", addr: "https://a"}
+
+	first := fetchInstancePluginExports(context.Background(), dps, inst, &fetcher.Snapshot{}, log)
+	require.Len(t, first, 1)
+	assert.Equal(t, "good", first[0].Data)
+
+	// The next poll fails: the last successful data must keep being exported.
+	exp.fetchErr = assert.AnError
+	second := fetchInstancePluginExports(context.Background(), dps, inst, &fetcher.Snapshot{}, log)
+	require.Len(t, second, 1)
+	assert.Equal(t, "good", second[0].Data,
+		"previous data must keep being exported on a transient fetch error")
 	assert.Contains(t, buf.String(), "plugin fetch failed")
 }
 
