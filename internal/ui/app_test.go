@@ -1472,6 +1472,7 @@ func TestPluginTab_EnterStillOpensDetailOnCaddy(t *testing.T) {
 	p := &keyTrackingPlugin{stubPlugin: stubPlugin{name: "track"}}
 	cfg := Config{Plugins: []plugin.Plugin{p}}
 	app := NewApp(nil, cfg)
+	app.state.HostDerived = []model.HostDerived{{Host: "a.com"}}
 
 	app.handleListKey(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, viewDetail, app.mode, "enter should open detail on Caddy tab")
