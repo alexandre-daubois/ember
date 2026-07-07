@@ -112,6 +112,11 @@ func InstanceFromContext(ctx context.Context) (PluginInstance, bool) {
 //
 // Ember recovers from panics in Fetch and converts them to errors.
 // The context is cancelled when the application shuts down.
+//
+// Concurrency: the value returned by one Fetch is read by [Exporter.WriteMetrics]
+// on the HTTP goroutine while later Fetch calls run. Return a fresh value each
+// time (or otherwise immutable data); mutating and re-returning the same object
+// is a data race.
 type Fetcher interface {
 	Fetch(ctx context.Context) (any, error)
 }
