@@ -89,7 +89,10 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor, wid
 		}
 	}
 
-	bodyHeight := height - 1
+	// The header carries a bottom border, so it is two rows tall: subtract its
+	// actual height (like the other tables) instead of a hardcoded 1, which
+	// overflowed the view by one line.
+	bodyHeight := height - lipgloss.Height(headerLine)
 	if bodyHeight < 1 {
 		bodyHeight = 1
 	}
@@ -108,6 +111,11 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor, wid
 	}
 
 	content := strings.Join(rows[start:end], "\n")
+	// Pad to the full body height so the footer/help bar anchors to the bottom
+	// instead of floating mid-screen when there are only a few threads.
+	if h := lipgloss.Height(content); h < bodyHeight {
+		content += strings.Repeat("\n", bodyHeight-h)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, headerLine, content)
 }
 

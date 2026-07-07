@@ -186,6 +186,28 @@ func TestRenderWorkerList_Empty(t *testing.T) {
 	assert.Contains(t, out, "No threads")
 }
 
+func TestRenderWorkerList_FitsAndFillsHeight(t *testing.T) {
+	const height = 20
+
+	// A short list must pad to the full height so the footer anchors to the
+	// bottom instead of floating mid-screen.
+	short := make([]fetcher.ThreadDebugState, 3)
+	for i := range short {
+		short[i] = fetcher.ThreadDebugState{Index: i, IsWaiting: true}
+	}
+	out := renderWorkerListFromThreads(short, 0, 120, height, model.SortByIndex, renderOpts{})
+	assert.Equal(t, height, strings.Count(out, "\n")+1, "short thread list must fill the height")
+
+	// A long list must not overflow the given height (it did by one line when
+	// the header height was miscounted).
+	long := make([]fetcher.ThreadDebugState, 100)
+	for i := range long {
+		long[i] = fetcher.ThreadDebugState{Index: i, IsWaiting: true}
+	}
+	out = renderWorkerListFromThreads(long, 0, 120, height, model.SortByIndex, renderOpts{})
+	assert.LessOrEqual(t, strings.Count(out, "\n")+1, height, "long thread list must not overflow the height")
+}
+
 func TestRenderWorkerList_ViewportClipping(t *testing.T) {
 	threads := make([]fetcher.ThreadDebugState, 100)
 	for i := range threads {
