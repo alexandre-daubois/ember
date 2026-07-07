@@ -50,6 +50,13 @@ func (w *pluginWriter) flush() {
 	if w.buf.Len() == 0 {
 		return
 	}
+	// A plugin whose output does not end with a newline would otherwise let the
+	// next render (next plugin or next instance) start on the same physical
+	// line, fusing two metrics and invalidating the whole scrape. Terminate the
+	// trailing partial line here.
+	if w.buf.Bytes()[w.buf.Len()-1] != '\n' {
+		w.buf.WriteByte('\n')
+	}
 	_ = w.emitLine(w.buf.Bytes())
 	w.buf.Reset()
 }
