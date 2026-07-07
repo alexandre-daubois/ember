@@ -764,7 +764,12 @@ func escapeLabelValue(s string) string {
 func BasicAuth(next http.Handler, user, pass string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 || subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
+		// Evaluate both comparisons unconditionally and combine with a bitwise
+		// AND: a short-circuiting || would skip the password check when the
+		// username is wrong, leaking username validity through response timing.
+		userMatch := subtle.ConstantTimeCompare([]byte(u), []byte(user))
+		passMatch := subtle.ConstantTimeCompare([]byte(p), []byte(pass))
+		if !ok || userMatch&passMatch != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="ember metrics"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
