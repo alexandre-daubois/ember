@@ -39,10 +39,12 @@ when all instances are reachable.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// status performs two fetches an interval apart; --timeout bounds
+			// each fetch, not the deliberate inter-fetch wait. Wrapping the whole
+			// run in one timeout would make --timeout == --interval (allowed by
+			// validate) always abort mid-wait, so the ctx here is signal-only.
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			ctx, tCancel := contextWithTimeout(ctx, cfg.timeout)
-			defer tCancel()
 
 			if len(cfg.addrs) >= 2 {
 				return runStatusMulti(ctx, cmd.OutOrStdout(), cfg, statusJSONFlag)
@@ -62,7 +64,7 @@ when all instances are reachable.`,
 			if err := configureTLS(f, effectiveTLS(spec, cfg)); err != nil {
 				return err
 			}
-			return runStatus(ctx, cmd.OutOrStdout(), f, spec.url, cfg.interval, statusJSONFlag)
+			return runStatus(ctx, cfg.timeout, cmd.OutOrStdout(), f, spec.url, cfg.interval, statusJSONFlag)
 		},
 	}
 
@@ -71,11 +73,23 @@ when all instances are reachable.`,
 	return cmd
 }
 
-func runStatus(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr string, interval time.Duration, jsonMode bool) error {
-	f.DetectFrankenPHP(ctx)
-	f.FetchServerNames(ctx)
+// statusFetch runs one fetch bounded by its own timeout derived from ctx, so
+// the --timeout budget applies per network call rather than to the whole
+// two-fetch status run.
+func statusFetch(ctx context.Context, f *fetcher.HTTPFetcher, timeout time.Duration) *fetcher.Snapshot {
+	fctx, cancel := contextWithTimeout(ctx, timeout)
+	defer cancel()
+	snap, _ := f.Fetch(fctx)
+	return snap
+}
 
-	snap, _ := f.Fetch(ctx)
+func runStatus(ctx context.Context, timeout time.Duration, w io.Writer, f *fetcher.HTTPFetcher, addr string, interval time.Duration, jsonMode bool) error {
+	detectCtx, detectCancel := contextWithTimeout(ctx, timeout)
+	f.DetectFrankenPHP(detectCtx)
+	f.FetchServerNames(detectCtx)
+	detectCancel()
+
+	snap := statusFetch(ctx, f, timeout)
 	if !isReachable(snap) {
 		if jsonMode {
 			_ = json.NewEncoder(w).Encode(statusJSON{Status: "unreachable", Addr: addr})
@@ -94,7 +108,7 @@ func runStatus(ctx context.Context, w io.Writer, f *fetcher.HTTPFetcher, addr st
 	case <-time.After(interval):
 	}
 
-	snap2, _ := f.Fetch(ctx)
+	snap2 := statusFetch(ctx, f, timeout)
 	state.Update(snap2)
 
 	if jsonMode {
@@ -315,10 +329,12 @@ func collectInstanceStatus(ctx context.Context, cfg *config, spec addrSpec) stat
 		res.err = err
 		return res
 	}
-	f.DetectFrankenPHP(ctx)
-	f.FetchServerNames(ctx)
+	detectCtx, detectCancel := contextWithTimeout(ctx, cfg.timeout)
+	f.DetectFrankenPHP(detectCtx)
+	f.FetchServerNames(detectCtx)
+	detectCancel()
 
-	snap, _ := f.Fetch(ctx)
+	snap := statusFetch(ctx, f, cfg.timeout)
 	if !isReachable(snap) {
 		return res
 	}
@@ -332,7 +348,7 @@ func collectInstanceStatus(ctx context.Context, cfg *config, spec addrSpec) stat
 	case <-time.After(cfg.interval):
 	}
 
-	snap2, _ := f.Fetch(ctx)
+	snap2 := statusFetch(ctx, f, cfg.timeout)
 	state.Update(snap2)
 
 	res.reachable = true

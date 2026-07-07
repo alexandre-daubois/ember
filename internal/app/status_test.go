@@ -192,7 +192,30 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	var buf bytes.Buffer
-	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, false)
+	err := runStatus(context.Background(), 0, &buf, f, srv.URL, 10*time.Millisecond, false)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Caddy OK")
+}
+
+func TestRunStatus_TimeoutEqualsInterval(t *testing.T) {
+	// validate() permits --timeout == --interval; status must still complete
+	// because the timeout bounds each fetch, not the deliberate inter-fetch wait.
+	metrics := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="test.com",code="200"} 100
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{host="test.com",le="+Inf"} 100
+caddy_http_request_duration_seconds_sum{host="test.com"} 5.0
+caddy_http_request_duration_seconds_count{host="test.com"} 100
+`
+	srv := newStatusTestServer(metrics)
+	defer srv.Close()
+
+	f := fetcher.NewHTTPFetcher(srv.URL, 0)
+
+	var buf bytes.Buffer
+	const d = 50 * time.Millisecond
+	err := runStatus(context.Background(), d, &buf, f, srv.URL, d, false)
 
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Caddy OK")
@@ -208,7 +231,7 @@ func TestRunStatus_Unreachable(t *testing.T) {
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	var buf bytes.Buffer
-	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, false)
+	err := runStatus(context.Background(), 0, &buf, f, srv.URL, 10*time.Millisecond, false)
 
 	require.Error(t, err)
 	assert.Contains(t, buf.String(), "UNREACHABLE")
@@ -233,7 +256,7 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 	cancel()
 
 	var buf bytes.Buffer
-	err := runStatus(ctx, &buf, f, srv.URL, 10*time.Second, false)
+	err := runStatus(ctx, 0, &buf, f, srv.URL, 10*time.Second, false)
 
 	require.Error(t, err)
 }
@@ -252,7 +275,7 @@ caddy_http_request_duration_seconds_count{host="test.com"} 100
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	var buf bytes.Buffer
-	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, true)
+	err := runStatus(context.Background(), 0, &buf, f, srv.URL, 10*time.Millisecond, true)
 
 	require.NoError(t, err)
 
@@ -272,7 +295,7 @@ func TestRunStatus_JSON_Unreachable(t *testing.T) {
 	f := fetcher.NewHTTPFetcher(srv.URL, 0)
 
 	var buf bytes.Buffer
-	err := runStatus(context.Background(), &buf, f, srv.URL, 10*time.Millisecond, true)
+	err := runStatus(context.Background(), 0, &buf, f, srv.URL, 10*time.Millisecond, true)
 
 	require.Error(t, err)
 
