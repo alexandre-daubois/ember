@@ -271,7 +271,10 @@ func renderConnectionError(err string, width, height int) string {
 
 	lines := []string{"", title, "", msg}
 	if err != "" {
-		lines = append(lines, helpStyle.Render("  "+err))
+		// err concatenates .Error() output, which can carry externally-sourced
+		// bytes (e.g. a metrics parse error echoing an attacker-influenced host
+		// label); neutralise before the terminal (CWE-150).
+		lines = append(lines, helpStyle.Render("  "+sanitizeControl(err)))
 	}
 	lines = append(lines, "", hint1, hint2, "", hint3, hint4, "", retry, "")
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)

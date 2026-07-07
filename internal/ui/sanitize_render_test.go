@@ -89,6 +89,9 @@ func TestRenderSinksNeutralizeControlBytes(t *testing.T) {
 			items := []sidepanelItem{{kind: logSelAccessHost, label: evil, host: evil, indent: 1}}
 			return renderSidepanel(items, 0, false, sidepanelFixedWidth, 10)
 		}},
+		{"renderConnectionError fetch error", func() string {
+			return renderConnectionError(evil, 120, 40)
+		}},
 	}
 
 	for _, tc := range cases {
