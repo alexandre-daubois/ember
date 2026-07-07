@@ -61,7 +61,7 @@ This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `frankenphp_threads_total` | gauge | `state` (`busy`, `idle`, `other`) | Number of threads by state |
+| `frankenphp_threads_total` | gauge | `state` (`busy`, `idle`, `other`) | Number of threads by state. Despite the `_total` suffix (normally reserved for counters), this is a gauge; the name is kept for backward compatibility. |
 | `frankenphp_thread_memory_bytes` | gauge | `index` | Memory usage per thread (only emitted for threads with memory > 0). Requires FrankenPHP 1.12.2+. |
 
 ### FrankenPHP Worker Metrics
