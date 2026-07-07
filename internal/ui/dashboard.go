@@ -269,9 +269,12 @@ func renderConnectionError(err string, width, height int) string {
 	hint4 := helpStyle.Render("    ember --addr http://host:port")
 	retry := greyStyle.Render("  Retrying automatically...")
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		"", title, "", msg, "", hint1, hint2, "", hint3, hint4, "", retry, "",
-	)
+	lines := []string{"", title, "", msg}
+	if err != "" {
+		lines = append(lines, helpStyle.Render("  "+err))
+	}
+	lines = append(lines, "", hint1, hint2, "", hint3, hint4, "", retry, "")
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	popup := boxStyle.Width(52).Render(content)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup)

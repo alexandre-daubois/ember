@@ -234,6 +234,7 @@ func (a *App) View() string {
 	if a.state.Current != nil &&
 		len(a.state.Current.Threads.ThreadDebugStates) == 0 &&
 		!a.state.Current.Metrics.HasHTTPMetrics &&
+		len(a.state.Current.Metrics.Upstreams) == 0 &&
 		len(a.state.Current.Errors) > 0 {
 		return renderConnectionError(a.state.Current.Errors[0], a.width, a.height)
 	}
