@@ -12,7 +12,7 @@ ember [flags]
 |--------------------|------|---------|-------------|
 | `--addr`           | string (repeatable) | `http://localhost:2019` | Caddy admin API address (`http://`, `https://`, or `unix//path`). Repeatable in `--daemon`, `--json`, `status`, and `wait` modes to monitor multiple instances. Supports `name=url` aliases and per-instance suffixes (`,ca=PATH`, `,cert=PATH`, `,key=PATH`, `,insecure`, `,interval=DURATION`); see [Multi-instance](#multi-instance-monitoring). |
 | `-i`, `--interval` | duration | `1s` | Polling interval |
-| `--timeout`        | duration | `0` (none) | Global timeout. Applies to all modes and subcommands. 0 means no timeout. |
+| `--timeout`        | duration | `0` (none) | Global timeout for the non-interactive modes and subcommands (`--json`, `--daemon`, `status`, `wait`). The interactive TUI ignores it, and `version --check` uses a fixed 10s timeout. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
 | `--frankenphp-pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
 | `--json`           | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
