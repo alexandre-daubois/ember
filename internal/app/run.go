@@ -144,7 +144,7 @@ Keybindings:
 				inst := instances[0]
 				hasFrankenPHP := inst.fetcher.DetectFrankenPHP(ctx)
 				inst.fetcher.FetchServerNames(ctx)
-				return runTUI(inst.fetcher, &cfg, hasFrankenPHP, cmd.Version, plugins)
+				return runTUI(inst.fetcher, &cfg, inst.interval, hasFrankenPHP, cmd.Version, plugins)
 			}
 		},
 	}

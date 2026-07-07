@@ -23,9 +23,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func runTUI(f fetcher.Fetcher, cfg *config, hasFrankenPHP bool, version string, plugins []plugin.Plugin) error {
+func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPHP bool, version string, plugins []plugin.Plugin) error {
 	uiCfg := ui.Config{
-		Interval:      cfg.interval,
+		Interval:      interval,
 		SlowThreshold: time.Duration(cfg.slowThreshold) * time.Millisecond,
 		NoColor:       cfg.noColor,
 		Version:       version,
