@@ -91,12 +91,6 @@ func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected bool) st
 	if len(c.DNSNames) > 0 {
 		domain = c.DNSNames[0]
 	}
-	// Certificate subject/issuer fields are rendered through fmt.Sprintf rather
-	// than fitCellLeft, so strip control bytes here (CWE-150).
-	domain = sanitizeControl(domain)
-	if len(domain) > domW-1 {
-		domain = domain[:domW-2] + "…"
-	}
 
 	expires := c.NotAfter.Format("2006-01-02")
 	days := daysUntilExpiry(c.NotAfter)
@@ -121,7 +115,9 @@ func formatCertRow(c fetcher.CertificateInfo, width, domW int, selected bool) st
 		prefix = ">"
 	}
 
-	domPart := fmt.Sprintf("%s%-*s", prefix, domW, domain)
+	// Cell-aware truncation/padding: an internationalised domain (IDN/CJK) is
+	// never cut mid-rune and stays column-aligned. Sanitises control bytes too.
+	domPart := prefix + fitCellLeft(domain, domW)
 	expPart := fmt.Sprintf("%*s", colCertExpires, expires)
 	daysPart := fmt.Sprintf("%*s", colCertDays, daysStr)
 	srcPart := fmt.Sprintf("%*s", colCertSource, src)

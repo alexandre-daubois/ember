@@ -145,10 +145,7 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 		method = sanitizeControl(t.CurrentMethod)
 	}
 	if t.IsBusy && t.CurrentURI != "" {
-		uri = sanitizeControl(t.CurrentURI)
-		if len(uri) > uriW {
-			uri = uri[:uriW-1] + "…"
-		}
+		uri = t.CurrentURI // fitCellLeft sanitizes and cell-truncates below
 	}
 
 	memStr := "—"
@@ -179,7 +176,7 @@ func formatThreadRow(t fetcher.ThreadDebugState, width int, uriW int, opts rende
 	}
 
 	methodStr := fmt.Sprintf("%-*s", colMethod, method)
-	uriStr := fmt.Sprintf("%-*s", uriW, uri)
+	uriStr := fitCellLeft(uri, uriW)
 	memFmt := fmt.Sprintf("%*s", colMem, memStr)
 	reqsFmt := fmt.Sprintf("%*s", colReqs, reqsStr)
 

@@ -121,9 +121,6 @@ func buildUpstreamConfigMap(configs []fetcher.ReverseProxyConfig) map[string]ups
 
 func formatUpstreamRow(u model.UpstreamDerived, width, addrW int, selected bool, configMap map[string]upstreamConfigInfo, opts upstreamRenderOpts) string {
 	addr := u.Address
-	if len(addr) > addrW-1 {
-		addr = addr[:addrW-2] + "…"
-	}
 
 	checkStr := "—"
 	lbStr := "—"
@@ -167,7 +164,9 @@ func formatUpstreamRow(u model.UpstreamDerived, width, addrW int, selected bool,
 		prefix = ">"
 	}
 
-	addrPart := fmt.Sprintf("%s%-*s", prefix, addrW, addr)
+	// Cell-aware truncation/padding keeps a multi-byte upstream address from
+	// being cut mid-rune and from misaligning the columns on wide runes.
+	addrPart := prefix + fitCellLeft(addr, addrW)
 	checkPart := fmt.Sprintf("%*s", colUpstreamCheck, checkStr)
 	lbPart := fmt.Sprintf("%*s", colUpstreamLB, lbStr)
 	healthPart := fmt.Sprintf("%*s", colUpstreamHealth, healthStr)

@@ -90,12 +90,6 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected bool, hostRPS
 	if host == "*" {
 		host = "* (All traffic)"
 	}
-	// Host comes from Caddy's per-host metric label, ultimately the request
-	// Host header; strip control bytes before this raw fmt.Sprintf row.
-	host = sanitizeControl(host)
-	if len(host) > hostW-1 {
-		host = host[:hostW-2] + "…"
-	}
 
 	rpsStr := "—"
 	if h.RPS > 0 {
@@ -120,7 +114,10 @@ func formatHostRow(h model.HostDerived, width, hostW int, selected bool, hostRPS
 		prefix = ">"
 	}
 
-	hostPart := fmt.Sprintf("%s%-*s", prefix, hostW, host)
+	// fitCellLeft sanitizes control bytes (the host label ultimately comes from
+	// the request Host header) and truncates/pads by display cells, so a
+	// multi-byte host is never cut mid-rune and CJK stays column-aligned.
+	hostPart := prefix + fitCellLeft(host, hostW)
 	rpsPart := fmt.Sprintf("%*s", colHostRPS, rpsStr)
 	sparkRaw := renderSparklineRaw(hostRPS[h.Host], colHostSparkline)
 	avgPart := fmt.Sprintf("%*s", colHostAvg, avgStr)

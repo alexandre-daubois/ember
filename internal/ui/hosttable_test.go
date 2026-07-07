@@ -149,6 +149,16 @@ func TestFormatHostRow_HostTruncation(t *testing.T) {
 	assert.Contains(t, row, "…")
 }
 
+func TestFormatHostRow_WideRuneStaysAligned(t *testing.T) {
+	const hostW = 20
+	ascii := stripANSI(formatHostRow(model.HostDerived{Host: strings.Repeat("a", 60), StatusCodes: map[int]float64{}}, 120, hostW, false, nil))
+	cjk := stripANSI(formatHostRow(model.HostDerived{Host: strings.Repeat("世", 60), StatusCodes: map[int]float64{}}, 120, hostW, false, nil))
+
+	assert.Equal(t, lipgloss.Width(ascii), lipgloss.Width(cjk),
+		"a wide-rune host must occupy the same column width as ASCII (no misalignment)")
+	assert.NotContains(t, cjk, "�", "no mojibake from mid-rune truncation")
+}
+
 func TestFormatHostRow_AvgShown(t *testing.T) {
 	h := model.HostDerived{
 		Host:        "test.com",

@@ -8,9 +8,25 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFormatThreadRow_WideRuneURIStaysAligned(t *testing.T) {
+	const uriW = 20
+	mk := func(uri string) string {
+		return stripANSI(formatThreadRow(
+			fetcher.ThreadDebugState{Index: 1, IsBusy: true, CurrentMethod: "GET", CurrentURI: uri},
+			120, uriW, renderOpts{}, false))
+	}
+	ascii := mk("/" + strings.Repeat("a", 60))
+	cjk := mk("/" + strings.Repeat("世", 60))
+
+	assert.Equal(t, lipgloss.Width(ascii), lipgloss.Width(cjk),
+		"a wide-rune request URI must stay column-aligned")
+	assert.NotContains(t, cjk, "�", "no mojibake from mid-rune truncation")
+}
 
 func TestSortThreads_ByIndex(t *testing.T) {
 	threads := []fetcher.ThreadDebugState{
