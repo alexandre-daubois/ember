@@ -197,6 +197,15 @@ func TestNewDaemonPlugins_IncludesExporter(t *testing.T) {
 	assert.NotNil(t, dps[0].exporter)
 }
 
+func TestNewDaemonPlugins_IncludesSubscriberOnly(t *testing.T) {
+	sub := &daemonMetricsSubPlugin{testPlugin: testPlugin{name: "subby"}}
+	dps := newDaemonPlugins([]plugin.Plugin{sub})
+	require.Len(t, dps, 1, "a plugin implementing only MetricsSubscriber must be retained so OnMetrics is called")
+	assert.Equal(t, "subby", dps[0].name)
+	assert.Nil(t, dps[0].fetcher)
+	assert.Nil(t, dps[0].exporter)
+}
+
 func TestSafeFetch_Normal(t *testing.T) {
 	p := &daemonFetchPlugin{testPlugin: testPlugin{name: "ok"}, fetchData: "hello"}
 	data, err := plugin.SafeFetch(context.Background(), p)
