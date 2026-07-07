@@ -510,6 +510,49 @@ func TestEmptyFilterResults_Caddy(t *testing.T) {
 	assert.Contains(t, output, "No matches")
 }
 
+func TestView_UpstreamsPresentSuppressesConnectionError(t *testing.T) {
+	app := &App{
+		activeTab:    tabCaddy,
+		tabs:         []tab{tabCaddy, tabUpstreams},
+		tabStates:    map[tab]*tabState{tabCaddy: {}, tabUpstreams: {}},
+		hasUpstreams: true,
+		history:      newHistoryStore(),
+		width:        120,
+		height:       40,
+	}
+	// Caddy is reachable (healthy upstreams) but a partial fetch failed. The
+	// full-screen connection error must not hide the real data.
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Workers:   map[string]*fetcher.WorkerMetrics{},
+			Upstreams: map[string]*fetcher.UpstreamMetrics{"backend:80": {Address: "backend:80", Healthy: 1}},
+		},
+		Errors: []string{"read process stats: permission denied"},
+	})
+
+	out := stripANSI(app.View())
+	assert.NotContains(t, out, "Cannot reach the Caddy admin API")
+}
+
+func TestView_NoDataWithErrorShowsConnectionError(t *testing.T) {
+	app := &App{
+		activeTab: tabCaddy,
+		tabs:      []tab{tabCaddy},
+		tabStates: map[tab]*tabState{tabCaddy: {}},
+		history:   newHistoryStore(),
+		width:     120,
+		height:    40,
+	}
+	app.state.Update(&fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+		Errors:  []string{"connection refused"},
+	})
+
+	out := stripANSI(app.View())
+	assert.Contains(t, out, "Cannot reach the Caddy admin API")
+	assert.Contains(t, out, "connection refused")
+}
+
 func TestHome_GoesToStart(t *testing.T) {
 	app := newAppWithThreads(make([]fetcher.ThreadDebugState, 10))
 	app.cursor = 5

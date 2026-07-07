@@ -152,6 +152,7 @@ func TestRenderConnectionError_ContainsErrorMessage(t *testing.T) {
 
 	assert.Contains(t, plain, "Connection failed")
 	assert.Contains(t, plain, "Cannot reach the Caddy admin API")
+	assert.Contains(t, plain, "connection refused", "the actual fetch error must be surfaced")
 	assert.Contains(t, plain, "admin localhost:2019")
 	assert.Contains(t, plain, "ember --addr")
 	assert.Contains(t, plain, "Retrying automatically")
