@@ -63,7 +63,10 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 		}
 		if t.CurrentURI != "" {
 			// In-flight request URI: attacker-controlled, neutralise before render.
-			uri := truncateURI(sanitizeControl(t.CurrentURI), inner-10)
+			// Budget inner-12 accounts for the 2-space indent + 10-wide label of
+			// detailKV, so the rendered line never exceeds the wrap width and
+			// spills onto a second line.
+			uri := truncateURI(sanitizeControl(t.CurrentURI), inner-12)
 			lines = append(lines, detailKV("URI", uri))
 		}
 		if t.RequestStartedAt > 0 {
