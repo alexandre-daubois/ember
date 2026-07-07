@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -17,7 +18,14 @@ func FindFrankenPHPProcess(ctx context.Context) (int32, error) {
 	if err != nil {
 		return 0, fmt.Errorf("list processes: %w", err)
 	}
+	self := int32(os.Getpid())
 	for _, p := range procs {
+		// Ember's own command line can legitimately contain "frankenphp"
+		// (e.g. --addr unix///run/frankenphp/admin.sock). Skipping self avoids
+		// reporting Ember's own CPU/RSS as the server's when it is down.
+		if p.Pid == self {
+			continue
+		}
 		name, err := p.NameWithContext(ctx)
 		if err != nil {
 			continue
