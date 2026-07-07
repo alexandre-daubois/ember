@@ -19,15 +19,16 @@ make build
 Run `make help` to see all available targets:
 
 ```
-make build         Build the binary
-make test          Run tests with race detector, shuffle and no cache
-make test-nocolor  Run UI tests under NO_COLOR=1
-make lint          Run golangci-lint
-make bench         Run benchmarks
-make integration   Run integration tests (requires running Caddy)
-make fuzz          Run all fuzz targets for 30s each
-make check         Run lint + tests + NO_COLOR variant
-make clean         Remove build artifacts
+make build               Build the binary
+make test                Run tests with race detector, shuffle and no cache
+make test-nocolor        Run UI tests under NO_COLOR=1
+make lint                Run golangci-lint
+make bench               Run benchmarks
+make integration         Run integration tests (requires running Caddy)
+make integration-docker  Run multi-Caddy smoke test (requires Docker)
+make fuzz                Run all fuzz targets for 30s each
+make check               Run lint + tests + NO_COLOR variant
+make clean               Remove build artifacts
 ```
 
 ## Project Architecture
