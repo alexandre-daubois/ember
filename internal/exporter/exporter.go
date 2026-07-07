@@ -181,7 +181,11 @@ func safeWriteMetrics(w http.ResponseWriter, e plugin.Exporter, data any, prefix
 	pw := newPluginWriter(w, instance, helpSeen)
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(w, "# plugin WriteMetrics panic: %v\n", r)
+			// Flatten newlines: a multi-line panic message would otherwise emit
+			// uncommented lines and invalidate the scrape, the very thing this
+			// recover exists to prevent.
+			msg := strings.NewReplacer("\n", " ", "\r", " ").Replace(fmt.Sprintf("%v", r))
+			fmt.Fprintf(w, "# plugin WriteMetrics panic: %s\n", msg)
 			return
 		}
 		pw.flush()
