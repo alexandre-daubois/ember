@@ -172,7 +172,7 @@ ember --daemon --expose :9191 \
   --addr remote=https://far.example,interval=10s
 ```
 
-Active in `--daemon` and `--json` modes (each instance polls its own ticker). The `/healthz` and `/healthz/<name>` staleness threshold is computed per-instance, so a slow instance is not flagged stale just because its cadence is slower than the global default. `status` and `wait` keep using the global interval.
+Active in `--daemon` and `--json` modes (each instance polls its own ticker), and in the single-instance TUI, which polls at its endpoint's interval. The `/healthz` and `/healthz/<name>` staleness threshold is computed per-instance, so a slow instance is not flagged stale just because its cadence is slower than the global default. `status` and `wait` keep using the global interval.
 
 Constraints:
 
