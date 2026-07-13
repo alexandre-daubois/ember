@@ -44,6 +44,33 @@ func TestNewMetricsHandler_ServesMetricsAndHealth(t *testing.T) {
 	assert.Contains(t, []int{http.StatusOK, http.StatusServiceUnavailable}, rec.Code)
 }
 
+func TestNewMetricsHandler_HealthzUsesPerEndpointInterval(t *testing.T) {
+	// A TUI polling every 10s stores data up to 10s old; without the ""
+	// per-instance entry the threshold comes from the global --interval
+	// (1s -> 5s floor) and /healthz flaps to 503 between polls.
+	var st model.State
+	st.Update(&fetcher.Snapshot{
+		FetchedAt: time.Now().Add(-6 * time.Second),
+		Metrics:   fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+	holder := &exporter.StateHolder{}
+	holder.StoreAll(st.CopyForExport(), nil)
+
+	cfg := &config{interval: time.Second}
+
+	rec := httptest.NewRecorder()
+	newMetricsHandler(holder, cfg, map[string]time.Duration{"": 10 * time.Second}).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"6s-old data with a 10s per-endpoint interval must be healthy")
+
+	rec = httptest.NewRecorder()
+	newMetricsHandler(holder, cfg, nil).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"the same data must be stale under the global 1s interval threshold")
+}
+
 func TestNewMetricsHandler_BasicAuth_RejectsUnauthenticated(t *testing.T) {
 	holder := &exporter.StateHolder{}
 	cfg := &config{

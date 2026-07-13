@@ -54,7 +54,11 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 			holder.StoreAll(s.CopyForExport(), pluginExports)
 		}
 
-		srv = &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg, nil)}
+		// StoreAll keys the single TUI slot under "". Mapping that key to the
+		// effective polling interval keeps /healthz from flapping to "stale"
+		// between polls when an ,interval= suffix (or TOML endpoint key)
+		// exceeds the threshold derived from the global --interval.
+		srv = &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg, map[string]time.Duration{"": interval})}
 
 		listenErr := make(chan error, 1)
 		go func() {
