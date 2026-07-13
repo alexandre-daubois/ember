@@ -10,7 +10,31 @@ All notable changes to Ember are documented here.
 
 ### Changed
 
+- Malformed `EMBER_*` environment variable values now abort startup with an explicit error instead of being silently ignored.
+- Multi-instance `/healthz` returns 503 when no instance has reported data yet.
+- `ember status` no longer scans local processes when the target address is remote.
 - Bump dependencies
+
+### Fixed
+
+- Corrupted per-host latency percentiles in `--json` streaming output.
+- In-flight requests are summed across all server series instead of reading a single one.
+- The per-endpoint `,interval=` suffix is honored in TUI mode, including the `/healthz` staleness threshold when combined with `--expose`.
+- `--timeout` applies to each fetch in `ember status`, so a timeout equal to the polling interval works.
+- Buffered log lines are no longer lost when the log connection drops.
+- The dropped-entries baseline resets when the log buffer is cleared.
+- Multi-instance daemon keeps exporting the last known plugin data when a fetch fails, and subscriber-only plugins now receive updates in daemon mode.
+- The dashboard stays visible when only part of a fetch fails.
+- Ember excludes its own process when scanning for FrankenPHP.
+- Global TLS flags are accepted alongside Unix socket endpoints in mixed fleets.
+- The Docker image reports its actual version.
+- Assorted TUI fixes: cell-aware truncation of host, URI and address columns (wide characters), panel heights clamped to the terminal, Graphs view fits the available height and honors `NO_COLOR`, non-ASCII input accepted in the main filter, logs side panel keeps the selection visible, `Enter` is ignored on empty lists, help overlay counts plugin tabs and shows the `n`/`N` config search shortcuts.
+
+### Security
+
+- `--metrics-auth` credentials are compared in constant time regardless of username validity or credential length, closing a timing side channel on the metrics endpoint.
+- Terminal escape sequences are neutralized in the fetch error shown on the connection-error screen.
+- `install.sh` verifies the downloaded release archive against the published `checksums.txt` before installing.
 
 ## 1.4.3 - 2026-06-22
 
