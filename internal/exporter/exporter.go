@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"cmp"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -767,11 +768,18 @@ func escapeLabelValue(s string) string {
 func BasicAuth(next http.Handler, user, pass string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
-		// Evaluate both comparisons unconditionally and combine with a bitwise
-		// AND: a short-circuiting || would skip the password check when the
-		// username is wrong, leaking username validity through response timing.
-		userMatch := subtle.ConstantTimeCompare([]byte(u), []byte(user))
-		passMatch := subtle.ConstantTimeCompare([]byte(p), []byte(pass))
+		// Compare SHA-256 digests: ConstantTimeCompare returns immediately on
+		// length mismatch, so comparing the raw strings would leak the
+		// configured credential lengths through response timing. Both
+		// comparisons run unconditionally and combine with a bitwise AND: a
+		// short-circuiting || would skip the password check when the username
+		// is wrong, leaking username validity the same way.
+		userHash := sha256.Sum256([]byte(u))
+		passHash := sha256.Sum256([]byte(p))
+		wantUserHash := sha256.Sum256([]byte(user))
+		wantPassHash := sha256.Sum256([]byte(pass))
+		userMatch := subtle.ConstantTimeCompare(userHash[:], wantUserHash[:])
+		passMatch := subtle.ConstantTimeCompare(passHash[:], wantPassHash[:])
 		if !ok || userMatch&passMatch != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="ember metrics"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
