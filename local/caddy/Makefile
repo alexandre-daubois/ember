@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: local clean load help
+.PHONY: up down traffic help
 
 up: ## Start docker compose via build & up in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }

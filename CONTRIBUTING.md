@@ -50,8 +50,8 @@ local/
 > You can start a local instance for fast testing. Two setups are available:
 >
 > ```bash
-> cd local/frankenphp && make local   # minimal FrankenPHP (worker, metrics)
-> cd local/caddy && make local        # exhaustive Caddy (TLS, upstreams, hosts)
+> cd local/frankenphp && make up   # minimal FrankenPHP (worker, metrics)
+> cd local/caddy && make up        # exhaustive Caddy (TLS, upstreams, hosts)
 > ```
 
 ## Running Tests

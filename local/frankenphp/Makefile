@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: local clean help
+.PHONY: up down traffic start help
 
 up: ## Start docker compose via build & up in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
@@ -12,6 +12,12 @@ up: ## Start docker compose via build & up in the local folder
 down: ## Clean docker compose in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
 	docker compose down --remove-orphans
+
+traffic: ## Generate traffic against the local FrankenPHP (WORKERS=N, DURATION=S)
+	@./load.sh
+
+start: ## Run Ember against the local FrankenPHP (log listener reachable from Docker)
+	EMBER_LOG_LISTEN=host.docker.internal:9210 go run ../../cmd/ember
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
