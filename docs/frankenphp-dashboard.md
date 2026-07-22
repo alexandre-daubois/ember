@@ -12,7 +12,8 @@ Some thread-level metrics require **FrankenPHP 1.12.2** or later. On older versi
 
 The top of the FrankenPHP tab displays:
 
-- **Thread bar**: A visual stacked bar showing the ratio of busy, idle, and inactive threads
+- **Workers bar**: A visual stacked bar showing the ratio of busy, idle, and inactive worker threads
+- **Thread bar**: A visual stacked bar showing the ratio of busy, idle, and inactive regular threads (only appears when regular, non-worker threads exist)
 - **Worker count**: Number of active workers
 - **Queue depth**: Requests waiting in the worker queue
 - **Crash counter**: Total worker crashes (highlighted when non-zero)
