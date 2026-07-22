@@ -176,6 +176,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			for _, t := range msg.snap.Threads.ThreadDebugStates {
 				a.history.recordMem(t.Index, t.MemoryUsage)
+				// CurrentURI/CurrentMethod only describe an in-flight request
+				// while the thread is busy; idle threads may retain the last
+				// served URI, which would over-sample it at every poll.
+				if t.IsBusy && a.routeAggregator != nil {
+					a.routeAggregator.TrackMemory(t.CurrentMethod, t.CurrentURI, t.MemoryUsage)
+				}
 			}
 			activeThreads := make(map[int]struct{}, len(msg.snap.Threads.ThreadDebugStates))
 			for _, t := range msg.snap.Threads.ThreadDebugStates {

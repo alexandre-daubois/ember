@@ -161,11 +161,31 @@ table on that host and drops the prefix.
 | 4xx / 5xx  | Counters per status class; coloured (orange / red) and suffixed with `*` (4xx) or `!` (5xx) so error rows stay scannable when `NO_COLOR` is set |
 | Avg        | Mean latency over the bucket                                             |
 | Max        | Slowest single request                                                   |
+| Avg Mem    | Mean PHP memory usage sampled from busy FrankenPHP threads serving this route (FrankenPHP only, see below) |
+| Max Mem    | Highest sampled PHP memory usage for this route (FrankenPHP only)        |
 
-Press `s` / `S` to cycle the sort field (Count → Pattern → Avg → Max),
-following the visual column order. The active column is marked with `▼`
-in the header, the same glyph the host and upstream tables use, so the
-cue is consistent across the app. `/` filters on method or pattern.
+Press `s` / `S` to cycle the sort field (Count -> Pattern -> Avg -> Max ->
+Avg Mem -> Max Mem), following the visual column order. The active column
+is marked with `▼` in the header, the same glyph the host and upstream
+tables use, so the cue is consistent across the app. `/` filters on
+method or pattern.
+
+### Memory columns
+
+The **Avg Mem** and **Max Mem** columns only appear when a FrankenPHP
+server is detected (and require FrankenPHP 1.12.2 or later, like the
+per-thread metrics of the FrankenPHP tab). They aggregate the same
+per-thread memory usage the FrankenPHP tab shows live, keyed by
+`(method, pattern)`: handy for spotting memory-hungry routes, catching
+leaks in worker mode, or sizing servers and pods from the max footprint.
+
+Two caveats stem from how the data is collected:
+
+- Values are *sampled* each time Ember polls a busy thread, not measured
+  per request: a request that completes between two polls is never
+  sampled (its row shows `—`), and a long request is sampled repeatedly.
+- Thread states do not carry a host, so on the root view two hosts
+  sharing the same `(method, pattern)` show identical memory values.
 
 ### URL normalization
 

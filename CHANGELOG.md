@@ -2,6 +2,12 @@
 
 All notable changes to Ember are documented here.
 
+## Unreleased
+
+### Added
+
+- **Avg Mem** and **Max Mem** columns in the Logs tab's By Route view: per-route PHP memory usage sampled from busy FrankenPHP threads, sortable like the latency columns. Helps spot memory-hungry routes, detect leaks in worker mode, and size servers from the max footprint (#73).
+
 ## 1.5.0 - 2026-07-13
 
 ### Added

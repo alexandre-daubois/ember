@@ -271,6 +271,43 @@ func TestFetchMsg_UpstreamsAloneCountAsFreshData(t *testing.T) {
 	assert.False(t, app.state.UpstreamDerived[0].Healthy)
 }
 
+func TestFetchMsg_SamplesBusyThreadMemoryIntoRouteAggregator(t *testing.T) {
+	agg := model.NewRouteAggregator()
+	agg.Track(fetcher.LogEntry{
+		Timestamp: time.Now(),
+		Logger:    "http.log.access.log0",
+		Method:    "GET",
+		URI:       "/users/1",
+		Status:    200,
+	})
+
+	app := &App{
+		history:         newHistoryStore(),
+		viewTime:        time.Now(),
+		tabs:            []tab{tabCaddy},
+		activeTab:       tabCaddy,
+		tabStates:       map[tab]*tabState{tabCaddy: {}},
+		downSince:       make(map[string]time.Time),
+		routeAggregator: agg,
+	}
+
+	snap := &fetcher.Snapshot{
+		Threads: fetcher.ThreadsResponse{ThreadDebugStates: []fetcher.ThreadDebugState{
+			{Index: 0, IsBusy: true, CurrentMethod: "GET", CurrentURI: "/users/42", MemoryUsage: 50 << 20},
+			// Idle thread retaining its last request: must not be sampled,
+			// otherwise the same route gains a sample at every poll.
+			{Index: 1, IsBusy: false, CurrentMethod: "GET", CurrentURI: "/users/43", MemoryUsage: 40 << 20},
+		}},
+		Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+	_, _ = app.Update(fetchMsg{snap: snap})
+
+	stats := agg.Snapshot()
+	require.Len(t, stats, 1)
+	assert.Equal(t, 1, stats[0].MemSamples, "only the busy thread must contribute a sample")
+	assert.Equal(t, int64(50<<20), stats[0].MemMaxBytes)
+}
+
 func TestFetchMsg_EmptySnapshotAfterDataMarksStale(t *testing.T) {
 	// Guard the complement of the previous test: when nothing is present
 	// (no threads, no HTTP, no upstreams) we must still enter the stale

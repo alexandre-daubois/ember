@@ -142,7 +142,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [Caddy Configuration](docs/caddy-configuration.md): Caddyfile requirements
 - [Caddy Dashboard](docs/caddy-dashboard.md): Per-host traffic and latency
 - [FrankenPHP Dashboard](docs/frankenphp-dashboard.md): Thread introspection and workers
-- [Logs](docs/logs.md): Live tailing of access and runtime logs, per-host drill-down, and a By Route view that aggregates traffic by normalized URI pattern
+- [Logs](docs/logs.md): Live tailing of access and runtime logs, per-host drill-down, and a By Route view that aggregates traffic by normalized URI pattern, with per-route latency and FrankenPHP memory stats
 - [CLI Reference](docs/cli-reference.md): Flags, keybindings, shell completions
 - [JSON Output](docs/json-output.md): Streaming JSONL for scripting
 - [Prometheus Export](docs/prometheus-export.md): Metrics, health checks, daemon mode

@@ -167,9 +167,78 @@ func TestRouteAggregator_Hosts(t *testing.T) {
 	}
 }
 
+func TestRouteAggregator_TrackMemory(t *testing.T) {
+	agg := NewRouteAggregator()
+	now := time.Now()
+	// Two hosts sharing the same route: memory samples carry no host, so
+	// both buckets must surface the same (method, pattern) aggregates.
+	agg.Track(fetcher.LogEntry{Timestamp: now, Logger: "http.log.access.log0", Host: "a.example", Method: "GET", URI: "/users/1", Status: 200})
+	agg.Track(fetcher.LogEntry{Timestamp: now, Logger: "http.log.access.log0", Host: "b.example", Method: "GET", URI: "/users/2", Status: 200})
+
+	// Samples use raw URIs (as reported by a busy thread) and must land in
+	// the normalized /users/:id bucket.
+	agg.TrackMemory("GET", "/users/7", 40<<20)
+	agg.TrackMemory("GET", "/users/8", 60<<20)
+
+	snap := agg.Snapshot()
+	require.Len(t, snap, 2)
+	for _, s := range snap {
+		assert.Equal(t, "/users/:id", s.Key.Pattern)
+		assert.Equal(t, 2, s.MemSamples)
+		assert.InDelta(t, float64(50<<20), s.AvgMemBytes(), 0.001)
+		assert.Equal(t, int64(60<<20), s.MemMaxBytes)
+	}
+}
+
+func TestRouteAggregator_TrackMemory_SkipsInvalidSamples(t *testing.T) {
+	agg := NewRouteAggregator()
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0, time.Now()))
+
+	agg.TrackMemory("", "/x", 10<<20)   // no method
+	agg.TrackMemory("GET", "", 10<<20)  // no URI
+	agg.TrackMemory("GET", "/x", 0)     // no measurement
+	agg.TrackMemory("GET", "/x", -1024) // nonsensical
+
+	snap := agg.Snapshot()
+	require.Len(t, snap, 1)
+	assert.Zero(t, snap[0].MemSamples)
+	assert.Zero(t, snap[0].MemMaxBytes)
+}
+
+func TestRouteAggregator_TrackMemory_BeforeAccessLog(t *testing.T) {
+	// A thread is sampled mid-request, before Caddy has written the access
+	// log entry (which only lands at completion). The sample must not create
+	// a visible bucket on its own, but must surface once the entry arrives.
+	agg := NewRouteAggregator()
+	agg.TrackMemory("GET", "/x", 30<<20)
+	assert.Nil(t, agg.Snapshot())
+	assert.Zero(t, agg.BucketCount())
+
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0, time.Now()))
+	snap := agg.Snapshot()
+	require.Len(t, snap, 1)
+	assert.Equal(t, 1, snap[0].MemSamples)
+	assert.Equal(t, int64(30<<20), snap[0].MemMaxBytes)
+}
+
+func TestRouteAggregator_Reset_ClearsMemorySamples(t *testing.T) {
+	agg := NewRouteAggregator()
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0, time.Now()))
+	agg.TrackMemory("GET", "/x", 30<<20)
+	agg.Reset()
+
+	// Same route tracked again after Reset: stale memory aggregates must not
+	// bleed into the fresh session.
+	agg.Track(makeAccessEntry("GET", "/x", 200, 0, time.Now()))
+	snap := agg.Snapshot()
+	require.Len(t, snap, 1)
+	assert.Zero(t, snap[0].MemSamples)
+	assert.Zero(t, snap[0].MemMaxBytes)
+}
+
 func TestRouteAggregator_ConcurrentTrackAndSnapshot(t *testing.T) {
-	// Smoke test for the lock: one writer, several readers, race detector
-	// catches anything wrong (`go test -race`).
+	// Smoke test for the lock: two writers (log tailer + poll loop), several
+	// readers, race detector catches anything wrong (`go test -race`).
 	agg := NewRouteAggregator()
 	now := time.Now()
 	var wg sync.WaitGroup
@@ -180,6 +249,11 @@ func TestRouteAggregator_ConcurrentTrackAndSnapshot(t *testing.T) {
 			agg.Track(makeAccessEntry("GET", "/x", 200, 0, now))
 		}
 		close(stop)
+	})
+	wg.Go(func() {
+		for i := 0; i < 5_000; i++ {
+			agg.TrackMemory("GET", "/x", 10<<20)
+		}
 	})
 	for r := 0; r < 4; r++ {
 		wg.Go(func() {
