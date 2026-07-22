@@ -36,8 +36,15 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	}
 
 	var threadBusy, threadIdle, threadTotal int
+	var workerBusy, workerIdle, workerTotal int
 	for _, t := range snap.Threads.ThreadDebugStates {
 		if workerScript(t.Name) != "" {
+			workerTotal++
+			if t.IsBusy {
+				workerBusy++
+			} else if t.IsWaiting {
+				workerIdle++
+			}
 			continue
 		}
 		threadTotal++
@@ -137,17 +144,33 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	lines = append(lines, titleLine, line1, line2)
 
 	if hasFrankenPHP {
-		threadInactive := threadTotal - threadBusy - threadIdle
-		legend := fmt.Sprintf(" %s %s %s",
-			busyStyle.Render(fmt.Sprintf("%d busy", threadBusy)),
-			idleStyle.Render(fmt.Sprintf("%d idle", threadIdle)),
-			greyStyle.Render(fmt.Sprintf("%d inactive", threadInactive)),
-		)
-		legendW := lipgloss.Width(legend)
-		threadLabel := fmt.Sprintf(" Threads %d/%d ", threadBusy, threadTotal)
-		barMaxW := width - len(threadLabel) - legendW - 4
-		threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, barMaxW)
-		lines = append(lines, threadLabel+threadBar+legend)
+		if workerTotal > 0 {
+			workerInactive := workerTotal - workerBusy - workerIdle
+			legend := fmt.Sprintf(" %s %s %s",
+				busyStyle.Render(fmt.Sprintf("%d busy", workerBusy)),
+				idleStyle.Render(fmt.Sprintf("%d idle", workerIdle)),
+				greyStyle.Render(fmt.Sprintf("%d inactive", workerInactive)),
+			)
+			legendW := lipgloss.Width(legend)
+			workerLabel := fmt.Sprintf(" Workers %d/%d ", workerBusy, workerTotal)
+			barMaxW := width - len(workerLabel) - legendW - 4
+			workerBar := renderThreadBar(workerBusy, workerIdle, workerTotal, barMaxW)
+			lines = append(lines, workerLabel+workerBar+legend)
+		}
+
+		if threadTotal > 0 {
+			threadInactive := threadTotal - threadBusy - threadIdle
+			legend := fmt.Sprintf(" %s %s %s",
+				busyStyle.Render(fmt.Sprintf("%d busy", threadBusy)),
+				idleStyle.Render(fmt.Sprintf("%d idle", threadIdle)),
+				greyStyle.Render(fmt.Sprintf("%d inactive", threadInactive)),
+			)
+			legendW := lipgloss.Width(legend)
+			threadLabel := fmt.Sprintf(" Threads %d/%d ", threadBusy, threadTotal)
+			barMaxW := width - len(threadLabel) - legendW - 4
+			threadBar := renderThreadBar(threadBusy, threadIdle, threadTotal, barMaxW)
+			lines = append(lines, threadLabel+threadBar+legend)
+		}
 	}
 
 	if !snap.Metrics.HasHTTPMetrics && len(snap.Threads.ThreadDebugStates) == 0 {

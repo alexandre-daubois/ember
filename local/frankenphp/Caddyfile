@@ -10,3 +10,11 @@
 	rewrite * /index.php
 	php
 }
+
+:8081 {
+	root * /app/public
+	rewrite * /worker.php
+	php {
+		worker /app/public/worker.php 4
+	}
+}

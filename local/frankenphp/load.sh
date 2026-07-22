@@ -43,10 +43,12 @@ gen_dynamic_path() {
 }
 
 pick_url() {
+  local port=$((RANDOM % 2 == 0 ? 8080 : 8081))
+  local b_url="http://localhost:$port"
   if (( RANDOM % 10 < 4 )); then
-    printf '%s%s\n' "$base_url" "${static_paths[RANDOM % ${#static_paths[@]}]}"
+    printf '%s%s\n' "$b_url" "${static_paths[RANDOM % ${#static_paths[@]}]}"
   else
-    printf '%s%s\n' "$base_url" "$(gen_dynamic_path)"
+    printf '%s%s\n' "$b_url" "$(gen_dynamic_path)"
   fi
 }
 
@@ -66,7 +68,7 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-echo "Starting $WORKERS workers against $base_url"
+echo "Starting $WORKERS workers against http://localhost:8080 (Normal) and http://localhost:8081 (Workers)"
 for ((i=0; i<WORKERS; i++)); do
   worker &
   pids+=("$!")

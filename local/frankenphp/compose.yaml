@@ -4,6 +4,7 @@ services:
     container_name: ember-frankenphp-local
     ports:
       - "8080:8080"
+      - "8081:8081"
       - "2019:2019"
     volumes:
       - ./public:/app/public

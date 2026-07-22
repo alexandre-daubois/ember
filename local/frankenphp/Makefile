@@ -6,8 +6,9 @@ up: ## Start docker compose via build & up in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }
 	docker compose build && docker compose up -d
 	@echo ""
-	@echo "  FrankenPHP  : http://localhost:8080"
-	@echo "  Caddy admin : http://localhost:2019"
+	@echo "  FrankenPHP (Normal)  : http://localhost:8080"
+	@echo "  FrankenPHP (Workers) : http://localhost:8081"
+	@echo "  Caddy admin          : http://localhost:2019"
 
 down: ## Clean docker compose in the local folder
 	@command -v docker >/dev/null 2>&1 || { echo >&2 "Docker is not installed. Please install it."; exit 1; }

@@ -226,6 +226,53 @@ func TestFormatReloadAge(t *testing.T) {
 	assert.Equal(t, "3d 2h", formatReloadAge(74*time.Hour))
 }
 
+func TestRenderDashboard_FrankenPHPGauges(t *testing.T) {
+	// 1. Only workers
+	s1 := &model.State{
+		Current: &fetcher.Snapshot{
+			Threads: fetcher.ThreadsResponse{
+				ThreadDebugStates: []fetcher.ThreadDebugState{
+					{Name: "Worker PHP Thread - /app/worker.php", IsBusy: true},
+					{Name: "Worker PHP Thread - /app/worker.php", IsWaiting: true},
+				},
+			},
+		},
+	}
+	out1 := stripANSI(renderDashboard(s1, 120, "v0.1", nil, nil, false, false, true))
+	assert.Contains(t, out1, "Workers 1/2")
+	assert.NotContains(t, out1, "Threads")
+
+	// 2. Only normal threads
+	s2 := &model.State{
+		Current: &fetcher.Snapshot{
+			Threads: fetcher.ThreadsResponse{
+				ThreadDebugStates: []fetcher.ThreadDebugState{
+					{Name: "Regular PHP Thread", IsBusy: true},
+					{Name: "Regular PHP Thread", IsWaiting: true},
+				},
+			},
+		},
+	}
+	out2 := stripANSI(renderDashboard(s2, 120, "v0.1", nil, nil, false, false, true))
+	assert.Contains(t, out2, "Threads 1/2")
+	assert.NotContains(t, out2, "Workers")
+
+	// 3. Both workers and normal threads
+	s3 := &model.State{
+		Current: &fetcher.Snapshot{
+			Threads: fetcher.ThreadsResponse{
+				ThreadDebugStates: []fetcher.ThreadDebugState{
+					{Name: "Worker PHP Thread - /app/worker.php", IsBusy: true},
+					{Name: "Regular PHP Thread", IsWaiting: true},
+				},
+			},
+		},
+	}
+	out3 := stripANSI(renderDashboard(s3, 120, "v0.1", nil, nil, false, false, true))
+	assert.Contains(t, out3, "Workers 1/1")
+	assert.Contains(t, out3, "Threads 0/1")
+}
+
 func stripANSI(s string) string {
 	var out []rune
 	inEsc := false
