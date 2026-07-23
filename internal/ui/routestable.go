@@ -16,17 +16,27 @@ const (
 	colRouteStatus1    = 7
 	colRouteAvg        = 11
 	colRouteMax        = 11
+	colRouteMem        = 10
 	// Pattern is the only flex column; everything else is fixed so the
 	// status counters and latency columns line up vertically across rows.
 	colRouteFixedNonPattern = 1 + colRouteCount + colRouteMethod + 4*colRouteStatus1 + colRouteAvg + colRouteMax
 )
 
-func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortBy model.RouteSortField, showHost bool, rightStatus, emptyHint string) string {
+// routeFixedNonPattern is the fixed-column footprint: the memory columns only
+// exist when FrankenPHP is detected, so they only count when shown.
+func routeFixedNonPattern(showMem bool) int {
+	if showMem {
+		return colRouteFixedNonPattern + 2*colRouteMem
+	}
+	return colRouteFixedNonPattern
+}
+
+func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortBy model.RouteSortField, showHost, showMem bool, rightStatus, emptyHint string) string {
 	// Pattern absorbs whatever width is left after the fixed columns; on
 	// narrow terminals it gets squeezed (and truncated with an ellipsis by
 	// fitCellLeft) rather than pushing the row past `width` and forcing the
 	// terminal to wrap — keeping the table strictly within its allotment.
-	remaining := width - colRouteFixedNonPattern
+	remaining := width - routeFixedNonPattern(showMem)
 	if remaining < 1 {
 		remaining = 1
 	}
@@ -38,7 +48,7 @@ func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortB
 	// wide terminal does not stretch Pattern across half the screen.
 	gap := remaining - patternW
 
-	headerLine := renderLogHeader(buildRoutesHeader(sortBy, patternW, gap), rightStatus, width)
+	headerLine := renderLogHeader(buildRoutesHeader(sortBy, patternW, gap, showMem), rightStatus, width)
 
 	bodyHeight := height - lipgloss.Height(headerLine)
 	if bodyHeight < 1 {
@@ -56,7 +66,7 @@ func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortB
 	}
 
 	for i, s := range visible {
-		rows = append(rows, formatRouteRow(s, width, patternW, gap, showHost, i == cursor))
+		rows = append(rows, formatRouteRow(s, width, patternW, gap, showHost, showMem, i == cursor))
 	}
 
 	for len(rows) < bodyHeight {
@@ -70,8 +80,8 @@ func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortB
 // buildRoutesHeader pre-pads cells manually because Go's `%-*s` width
 // specifier counts bytes, and lipgloss-styled labels embed ANSI escapes that
 // would silently defeat the padding.
-func buildRoutesHeader(sortBy model.RouteSortField, patternW, gap int) string {
-	return " " +
+func buildRoutesHeader(sortBy model.RouteSortField, patternW, gap int, showMem bool) string {
+	header := " " +
 		padCellRight(routeSortLabel("Count", sortBy, model.SortByRouteCount), colRouteCount) +
 		padCellRight("Method", colRouteMethod) +
 		fitCellLeft(routeSortLabel("Pattern", sortBy, model.SortByRoutePattern), patternW) +
@@ -82,6 +92,11 @@ func buildRoutesHeader(sortBy model.RouteSortField, patternW, gap int) string {
 		padCellLeft(statusLabel("5xx", dangerStyle), colRouteStatus1) +
 		padCellRight(" "+routeSortLabel("Avg", sortBy, model.SortByRouteAvg), colRouteAvg) +
 		padCellRight(" "+routeSortLabel("Max", sortBy, model.SortByRouteMax), colRouteMax)
+	if showMem {
+		header += padCellRight(" "+routeSortLabel("Avg Mem", sortBy, model.SortByRouteAvgMem), colRouteMem) +
+			padCellRight(" "+routeSortLabel("Max Mem", sortBy, model.SortByRouteMaxMem), colRouteMem)
+	}
+	return header
 }
 
 // routeSortLabel uses the same "▼" glyph the host and upstream tables use, so
@@ -116,7 +131,7 @@ func padCellLeft(s string, cells int) string {
 	return strings.Repeat(" ", pad) + s
 }
 
-func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, selected bool) string {
+func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, showMem, selected bool) string {
 	prefix := " "
 	if selected {
 		prefix = ">"
@@ -158,6 +173,18 @@ func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, selec
 		formatRouteStatusCells(s, selected) +
 		padCellRight(" "+avg, colRouteAvg) +
 		padCellRight(" "+maxStr, colRouteMax)
+
+	if showMem {
+		avgMem, maxMem := "—", "—"
+		if s.MemSamples > 0 {
+			avgMem = formatBytes(int64(s.AvgMemBytes()))
+		}
+		if s.MemMaxBytes > 0 {
+			maxMem = formatBytes(s.MemMaxBytes)
+		}
+		row += padCellRight(" "+avgMem, colRouteMem) +
+			padCellRight(" "+maxMem, colRouteMem)
+	}
 
 	if selected {
 		return selectedRowStyle.Width(width).Render(row)

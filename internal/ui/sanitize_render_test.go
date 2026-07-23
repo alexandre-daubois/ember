@@ -56,11 +56,11 @@ func TestRenderSinksNeutralizeControlBytes(t *testing.T) {
 		}},
 		{"formatRouteRow method+pattern+host", func() string {
 			s := model.RouteStat{Key: model.RouteKey{Host: evil, Method: evil, Pattern: evil}, Count: 1, Status2xx: 1}
-			return formatRouteRow(s, 120, 40, 0, true, false)
+			return formatRouteRow(s, 120, 40, 0, true, false, false)
 		}},
 		{"formatRouteRow selected", func() string {
 			s := model.RouteStat{Key: model.RouteKey{Host: evil, Method: evil, Pattern: evil}, Count: 1, Status2xx: 1}
-			return formatRouteRow(s, 120, 40, 0, true, true)
+			return formatRouteRow(s, 120, 40, 0, true, false, true)
 		}},
 		{"formatCertRow subject+issuer", func() string {
 			c := fetcher.CertificateInfo{Subject: evil, Issuer: evil, NotAfter: now.Add(48 * time.Hour), Source: "tls"}

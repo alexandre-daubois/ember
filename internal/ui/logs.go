@@ -85,11 +85,27 @@ func (a *App) renderRoutesView(width, height int, rightStatus string) string {
 	}
 	hint := a.routesEmptyHint(len(visible))
 	showHost := a.logSel.kind == logSelRoutes
-	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, rightStatus, hint)
+	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.hasFrankenPHP, rightStatus, hint)
 }
 
 func (a *App) isRoutesView() bool {
 	return a.logSel.kind == logSelRoutes || a.logSel.kind == logSelRoutesHost
+}
+
+// cycleRouteSort walks the sort cycle, skipping the memory fields when the
+// columns are hidden (no FrankenPHP): sorting on an invisible column would
+// reorder rows with no visual cue.
+func (a *App) cycleRouteSort(forward bool) {
+	for {
+		if forward {
+			a.routeSortBy = a.routeSortBy.Next()
+		} else {
+			a.routeSortBy = a.routeSortBy.Prev()
+		}
+		if a.hasFrankenPHP || (a.routeSortBy != model.SortByRouteAvgMem && a.routeSortBy != model.SortByRouteMaxMem) {
+			return
+		}
+	}
 }
 
 // currentRouteStats returns the route table the UI should display. The
@@ -510,12 +526,12 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "s":
 		if a.isRoutesView() {
-			a.routeSortBy = a.routeSortBy.Next()
+			a.cycleRouteSort(true)
 			return a, nil
 		}
 	case "S":
 		if a.isRoutesView() {
-			a.routeSortBy = a.routeSortBy.Prev()
+			a.cycleRouteSort(false)
 			return a, nil
 		}
 	}

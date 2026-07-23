@@ -70,8 +70,9 @@ func TestSortRoutes(t *testing.T) {
 }
 
 func TestRouteSortField_Cycle(t *testing.T) {
-	// Cycle follows the visual column order: Count → Pattern → Avg → Max.
-	order := []RouteSortField{SortByRouteCount, SortByRoutePattern, SortByRouteAvg, SortByRouteMax}
+	// Cycle follows the visual column order: Count -> Pattern -> Avg -> Max ->
+	// Avg Mem -> Max Mem.
+	order := []RouteSortField{SortByRouteCount, SortByRoutePattern, SortByRouteAvg, SortByRouteMax, SortByRouteAvgMem, SortByRouteMaxMem}
 	// Forward and backward cycles must be inverses of each other and wrap
 	// around at both ends, so we walk a full lap in each direction.
 	got := SortByRouteCount
@@ -83,7 +84,7 @@ func TestRouteSortField_Cycle(t *testing.T) {
 		}
 	}
 	got = SortByRouteCount
-	wantBack := []RouteSortField{SortByRouteMax, SortByRouteAvg, SortByRoutePattern, SortByRouteCount}
+	wantBack := []RouteSortField{SortByRouteMaxMem, SortByRouteAvgMem, SortByRouteMax, SortByRouteAvg, SortByRoutePattern, SortByRouteCount}
 	for i, want := range wantBack {
 		got = got.Prev()
 		if got != want {
@@ -114,6 +115,8 @@ func TestRouteSortField_String(t *testing.T) {
 		{SortByRoutePattern, "pattern"},
 		{SortByRouteAvg, "avg"},
 		{SortByRouteMax, "max"},
+		{SortByRouteAvgMem, "avg mem"},
+		{SortByRouteMaxMem, "max mem"},
 		{RouteSortField(999), "count"}, // unknown values fall back to the default
 	}
 	for _, tt := range tests {
@@ -155,6 +158,51 @@ func TestRouteStat_AvgMsZero(t *testing.T) {
 	if s.AvgMs() != 0 {
 		t.Errorf("AvgMs on zero RouteStat = %f", s.AvgMs())
 	}
+}
+
+func TestRouteStat_AvgMemBytesZero(t *testing.T) {
+	// No memory sample yet -> 0, not NaN, so the renderer can branch on the
+	// sample count without a division guard.
+	s := RouteStat{}
+	if s.AvgMemBytes() != 0 {
+		t.Errorf("AvgMemBytes on zero RouteStat = %f", s.AvgMemBytes())
+	}
+}
+
+func TestSortRoutes_ByMem(t *testing.T) {
+	mk := func(pattern string, samples int, sumBytes float64, maxBytes int64) RouteStat {
+		return RouteStat{
+			Key:         RouteKey{Method: "GET", Pattern: pattern},
+			MemSamples:  samples,
+			MemSumBytes: sumBytes,
+			MemMaxBytes: maxBytes,
+		}
+	}
+	a := mk("/a", 2, 100<<20, 60<<20) // avg 50 MB, max 60 MB
+	b := mk("/b", 1, 80<<20, 80<<20)  // avg 80 MB, max 80 MB
+	c := mk("/c", 0, 0, 0)            // never sampled
+
+	t.Run("avg mem", func(t *testing.T) {
+		s := []RouteStat{c, a, b}
+		SortRoutes(s, SortByRouteAvgMem)
+		if s[0].Key != b.Key || s[1].Key != a.Key || s[2].Key != c.Key {
+			t.Errorf("bad order: %+v %+v %+v", s[0].Key, s[1].Key, s[2].Key)
+		}
+	})
+	t.Run("max mem", func(t *testing.T) {
+		s := []RouteStat{c, a, b}
+		SortRoutes(s, SortByRouteMaxMem)
+		if s[0].Key != b.Key || s[1].Key != a.Key || s[2].Key != c.Key {
+			t.Errorf("bad order: %+v %+v %+v", s[0].Key, s[1].Key, s[2].Key)
+		}
+	})
+	t.Run("tie falls through to pattern", func(t *testing.T) {
+		s := []RouteStat{mk("/z", 0, 0, 0), mk("/y", 0, 0, 0)}
+		SortRoutes(s, SortByRouteAvgMem)
+		if s[0].Key.Pattern != "/y" {
+			t.Errorf("expected /y first on tied avg mem, got %q", s[0].Key.Pattern)
+		}
+	})
 }
 
 func TestSortRoutes_PatternTieBreaksOnHostThenMethod(t *testing.T) {

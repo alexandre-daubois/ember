@@ -190,6 +190,49 @@ func TestHandleLogsListKey_SortCyclesInRoutesView(t *testing.T) {
 	assert.Equal(t, model.SortByRouteCount, app.routeSortBy, "S walks back to Count")
 }
 
+func TestCycleRouteSort_SkipsMemFieldsWithoutFrankenPHP(t *testing.T) {
+	// The memory columns only render when FrankenPHP is detected; cycling
+	// onto them anyway would reorder rows on an invisible key.
+	app := newRoutesApp(model.NewRouteAggregator())
+	require.False(t, app.hasFrankenPHP)
+
+	app.routeSortBy = model.SortByRouteMax
+	app.cycleRouteSort(true)
+	assert.Equal(t, model.SortByRouteCount, app.routeSortBy, "forward cycle must skip both mem fields")
+
+	app.cycleRouteSort(false)
+	assert.Equal(t, model.SortByRouteMax, app.routeSortBy, "backward cycle must skip both mem fields")
+}
+
+func TestCycleRouteSort_ReachesMemFieldsWithFrankenPHP(t *testing.T) {
+	app := newRoutesApp(model.NewRouteAggregator())
+	app.hasFrankenPHP = true
+
+	app.routeSortBy = model.SortByRouteMax
+	app.cycleRouteSort(true)
+	assert.Equal(t, model.SortByRouteAvgMem, app.routeSortBy)
+	app.cycleRouteSort(true)
+	assert.Equal(t, model.SortByRouteMaxMem, app.routeSortBy)
+	app.cycleRouteSort(true)
+	assert.Equal(t, model.SortByRouteCount, app.routeSortBy, "cycle wraps after the last column")
+}
+
+func TestRenderRoutesView_MemColumnsFollowFrankenPHPDetection(t *testing.T) {
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/users/1", 200)
+	agg.TrackMemory("GET", "/users/1", 50<<20)
+	app := newRoutesApp(agg)
+
+	without := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.NotContains(t, without, "Avg Mem", "no FrankenPHP -> no memory columns")
+
+	app.hasFrankenPHP = true
+	with := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.Contains(t, with, "Avg Mem")
+	assert.Contains(t, with, "Max Mem")
+	assert.Contains(t, with, "50 MB")
+}
+
 func TestRenderRoutesTable_RespectsWidthAt80Columns(t *testing.T) {
 	// Regression: the previous implementation forced remaining≥12, which
 	// pushed the row past `width` on terminals just under 83 cols. The fix
@@ -202,7 +245,7 @@ func TestRenderRoutesTable_RespectsWidthAt80Columns(t *testing.T) {
 		DurationMaxMs: 30,
 	}}
 	for _, width := range []int{72, 80, 100, 160} {
-		out := renderRoutesTable(stats, 0, width, 4, model.SortByRouteCount, false, "", "")
+		out := renderRoutesTable(stats, 0, width, 4, model.SortByRouteCount, false, false, "", "")
 		for _, line := range strings.Split(stripANSI(out), "\n") {
 			assert.LessOrEqualf(t, lipgloss.Width(line), width,
 				"row exceeds requested width=%d: %q", width, line)

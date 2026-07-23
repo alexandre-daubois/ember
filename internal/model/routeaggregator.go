@@ -13,17 +13,35 @@ import (
 // aggregator the route counts would silently top out at the buffer
 // capacity, which is misleading on a busy server.
 //
-// Thread-safety: Track takes the write lock and Snapshot the read lock, so
-// any mix of writers and readers is safe. In production there is a single
-// writer (the log tailer goroutine), which keeps contention negligible: the
-// tailer batches entries so the lock is held for very short bursts.
+// Thread-safety: Track/TrackMemory take the write lock and Snapshot the
+// read lock, so any mix of writers and readers is safe. In production there
+// are two writers (the log tailer goroutine and the TUI poll loop feeding
+// thread memory samples), which keeps contention negligible: the tailer
+// batches entries so the lock is held for very short bursts.
 type RouteAggregator struct {
-	mu      sync.RWMutex
-	buckets map[RouteKey]*RouteStat
+	mu         sync.RWMutex
+	buckets    map[RouteKey]*RouteStat
+	memBuckets map[routeMemKey]*routeMemStat
+}
+
+// routeMemKey deliberately omits the host: memory samples come from
+// FrankenPHP thread states, which do not carry one.
+type routeMemKey struct {
+	Method  string
+	Pattern string
+}
+
+type routeMemStat struct {
+	Samples  int
+	SumBytes float64
+	MaxBytes int64
 }
 
 func NewRouteAggregator() *RouteAggregator {
-	return &RouteAggregator{buckets: make(map[RouteKey]*RouteStat, 64)}
+	return &RouteAggregator{
+		buckets:    make(map[RouteKey]*RouteStat, 64),
+		memBuckets: make(map[routeMemKey]*routeMemStat, 64),
+	}
 }
 
 // Track folds one log entry into the aggregator. Non-access logs and entries
@@ -64,6 +82,33 @@ func (a *RouteAggregator) Track(e fetcher.LogEntry) {
 	}
 }
 
+// TrackMemory folds one memory sample from a busy FrankenPHP thread into the
+// (method, pattern) it is currently serving. Samples are kept separate from
+// the access-log buckets because they arrive on a different path (the poll
+// loop, mid-request) and carry no host; Snapshot merges them into every
+// bucket sharing the (method, pattern). Empty method/URI and non-positive
+// measurements are skipped so callers can pass thread states unfiltered.
+func (a *RouteAggregator) TrackMemory(method, uri string, bytes int64) {
+	if method == "" || uri == "" || bytes <= 0 {
+		return
+	}
+	key := routeMemKey{Method: method, Pattern: NormalizeURI(uri)}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	stat, ok := a.memBuckets[key]
+	if !ok {
+		stat = &routeMemStat{}
+		a.memBuckets[key] = stat
+	}
+	stat.Samples++
+	stat.SumBytes += float64(bytes)
+	if bytes > stat.MaxBytes {
+		stat.MaxBytes = bytes
+	}
+}
+
 // Snapshot returns an unsorted copy of every bucket. The slice is fully
 // detached from the aggregator's internal state, so the caller is free to
 // mutate it (callers always re-sort by their active sort key, so sorting
@@ -77,7 +122,13 @@ func (a *RouteAggregator) Snapshot() []RouteStat {
 	}
 	out := make([]RouteStat, 0, len(a.buckets))
 	for _, s := range a.buckets {
-		out = append(out, *s)
+		cp := *s
+		if ms, ok := a.memBuckets[routeMemKey{Method: cp.Key.Method, Pattern: cp.Key.Pattern}]; ok {
+			cp.MemSamples = ms.Samples
+			cp.MemSumBytes = ms.SumBytes
+			cp.MemMaxBytes = ms.MaxBytes
+		}
+		out = append(out, cp)
 	}
 	return out
 }
@@ -122,4 +173,5 @@ func (a *RouteAggregator) Reset() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.buckets = make(map[RouteKey]*RouteStat, 64)
+	a.memBuckets = make(map[routeMemKey]*routeMemStat, 64)
 }

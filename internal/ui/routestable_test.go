@@ -16,14 +16,14 @@ func TestBuildRoutesHeader_FitsSqueezedPatternColumn(t *testing.T) {
 	// must truncate the "Pattern" label instead of overflowing its budget and
 	// wrapping onto an extra line (which desyncs the row slicer).
 	for _, patternW := range []int{1, 3, 5} {
-		header := buildRoutesHeader(model.SortByRoutePattern, patternW, 0)
+		header := buildRoutesHeader(model.SortByRoutePattern, patternW, 0, false)
 		assert.LessOrEqualf(t, lipgloss.Width(header), colRouteFixedNonPattern+patternW,
 			"routes header overflows its column budget at patternW=%d", patternW)
 	}
 }
 
 func TestRenderRoutesTable_HeaderColumnOrder(t *testing.T) {
-	out := stripANSI(renderRoutesTable(nil, 0, 160, 4, model.SortByRouteCount, false, "", ""))
+	out := stripANSI(renderRoutesTable(nil, 0, 160, 4, model.SortByRouteCount, false, false, "", ""))
 	header := strings.SplitN(out, "\n", 2)[0]
 	expected := []string{"Count", "Method", "Pattern", "2xx", "3xx", "4xx", "5xx", "Avg", "Max"}
 	prev := -1
@@ -33,6 +33,30 @@ func TestRenderRoutesTable_HeaderColumnOrder(t *testing.T) {
 		assert.Greater(t, idx, prev, "%q should appear after the previous label", label)
 		prev = idx
 	}
+	assert.NotContains(t, header, "Mem", "memory columns must stay hidden without FrankenPHP")
+}
+
+func TestRenderRoutesTable_MemColumns(t *testing.T) {
+	stats := []model.RouteStat{
+		{
+			Key:         model.RouteKey{Method: "GET", Pattern: "/users/:id"},
+			Count:       2,
+			Status2xx:   2,
+			MemSamples:  2,
+			MemSumBytes: float64(100 << 20),
+			MemMaxBytes: 60 << 20,
+		},
+		// Never-sampled route (e.g. requests always finish between polls):
+		// both cells must fall back to a dash instead of "0 B".
+		{Key: model.RouteKey{Method: "GET", Pattern: "/ping"}, Count: 1, Status2xx: 1},
+	}
+	out := stripANSI(renderRoutesTable(stats, -1, 180, 5, model.SortByRouteCount, false, true, "", ""))
+	header := strings.SplitN(out, "\n", 2)[0]
+	assert.Less(t, strings.Index(header, "Max "), strings.Index(header, "Avg Mem"))
+	assert.Less(t, strings.Index(header, "Avg Mem"), strings.Index(header, "Max Mem"))
+	assert.Contains(t, out, "50 MB", "avg mem cell")
+	assert.Contains(t, out, "60 MB", "max mem cell")
+	assert.Contains(t, out, "—", "unsampled route must show the dash fallback")
 }
 
 func TestRenderRoutesTable_HappyPath(t *testing.T) {
@@ -48,7 +72,7 @@ func TestRenderRoutesTable_HappyPath(t *testing.T) {
 			LastSeen:      now.Add(-2 * time.Second),
 		},
 	}
-	out := stripANSI(renderRoutesTable(stats, 0, 120, 5, model.SortByRouteCount, false, "", "no rows"))
+	out := stripANSI(renderRoutesTable(stats, 0, 120, 5, model.SortByRouteCount, false, false, "", "no rows"))
 	assert.Contains(t, out, "Method")
 	assert.Contains(t, out, "Pattern")
 	assert.Contains(t, out, "/users/:id")
@@ -61,7 +85,7 @@ func TestRenderRoutesTable_HappyPath(t *testing.T) {
 func TestRenderRoutesTable_HeaderColumnOrderTightWindow(t *testing.T) {
 	// At 80 columns Pattern should still fit (capped at colRoutePatternMax)
 	// while every other column is preserved end-to-end.
-	out := stripANSI(renderRoutesTable(nil, 0, 80, 4, model.SortByRouteCount, false, "", ""))
+	out := stripANSI(renderRoutesTable(nil, 0, 80, 4, model.SortByRouteCount, false, false, "", ""))
 	header := strings.SplitN(out, "\n", 2)[0]
 	for _, label := range []string{"Count", "Method", "Pattern", "2xx", "3xx", "4xx", "5xx", "Avg", "Max"} {
 		assert.Contains(t, header, label)
@@ -69,7 +93,7 @@ func TestRenderRoutesTable_HeaderColumnOrderTightWindow(t *testing.T) {
 }
 
 func TestRenderRoutesTable_EmptyHint(t *testing.T) {
-	out := stripANSI(renderRoutesTable(nil, 0, 80, 5, model.SortByRouteCount, false, "", "waiting…"))
+	out := stripANSI(renderRoutesTable(nil, 0, 80, 5, model.SortByRouteCount, false, false, "", "waiting…"))
 	assert.Contains(t, out, "waiting…")
 }
 
@@ -79,19 +103,19 @@ func TestRenderRoutesTable_HostPrefixOnRoot(t *testing.T) {
 		{Key: model.RouteKey{Host: "app.localhost", Method: "GET", Pattern: "/users/:id"}, Count: 3, Status2xx: 3},
 	}
 	// showHost=true → the host disambiguates two routes that share the path.
-	root := stripANSI(renderRoutesTable(stats, -1, 160, 6, model.SortByRouteCount, true, "", ""))
+	root := stripANSI(renderRoutesTable(stats, -1, 160, 6, model.SortByRouteCount, true, false, "", ""))
 	assert.Contains(t, root, "api.localhost /users/:id")
 	assert.Contains(t, root, "app.localhost /users/:id")
 
 	// showHost=false (per-host drilldown) → the prefix is dropped.
-	drill := stripANSI(renderRoutesTable(stats[:1], -1, 160, 6, model.SortByRouteCount, false, "", ""))
+	drill := stripANSI(renderRoutesTable(stats[:1], -1, 160, 6, model.SortByRouteCount, false, false, "", ""))
 	assert.NotContains(t, drill, "api.localhost /users")
 	assert.Contains(t, drill, "/users/:id")
 }
 
 func TestRenderRoutesTable_SelectionPrefix(t *testing.T) {
 	stats := []model.RouteStat{{Key: model.RouteKey{Method: "GET", Pattern: "/a"}, Count: 1, Status2xx: 1}}
-	out := renderRoutesTable(stats, 0, 100, 4, model.SortByRouteCount, false, "", "")
+	out := renderRoutesTable(stats, 0, 100, 4, model.SortByRouteCount, false, false, "", "")
 	stripped := stripANSI(out)
 	// First non-header line is the row; selection prefix is ">".
 	lines := strings.Split(stripped, "\n")
@@ -110,7 +134,7 @@ func TestRenderRoutesTable_StatusMarkersNoColor(t *testing.T) {
 			Status5xx: 1,
 		},
 	}
-	out := stripANSI(renderRoutesTable(stats, -1, 120, 4, model.SortByRouteCount, false, "", ""))
+	out := stripANSI(renderRoutesTable(stats, -1, 120, 4, model.SortByRouteCount, false, false, "", ""))
 	assert.Contains(t, out, "2*", "4xx must carry a textual marker for NO_COLOR")
 	assert.Contains(t, out, "1!", "5xx must carry a textual marker for NO_COLOR")
 }
@@ -119,7 +143,7 @@ func TestRenderRoutesTable_PatternTruncation(t *testing.T) {
 	long := "/api/v1/very-long-path-segment-that-should-not-overflow/and/wrap/the/row/" + strings.Repeat("x", 200)
 	stats := []model.RouteStat{{Key: model.RouteKey{Method: "GET", Pattern: long}, Count: 1, Status2xx: 1}}
 	width := 100
-	out := renderRoutesTable(stats, -1, width, 3, model.SortByRouteCount, false, "", "")
+	out := renderRoutesTable(stats, -1, width, 3, model.SortByRouteCount, false, false, "", "")
 	stripped := stripANSI(out)
 	for _, line := range strings.Split(stripped, "\n") {
 		assert.LessOrEqual(t, len(line), width*4, "row should not blow up uncontrollably (allowing for unicode)")
@@ -167,7 +191,7 @@ func TestRenderRoutesTable_FallbacksOnMissingMethodAndPattern(t *testing.T) {
 	// must still render a row with the "—" placeholder rather than leaving
 	// holes in the column grid.
 	stats := []model.RouteStat{{Key: model.RouteKey{}, Count: 1, Status2xx: 1}}
-	out := stripANSI(renderRoutesTable(stats, -1, 120, 4, model.SortByRouteCount, false, "", ""))
+	out := stripANSI(renderRoutesTable(stats, -1, 120, 4, model.SortByRouteCount, false, false, "", ""))
 	assert.Contains(t, out, "—", "empty method and pattern must fall back to a dash")
 }
 
@@ -180,7 +204,7 @@ func TestRenderRoutesTable_OverlongStatsClippedToBodyHeight(t *testing.T) {
 	for i := range stats {
 		stats[i] = model.RouteStat{Key: model.RouteKey{Method: "GET", Pattern: "/r"}, Count: i + 1, Status2xx: 1}
 	}
-	out := renderRoutesTable(stats, -1, 120, 4, model.SortByRouteCount, false, "", "")
+	out := renderRoutesTable(stats, -1, 120, 4, model.SortByRouteCount, false, false, "", "")
 	lines := strings.Split(out, "\n")
 	// header + border (logHeaderHeight=2) + at most bodyHeight=2 rows.
 	assert.LessOrEqual(t, len(lines), 4, "renderer must not exceed `height` lines")
@@ -190,7 +214,7 @@ func TestRenderRoutesTable_TinyHeightStillRendersOneRow(t *testing.T) {
 	// height ≤ header → bodyHeight clamps to 1 so the table never collapses
 	// to nothing; the user always sees at least the top row.
 	stats := []model.RouteStat{{Key: model.RouteKey{Method: "GET", Pattern: "/a"}, Count: 1, Status2xx: 1}}
-	out := stripANSI(renderRoutesTable(stats, -1, 120, 1, model.SortByRouteCount, false, "", ""))
+	out := stripANSI(renderRoutesTable(stats, -1, 120, 1, model.SortByRouteCount, false, false, "", ""))
 	assert.Contains(t, out, "/a")
 }
 
@@ -200,6 +224,6 @@ func TestRenderRoutesTable_VeryNarrowWidthClampsPattern(t *testing.T) {
 	// still overflow the requested width on a sub-72-col terminal — but
 	// the renderer must not panic or truncate other columns.
 	stats := []model.RouteStat{{Key: model.RouteKey{Method: "GET", Pattern: "/a"}, Count: 1, Status2xx: 1}}
-	out := renderRoutesTable(stats, -1, 40, 4, model.SortByRouteCount, false, "", "")
+	out := renderRoutesTable(stats, -1, 40, 4, model.SortByRouteCount, false, false, "", "")
 	assert.NotEmpty(t, stripANSI(out))
 }

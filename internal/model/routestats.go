@@ -18,6 +18,12 @@ type RouteKey struct {
 // RouteStat aggregates entries that share a RouteKey. Latency is stored in
 // milliseconds (LogEntry.Duration is seconds, multiplied at insertion) so
 // the renderer never has to know the source unit.
+//
+// The Mem* fields hold per-thread PHP memory usage sampled from busy
+// FrankenPHP threads at each poll, not per-request measurements: a request
+// shorter than the polling interval may never be sampled, and a long one is
+// sampled repeatedly. Samples carry no host, so buckets sharing a (method,
+// pattern) surface identical memory aggregates.
 type RouteStat struct {
 	Key           RouteKey
 	Count         int
@@ -27,6 +33,9 @@ type RouteStat struct {
 	Status5xx     int
 	DurationSumMs float64
 	DurationMaxMs float64
+	MemSamples    int
+	MemSumBytes   float64
+	MemMaxBytes   int64
 	LastSeen      time.Time
 }
 
@@ -39,10 +48,21 @@ func (s RouteStat) AvgMs() float64 {
 	return s.DurationSumMs / float64(s.Count)
 }
 
-// RouteSortField cycles in the visual column order (Count → Pattern → Avg →
-// Max), skipping Method and the per-status counters which are not sortable.
-// Last-seen is intentionally absent: the column is no longer surfaced in the
-// UI, so cycling onto an invisible sort key would just confuse users.
+// AvgMemBytes returns 0 (not NaN) when no memory sample has been recorded,
+// mirroring AvgMs.
+func (s RouteStat) AvgMemBytes() float64 {
+	if s.MemSamples == 0 {
+		return 0
+	}
+	return s.MemSumBytes / float64(s.MemSamples)
+}
+
+// RouteSortField cycles in the visual column order (Count -> Pattern -> Avg ->
+// Max -> Avg Mem -> Max Mem), skipping Method and the per-status counters
+// which are not sortable. Last-seen is intentionally absent: the column is
+// no longer surfaced in the UI, so cycling onto an invisible sort key would
+// just confuse users. For the same reason, callers that hide the memory
+// columns (no FrankenPHP) must skip the two mem fields when cycling.
 type RouteSortField int
 
 const (
@@ -50,10 +70,12 @@ const (
 	SortByRoutePattern
 	SortByRouteAvg
 	SortByRouteMax
+	SortByRouteAvgMem
+	SortByRouteMaxMem
 )
 
 var routeSortFieldOrder = []RouteSortField{
-	SortByRouteCount, SortByRoutePattern, SortByRouteAvg, SortByRouteMax,
+	SortByRouteCount, SortByRoutePattern, SortByRouteAvg, SortByRouteMax, SortByRouteAvgMem, SortByRouteMaxMem,
 }
 
 func (s RouteSortField) String() string {
@@ -62,6 +84,10 @@ func (s RouteSortField) String() string {
 		return "avg"
 	case SortByRouteMax:
 		return "max"
+	case SortByRouteAvgMem:
+		return "avg mem"
+	case SortByRouteMaxMem:
+		return "max mem"
 	case SortByRoutePattern:
 		return "pattern"
 	default:
@@ -101,6 +127,14 @@ func SortRoutes(stats []RouteStat, by RouteSortField) {
 		case SortByRouteMax:
 			if a.DurationMaxMs != b.DurationMaxMs {
 				return a.DurationMaxMs > b.DurationMaxMs
+			}
+		case SortByRouteAvgMem:
+			if a.AvgMemBytes() != b.AvgMemBytes() {
+				return a.AvgMemBytes() > b.AvgMemBytes()
+			}
+		case SortByRouteMaxMem:
+			if a.MemMaxBytes != b.MemMaxBytes {
+				return a.MemMaxBytes > b.MemMaxBytes
 			}
 		case SortByRoutePattern:
 			if a.Key.Pattern != b.Key.Pattern {
