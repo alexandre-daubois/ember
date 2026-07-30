@@ -162,30 +162,43 @@ table on that host and drops the prefix.
 | Avg        | Mean latency over the bucket                                             |
 | Max        | Slowest single request                                                   |
 | Avg Mem    | Mean PHP memory usage sampled from busy FrankenPHP threads serving this route (FrankenPHP only, see below) |
-| Max Mem    | Highest sampled PHP memory usage for this route (FrankenPHP only)        |
+| Max Mem    | Highest sampled PHP memory usage for this route (FrankenPHP only, see below) |
 
 Press `s` / `S` to cycle the sort field (Count -> Pattern -> Avg -> Max ->
-Avg Mem -> Max Mem), following the visual column order. The active column
-is marked with `▼` in the header, the same glyph the host and upstream
-tables use, so the cue is consistent across the app. `/` filters on
-method or pattern.
+Avg Mem -> Max Mem), following the visual column order. The `Avg Mem` and
+`Max Mem` steps are skipped whenever the columns are hidden, so the cycle
+never sorts on an invisible key. The active column is marked with `▼` in
+the header, the same glyph the host and upstream tables use, so the cue is
+consistent across the app. `/` filters on method or pattern.
 
 ### Memory columns
 
-The **Avg Mem** and **Max Mem** columns only appear when a FrankenPHP
-server is detected (and require FrankenPHP 1.12.2 or later, like the
-per-thread metrics of the FrankenPHP tab). They aggregate the same
-per-thread memory usage the FrankenPHP tab shows live, keyed by
-`(method, pattern)`: handy for spotting memory-hungry routes, catching
-leaks in worker mode, or sizing servers and pods from the max footprint.
+The **Avg Mem** and **Max Mem** columns appear once Ember has recorded at
+least one memory sample, which needs a FrankenPHP server running 1.12.2 or
+later (older versions report no per-thread memory usage, like the
+per-thread metrics of the FrankenPHP tab). They also need room: the two
+columns cost 20 cells, so on a terminal narrower than roughly 133 columns
+they are dropped in favour of the Pattern column, which is the only one
+that identifies a route. They aggregate the same per-thread memory usage
+the FrankenPHP tab shows live, keyed by `(method, pattern)`: handy for
+spotting memory-hungry routes, catching leaks in worker mode, or sizing
+servers and pods from the max footprint.
 
-Two caveats stem from how the data is collected:
+Three caveats stem from how the data is collected:
 
 - Values are *sampled* each time Ember polls a busy thread, not measured
   per request: a request that completes between two polls is never
   sampled (its row shows `—`), and a long request is sampled repeatedly.
-- Thread states do not carry a host, so on the root view two hosts
-  sharing the same `(method, pattern)` show identical memory values.
+- The sample is the *thread's* PHP memory usage, not the request's. In
+  worker mode a thread is reused across requests, so what it retains from
+  earlier work is attributed to the route it happens to be serving when
+  polled. Read the columns as "how much memory a thread holds while
+  serving this route", and compare routes over many samples rather than
+  trusting a single peak.
+- Thread states do not carry a host, so two buckets sharing the same
+  `(method, pattern)` show identical memory values. This applies to the
+  root view *and* to per-host drill-downs: a peak displayed under one host
+  may have been reached while another vhost was being served.
 
 ### URL normalization
 
