@@ -136,6 +136,28 @@ func TestRenderRoutesTable_MemColumnsDependOnWidthAloneAndNeverOverflow(t *testi
 	}
 }
 
+func TestFormatRouteMem(t *testing.T) {
+	// Each step rounds before comparing units, so nothing renders as
+	// "1024.0 MB", and the ladder keeps every result inside colRouteMem.
+	for _, tc := range []struct {
+		bytes int64
+		want  string
+	}{
+		{512, "512 B"},
+		{300 << 10, "300 KB"},
+		{2202009, "2.1 MB"},
+		{2831155, "2.7 MB"},
+		{1073700000, "1.0 GB"},
+		{5 << 30, "5.0 GB"},
+		{10 << 40, "10.0 TB"},
+		{1 << 62, "4096.0 PB"},
+	} {
+		assert.Equalf(t, tc.want, formatRouteMem(tc.bytes), "formatRouteMem(%d)", tc.bytes)
+		assert.LessOrEqualf(t, lipgloss.Width(" "+formatRouteMem(tc.bytes)), colRouteMem,
+			"formatRouteMem(%d) overflows the column", tc.bytes)
+	}
+}
+
 func TestRenderRoutesTable_StatusPillFallbackOnNarrowWidth(t *testing.T) {
 	// With no slack past Pattern's cap there is nowhere to put the pill, so the
 	// header truncates its labels as it always has — but Pattern keeps every

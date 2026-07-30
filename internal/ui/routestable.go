@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -213,16 +214,21 @@ func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, showM
 // formatRouteMem keeps one decimal instead of reusing formatBytes' whole-MB
 // rounding: PHP route footprints routinely sit within a megabyte of each other,
 // so "2 MB" on every row would hide the very differences the column exists to
-// rank. Worst case ("1023.9 GB") still fits the 10-cell column.
+// rank. Each step rounds before comparing, so a value that %.1f would print as
+// "1024.0 MB" promotes to "1.0 GB" instead; the ladder bounds the result at four
+// digits, which fits colRouteMem even for a nonsensical reading.
 func formatRouteMem(b int64) string {
-	mb := float64(b) / 1024 / 1024
-	if mb >= 1024 {
-		return fmt.Sprintf("%.1f GB", mb/1024)
+	v := math.Round(float64(b)/(1<<20)*10) / 10
+	if v < 1 {
+		return formatBytes(b)
 	}
-	if mb >= 1 {
-		return fmt.Sprintf("%.1f MB", mb)
+	for _, unit := range []string{"MB", "GB", "TB"} {
+		if v < 1024 {
+			return fmt.Sprintf("%.1f %s", v, unit)
+		}
+		v = math.Round(v/1024*10) / 10
 	}
-	return formatBytes(b)
+	return fmt.Sprintf("%.1f PB", v)
 }
 
 // formatRouteStatusCells suffixes 4xx/5xx with "*"/"!" so error classes
