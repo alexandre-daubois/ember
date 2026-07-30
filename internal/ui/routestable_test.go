@@ -37,26 +37,43 @@ func TestRenderRoutesTable_HeaderColumnOrder(t *testing.T) {
 }
 
 func TestRenderRoutesTable_MemColumns(t *testing.T) {
+	// Both fixtures carry latency, so the only "—" a row can print comes from
+	// the memory cells — otherwise the latency Max fallback would satisfy the
+	// assertions on its own.
 	stats := []model.RouteStat{
 		{
-			Key:         model.RouteKey{Method: "GET", Pattern: "/users/:id"},
-			Count:       2,
-			Status2xx:   2,
-			MemSamples:  2,
-			MemSumBytes: float64(100 << 20),
-			MemMaxBytes: 60 << 20,
+			Key:           model.RouteKey{Method: "GET", Pattern: "/users/:id"},
+			Count:         2,
+			Status2xx:     2,
+			DurationSumMs: 20,
+			DurationMaxMs: 15,
+			MemSamples:    2,
+			MemSumBytes:   float64(100 << 20),
+			MemMaxBytes:   60 << 20,
 		},
 		// Never-sampled route (e.g. requests always finish between polls):
 		// both cells must fall back to a dash instead of "0 B".
-		{Key: model.RouteKey{Method: "GET", Pattern: "/ping"}, Count: 1, Status2xx: 1},
+		{
+			Key:           model.RouteKey{Method: "GET", Pattern: "/ping"},
+			Count:         1,
+			Status2xx:     1,
+			DurationSumMs: 5,
+			DurationMaxMs: 5,
+		},
 	}
-	out := stripANSI(renderRoutesTable(stats, -1, 180, 5, model.SortByRouteCount, false, true, "", ""))
-	header := strings.SplitN(out, "\n", 2)[0]
+	lines := strings.Split(stripANSI(renderRoutesTable(stats, -1, 180, 5, model.SortByRouteCount, false, true, "", "")), "\n")
+	header := lines[0]
 	assert.Less(t, strings.Index(header, "Max "), strings.Index(header, "Avg Mem"))
 	assert.Less(t, strings.Index(header, "Avg Mem"), strings.Index(header, "Max Mem"))
-	assert.Contains(t, out, "50 MB", "avg mem cell")
-	assert.Contains(t, out, "60 MB", "max mem cell")
-	assert.Contains(t, out, "—", "unsampled route must show the dash fallback")
+
+	sampled := lineContaining(t, lines, "/users/:id")
+	assert.Contains(t, sampled, "50 MB", "avg mem cell")
+	assert.Contains(t, sampled, "60 MB", "max mem cell")
+	assert.NotContains(t, sampled, "—")
+
+	unsampled := lineContaining(t, lines, "/ping")
+	assert.Equal(t, 2, strings.Count(unsampled, "—"), "both memory cells must fall back to a dash")
+	assert.NotContains(t, unsampled, "0 B")
 }
 
 func TestRenderRoutesTable_MemColumnsDropOutOnNarrowWidth(t *testing.T) {
@@ -73,6 +90,17 @@ func TestRenderRoutesTable_MemColumnsDropOutOnNarrowWidth(t *testing.T) {
 	out := stripANSI(renderRoutesTable(stats, -1, 98, 4, model.SortByRouteCount, false, true, "", ""))
 	assert.NotContains(t, out, "Avg Mem")
 	assert.Contains(t, out, "/api/users/:id/orders", "Pattern keeps the width the memory columns gave up")
+}
+
+func lineContaining(t *testing.T, lines []string, needle string) string {
+	t.Helper()
+	for _, line := range lines {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	t.Fatalf("no line contains %q in %q", needle, strings.Join(lines, "\n"))
+	return ""
 }
 
 func TestRenderRoutesTable_HappyPath(t *testing.T) {

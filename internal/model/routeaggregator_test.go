@@ -204,6 +204,11 @@ func TestRouteAggregator_TrackMemory_SkipsInvalidSamples(t *testing.T) {
 	require.Len(t, snap, 1)
 	assert.Zero(t, snap[0].MemSamples)
 	assert.Zero(t, snap[0].MemMaxBytes)
+	// Snapshot cannot see the empty-method/URI keys at all, so assert on the
+	// map itself: an accepted sample there would be a permanent, invisible
+	// entry that only Reset clears.
+	assert.Empty(t, agg.memBuckets)
+	assert.False(t, agg.HasMemorySamples())
 }
 
 func TestRouteAggregator_TrackMemory_CapsDistinctKeys(t *testing.T) {
