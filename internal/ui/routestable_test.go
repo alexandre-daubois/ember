@@ -67,8 +67,8 @@ func TestRenderRoutesTable_MemColumns(t *testing.T) {
 	assert.Less(t, strings.Index(header, "Avg Mem"), strings.Index(header, "Max Mem"))
 
 	sampled := lineContaining(t, lines, "/users/:id")
-	assert.Contains(t, sampled, "50 MB", "avg mem cell")
-	assert.Contains(t, sampled, "60 MB", "max mem cell")
+	assert.Contains(t, sampled, "50.0 MB", "avg mem cell")
+	assert.Contains(t, sampled, "60.0 MB", "max mem cell")
 	assert.NotContains(t, sampled, "—")
 
 	unsampled := lineContaining(t, lines, "/ping")
@@ -127,7 +127,7 @@ func TestRenderRoutesTable_HeaderAgreesWithRowsOnMemColumns(t *testing.T) {
 			require.Len(t, lines, 4)
 			header := lines[0]
 			inHeader := strings.Contains(header, "Max Mem")
-			inRow := strings.Contains(lines[2], "3 MB")
+			inRow := strings.Contains(lines[2], "3.0 MB")
 			assert.Equalf(t, inHeader, inRow,
 				"header and rows disagree on the memory columns at width=%d status=%q", width, stripANSI(status))
 			if inHeader {

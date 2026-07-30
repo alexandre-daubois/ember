@@ -282,7 +282,7 @@ func TestRenderRoutesView_MemColumnsFollowFrankenPHPDetection(t *testing.T) {
 	with := stripANSI(app.renderRoutesView(200, 8, ""))
 	assert.Contains(t, with, "Avg Mem")
 	assert.Contains(t, with, "Max Mem")
-	assert.Contains(t, with, "50 MB")
+	assert.Contains(t, with, "50.0 MB")
 }
 
 func TestRenderRoutesView_MemColumnsNeverSqueezePattern(t *testing.T) {

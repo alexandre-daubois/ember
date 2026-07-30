@@ -209,10 +209,10 @@ func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, showM
 	if showMem {
 		avgMem, maxMem := "—", "—"
 		if s.MemSamples > 0 {
-			avgMem = formatBytes(int64(s.AvgMemBytes()))
+			avgMem = formatRouteMem(int64(s.AvgMemBytes()))
 		}
 		if s.MemMaxBytes > 0 {
-			maxMem = formatBytes(s.MemMaxBytes)
+			maxMem = formatRouteMem(s.MemMaxBytes)
 		}
 		row += padCellRight(" "+avgMem, colRouteMem) +
 			padCellRight(" "+maxMem, colRouteMem)
@@ -222,6 +222,21 @@ func formatRouteRow(s model.RouteStat, width, patternW, gap int, showHost, showM
 		return selectedRowStyle.Width(width).Render(row)
 	}
 	return row
+}
+
+// formatRouteMem keeps one decimal instead of reusing formatBytes' whole-MB
+// rounding: PHP route footprints routinely sit within a megabyte of each other,
+// so "2 MB" on every row would hide the very differences the column exists to
+// rank. Worst case ("1023.9 GB") still fits the 10-cell column.
+func formatRouteMem(b int64) string {
+	mb := float64(b) / 1024 / 1024
+	if mb >= 1024 {
+		return fmt.Sprintf("%.1f GB", mb/1024)
+	}
+	if mb >= 1 {
+		return fmt.Sprintf("%.1f MB", mb)
+	}
+	return formatBytes(b)
 }
 
 // formatRouteStatusCells suffixes 4xx/5xx with "*"/"!" so error classes
