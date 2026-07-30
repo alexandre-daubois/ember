@@ -284,16 +284,23 @@ func TestRouteAggregator_ConcurrentTrackAndSnapshot(t *testing.T) {
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 
-	wg.Go(func() {
+	// Both writers have to finish before the readers stop, otherwise whichever
+	// one is slower to be scheduled can run entirely unobserved and the race
+	// detector never sees a concurrent read of the map it writes.
+	var writers sync.WaitGroup
+	writers.Go(func() {
 		for i := 0; i < 5_000; i++ {
 			agg.Track(makeAccessEntry("GET", "/x", 200, 0, now))
 		}
-		close(stop)
 	})
-	wg.Go(func() {
+	writers.Go(func() {
 		for i := 0; i < 5_000; i++ {
 			agg.TrackMemory("GET", "/x", 10<<20)
 		}
+	})
+	wg.Go(func() {
+		writers.Wait()
+		close(stop)
 	})
 	for r := 0; r < 4; r++ {
 		wg.Go(func() {
@@ -303,6 +310,7 @@ func TestRouteAggregator_ConcurrentTrackAndSnapshot(t *testing.T) {
 					return
 				default:
 					_ = agg.Snapshot()
+					_ = agg.HasMemorySamples()
 				}
 			}
 		})
