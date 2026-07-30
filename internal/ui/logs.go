@@ -85,7 +85,11 @@ func (a *App) renderRoutesView(width, height int, rightStatus string) string {
 	}
 	hint := a.routesEmptyHint(len(visible))
 	showHost := a.logSel.kind == logSelRoutes
-	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.showRouteMem(), rightStatus, hint)
+	// Record what the renderer settled on: it also drops the columns when the
+	// table is too narrow, and the sort cycle must follow the columns actually
+	// drawn rather than re-deriving a width it does not know.
+	a.routeMemColumns = a.showRouteMem() && routeMemColumnsFit(width, routeStatusReserve(rightStatus))
+	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.routeMemColumns, rightStatus, hint)
 }
 
 // showRouteMem gates the memory columns on samples having actually landed, not
@@ -100,21 +104,24 @@ func (a *App) isRoutesView() bool {
 	return a.logSel.kind == logSelRoutes || a.logSel.kind == logSelRoutesHost
 }
 
-// cycleRouteSort walks the sort cycle, skipping the memory fields when the
-// columns are hidden: sorting on an invisible column would reorder rows with
-// no visual cue.
+// cycleRouteSort walks the sort cycle, skipping the memory fields when their
+// columns are not on screen: sorting on an invisible column would reorder rows
+// with no visual cue.
 func (a *App) cycleRouteSort(forward bool) {
-	showMem := a.showRouteMem()
 	for {
 		if forward {
 			a.routeSortBy = a.routeSortBy.Next()
 		} else {
 			a.routeSortBy = a.routeSortBy.Prev()
 		}
-		if showMem || (a.routeSortBy != model.SortByRouteAvgMem && a.routeSortBy != model.SortByRouteMaxMem) {
+		if a.routeMemColumns || !isRouteMemSort(a.routeSortBy) {
 			return
 		}
 	}
+}
+
+func isRouteMemSort(f model.RouteSortField) bool {
+	return f == model.SortByRouteAvgMem || f == model.SortByRouteMaxMem
 }
 
 // currentRouteStats returns the route table the UI should display. The
@@ -574,6 +581,11 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if a.isRoutesView() {
 			if a.routeAggregator != nil {
 				a.routeAggregator.Reset()
+				// Reset drops the memory samples, so the columns disappear from
+				// the very next frame: a memory sort key would outlive them.
+				if isRouteMemSort(a.routeSortBy) {
+					a.routeSortBy = model.SortByRouteCount
+				}
 				a.cursor = 0
 				a.logScrollOffset = 0
 				a.status = "route stats cleared"

@@ -129,6 +129,9 @@ type App struct {
 	logSel              logSel
 	logSidepanelFocused bool
 	routeSortBy         model.RouteSortField
+	// routeMemColumns records whether the last By Route frame actually drew the
+	// memory columns, so the sort cycle can stay in step with the screen.
+	routeMemColumns bool
 
 	pluginTabs   []*pluginTab
 	pluginGroups []*pluginGroup

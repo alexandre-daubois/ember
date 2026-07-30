@@ -206,9 +206,13 @@ func TestCycleRouteSort_SkipsMemFieldsWithoutFrankenPHP(t *testing.T) {
 
 func TestCycleRouteSort_ReachesMemFieldsWithFrankenPHP(t *testing.T) {
 	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/x", 200)
 	agg.TrackMemory("GET", "/x", 50<<20)
 	app := newRoutesApp(agg)
 	app.hasFrankenPHP = true
+	// The cycle follows what the last frame actually drew, so render wide
+	// enough for the columns to be on screen first.
+	app.renderRoutesView(200, 8, "")
 
 	app.routeSortBy = model.SortByRouteMax
 	app.cycleRouteSort(true)
@@ -217,6 +221,52 @@ func TestCycleRouteSort_ReachesMemFieldsWithFrankenPHP(t *testing.T) {
 	assert.Equal(t, model.SortByRouteMaxMem, app.routeSortBy)
 	app.cycleRouteSort(true)
 	assert.Equal(t, model.SortByRouteCount, app.routeSortBy, "cycle wraps after the last column")
+}
+
+func TestCycleRouteSort_SkipsMemFieldsWhenTableIsTooNarrow(t *testing.T) {
+	// Samples exist and FrankenPHP is detected, but the table is too narrow to
+	// draw the columns: cycling onto them would reorder rows with no marker.
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/x", 200)
+	agg.TrackMemory("GET", "/x", 50<<20)
+	app := newRoutesApp(agg)
+	app.hasFrankenPHP = true
+	require.NotContains(t, stripANSI(app.renderRoutesView(100, 8, "")), "Avg Mem")
+
+	app.routeSortBy = model.SortByRouteMax
+	app.cycleRouteSort(true)
+	assert.Equal(t, model.SortByRouteCount, app.routeSortBy)
+}
+
+func TestUpdate_ClearsMemSortWhenColumnsGoOffScreen(t *testing.T) {
+	// Narrowing the window retires the columns behind the sort cycle's back;
+	// the next Update must not leave the table ordered by a hidden column.
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/x", 200)
+	agg.TrackMemory("GET", "/x", 50<<20)
+	app := newRoutesApp(agg)
+	app.hasFrankenPHP = true
+	app.renderRoutesView(200, 8, "")
+	app.routeSortBy = model.SortByRouteMaxMem
+
+	app.renderRoutesView(100, 8, "")
+	_, _ = app.Update(tickMsg{})
+	assert.Equal(t, model.SortByRouteCount, app.routeSortBy)
+}
+
+func TestHandleLogsListKey_ClearDropsMemSort(t *testing.T) {
+	// `c` wipes the memory samples, so the columns vanish on the next frame:
+	// the sort key must not outlive them.
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/x", 200)
+	agg.TrackMemory("GET", "/x", 50<<20)
+	app := newRoutesApp(agg)
+	app.hasFrankenPHP = true
+	app.renderRoutesView(200, 8, "")
+	app.routeSortBy = model.SortByRouteMaxMem
+
+	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	assert.Equal(t, model.SortByRouteCount, app.routeSortBy)
 }
 
 func TestRenderRoutesView_MemColumnsFollowFrankenPHPDetection(t *testing.T) {
