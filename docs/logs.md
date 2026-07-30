@@ -173,19 +173,25 @@ the cue is consistent across the app. `/` filters on method or pattern.
 
 ### Memory columns
 
-The **Avg Mem** and **Max Mem** columns appear once at least one route
-resolves to a memory sample, which needs a FrankenPHP server running 1.12.2
-or later (older versions report no per-thread memory usage, like the
-per-thread metrics of the FrankenPHP tab). They also need room: the two
-columns cost 20 cells, and they are only drawn when that comes out of a
-wide terminal's slack rather than out of the Pattern column, which is the
-only one identifying a route. In practice that means a terminal of roughly
-153 columns or more, a little wider while a `filter:` badge shares the
-header line; below that the columns are dropped, and so are their two sort
-steps. They aggregate the same per-thread memory usage the FrankenPHP
-tab shows live, keyed by `(method, pattern)`: handy for spotting
-memory-hungry routes, catching leaks in worker mode, or sizing servers and
-pods from the max footprint.
+The **Avg Mem** and **Max Mem** columns aggregate the same per-thread memory
+usage the FrankenPHP tab shows live, keyed by `(method, pattern)`: handy for
+spotting memory-hungry routes, catching leaks in worker mode, or sizing
+servers and pods from the max footprint.
+
+They are drawn under two conditions. First, at least one route *currently in
+view* must carry a memory sample, which needs a FrankenPHP server running
+1.12.2 or later (older versions report no per-thread memory usage, like the
+per-thread metrics of the FrankenPHP tab); a filter or a per-host drill-down
+matching only never-sampled routes hides them rather than showing two columns
+of dashes. Second, there must be room: the two columns cost 20 cells, and they
+are only drawn when that comes out of a wide terminal's slack rather than out
+of the Pattern column, which is the only one identifying a route. In practice
+that means a terminal of roughly 153 columns or more.
+
+While the columns are off screen their two sort steps are skipped, and an
+`Avg Mem` / `Max Mem` sort already in effect is simply not applied: the table
+falls back to Count, the header marks it, and your choice comes back as soon
+as the columns do.
 
 Four caveats stem from how the data is collected:
 
@@ -202,10 +208,12 @@ Four caveats stem from how the data is collected:
   `(method, pattern)` show identical memory values. This applies to the
   root view *and* to per-host drill-downs: a peak displayed under one host
   may have been reached while another vhost was being served.
-- Samples only arrive from the admin-API poll, so they freeze while polling
-  is paused (`p`) or while Ember cannot reach the endpoint, whereas Count,
-  Avg and Max keep advancing from the log stream. A By Route row can
-  therefore pair live latency with stale memory figures.
+- Samples only arrive from the admin-API poll, so they freeze while that poll
+  is paused or while Ember cannot reach the endpoint, whereas Count, Avg and
+  Max keep advancing from the log stream. A By Route row can therefore pair
+  live latency with stale memory figures. Note that `p` does not pause the
+  poll from the Logs tab: it is a no-op in the By Route view, and freezes the
+  tail in the other log views.
 
 ### URL normalization
 
