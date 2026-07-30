@@ -166,25 +166,28 @@ table on that host and drops the prefix.
 
 Press `s` / `S` to cycle the sort field (Count -> Pattern -> Avg -> Max ->
 Avg Mem -> Max Mem), following the visual column order. The `Avg Mem` and
-`Max Mem` steps are skipped whenever the columns are hidden, so the cycle
-never sorts on an invisible key. The active column is marked with `▼` in
-the header, the same glyph the host and upstream tables use, so the cue is
-consistent across the app. `/` filters on method or pattern.
+`Max Mem` steps are skipped whenever those columns are off screen, so the
+cycle never sorts on a column you cannot see. The active column is marked
+with `▼` in the header, the same glyph the host and upstream tables use, so
+the cue is consistent across the app. `/` filters on method or pattern.
 
 ### Memory columns
 
-The **Avg Mem** and **Max Mem** columns appear once Ember has recorded at
-least one memory sample, which needs a FrankenPHP server running 1.12.2 or
-later (older versions report no per-thread memory usage, like the
+The **Avg Mem** and **Max Mem** columns appear once at least one route
+resolves to a memory sample, which needs a FrankenPHP server running 1.12.2
+or later (older versions report no per-thread memory usage, like the
 per-thread metrics of the FrankenPHP tab). They also need room: the two
-columns cost 20 cells, so on a terminal narrower than roughly 133 columns
-they are dropped in favour of the Pattern column, which is the only one
-that identifies a route. They aggregate the same per-thread memory usage
-the FrankenPHP tab shows live, keyed by `(method, pattern)`: handy for
-spotting memory-hungry routes, catching leaks in worker mode, or sizing
-servers and pods from the max footprint.
+columns cost 20 cells, and they are only drawn when that comes out of a
+wide terminal's slack rather than out of the Pattern column, which is the
+only one identifying a route. In practice that means a terminal of roughly
+153 columns or more, a little wider while a `filter:` badge shares the
+header line; below that the columns are dropped, and so are their two sort
+steps. They aggregate the same per-thread memory usage the FrankenPHP
+tab shows live, keyed by `(method, pattern)`: handy for spotting
+memory-hungry routes, catching leaks in worker mode, or sizing servers and
+pods from the max footprint.
 
-Three caveats stem from how the data is collected:
+Four caveats stem from how the data is collected:
 
 - Values are *sampled* each time Ember polls a busy thread, not measured
   per request: a request that completes between two polls is never
@@ -199,6 +202,10 @@ Three caveats stem from how the data is collected:
   `(method, pattern)` show identical memory values. This applies to the
   root view *and* to per-host drill-downs: a peak displayed under one host
   may have been reached while another vhost was being served.
+- Samples only arrive from the admin-API poll, so they freeze while polling
+  is paused (`p`) or while Ember cannot reach the endpoint, whereas Count,
+  Avg and Max keep advancing from the log stream. A By Route row can
+  therefore pair live latency with stale memory figures.
 
 ### URL normalization
 
