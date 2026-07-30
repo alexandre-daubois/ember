@@ -105,10 +105,12 @@ func TestRenderRoutesTable_MemColumnsNeverCostPatternCells(t *testing.T) {
 	}
 }
 
-func TestRenderRoutesTable_HeaderAgreesWithRowsOnMemColumns(t *testing.T) {
-	// Whatever the width and whatever the pill, the header must never advertise
-	// a different set of memory columns than the rows print, and the sort marker
-	// must survive alongside them.
+func TestRenderRoutesTable_MemColumnsDependOnWidthAloneAndNeverOverflow(t *testing.T) {
+	// The columns are decided by width alone: the status pill only shares the
+	// header line, so letting it influence the decision would make them blink
+	// out as the user types a filter. The pill does clip the rightmost header
+	// labels — the same trade every table in the app makes, and the reason it
+	// must not also move the columns.
 	stats := []model.RouteStat{{
 		Key:           model.RouteKey{Method: "GET", Pattern: "/users/:id"},
 		Count:         10,
@@ -119,19 +121,16 @@ func TestRenderRoutesTable_HeaderAgreesWithRowsOnMemColumns(t *testing.T) {
 		MemSumBytes:   float64(6 << 20),
 		MemMaxBytes:   3 << 20,
 	}}
-	for _, status := range []string{"", helpStyle.Render("filter: users"), helpStyle.Render("filter: "+strings.Repeat("x", 40))} {
+	for _, status := range []string{"", helpStyle.Render("filter: users"), helpStyle.Render("filter: " + strings.Repeat("x", 40))} {
 		for width := 72; width <= 220; width++ {
 			lines := strings.Split(stripANSI(renderRoutesTable(stats, -1, width, 4, model.SortByRouteMaxMem, false, true, status, "")), "\n")
 			// header + border, then the single data row: Pattern is ellipsized to
 			// "…" on the narrowest widths, so the row cannot be matched by content.
 			require.Len(t, lines, 4)
-			header := lines[0]
-			inHeader := strings.Contains(header, "Max Mem")
-			inRow := strings.Contains(lines[2], "3.0 MB")
-			assert.Equalf(t, inHeader, inRow,
-				"header and rows disagree on the memory columns at width=%d status=%q", width, stripANSI(status))
-			if inHeader {
-				assert.Containsf(t, header, "Max Mem ▼", "sort marker lost at width=%d", width)
+			assert.Equalf(t, routeMemColumnsFit(width), strings.Contains(lines[2], "3.0 MB"),
+				"memory cells must follow the width alone at width=%d status=%q", width, stripANSI(status))
+			for _, line := range lines {
+				assert.LessOrEqualf(t, lipgloss.Width(line), width, "overflow at width=%d: %q", width, line)
 			}
 		}
 	}

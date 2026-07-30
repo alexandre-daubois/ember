@@ -329,10 +329,9 @@ func TestRenderRoutesTable_RespectsWidthAt80Columns(t *testing.T) {
 	}
 }
 
-func TestRenderRoutesTable_RespectsWidthWithRightStatus(t *testing.T) {
-	// The status pill shares the header line with the labels: the column
-	// budget must leave room for it so the rightmost labels (and their sort
-	// marker) survive instead of being truncated away.
+func TestRenderRoutesTable_StatusPillNeverMovesTheColumns(t *testing.T) {
+	// The pill only shares the header line; spending column cells on it would
+	// slide the whole numeric block left one cell per typed filter character.
 	stats := []model.RouteStat{{
 		Key:         model.RouteKey{Method: "GET", Pattern: "/users/:id"},
 		Count:       10,
@@ -341,14 +340,18 @@ func TestRenderRoutesTable_RespectsWidthWithRightStatus(t *testing.T) {
 		MemSumBytes: float64(50 << 20),
 		MemMaxBytes: 50 << 20,
 	}}
-	status := helpStyle.Render("filter: users")
-	out := stripANSI(renderRoutesTable(stats, -1, 200, 4, model.SortByRouteMaxMem, false, true, status, ""))
-	header := strings.SplitN(out, "\n", 2)[0]
-	assert.Contains(t, header, "Avg Mem")
-	assert.Contains(t, header, "Max Mem ▼", "the active sort column must keep its marker")
-	assert.Contains(t, header, "filter: users")
-	for _, line := range strings.Split(out, "\n") {
-		assert.LessOrEqual(t, lipgloss.Width(line), 200, line)
+	render := func(status string) []string {
+		out := renderRoutesTable(stats, -1, 200, 4, model.SortByRouteMaxMem, false, true, status, "")
+		return strings.Split(stripANSI(out), "\n")
+	}
+	bare := render("")
+	for _, query := range []string{"u", "us", "users", strings.Repeat("x", 40)} {
+		got := render(helpStyle.Render("filter: " + query))
+		assert.Equalf(t, bare[2], got[2], "rows shifted with a %d-character filter", len(query))
+		assert.Containsf(t, got[2], "50.0 MB", "columns dropped with a %d-character filter", len(query))
+		for _, line := range got {
+			assert.LessOrEqual(t, lipgloss.Width(line), 200, line)
+		}
 	}
 }
 

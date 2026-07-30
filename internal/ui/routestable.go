@@ -22,8 +22,9 @@ const (
 	colRouteFixedNonPattern = 1 + colRouteCount + colRouteMethod + 4*colRouteStatus1 + colRouteAvg + colRouteMax
 )
 
-// routeFixedNonPattern is the fixed-column footprint: the memory columns only
-// exist when FrankenPHP is detected, so they only count when shown.
+// routeFixedNonPattern is the fixed-column footprint. The memory columns are
+// conditional — see routeMemColumnsFit and renderRoutesView for the full gate —
+// so they only count when shown.
 func routeFixedNonPattern(showMem bool) int {
 	if showMem {
 		return colRouteFixedNonPattern + 2*colRouteMem
@@ -31,31 +32,17 @@ func routeFixedNonPattern(showMem bool) int {
 	return colRouteFixedNonPattern
 }
 
-// routeStatusReserve is the room the right-hand status pill needs on the header
-// line. renderLogHeader truncates the column labels (never the pill) when the
-// two collide, which would drop the rightmost labels and the "▼" sort marker
-// while the rows kept printing those cells.
-func routeStatusReserve(rightStatus string) int {
-	if rightStatus == "" {
-		return 0
-	}
-	return lipgloss.Width(rightStatus) + 2
-}
-
 // routeMemColumnsFit reports whether the memory columns can be drawn without
 // costing Pattern a single cell: they only earn their 20 cells out of the slack
-// a wide terminal leaves once Pattern is capped and the status pill has its
-// room. Pattern is the only column that identifies a route — at the root view it
-// also carries the host — so squeezing it to make room for memory would trade
-// the row's identity for its footprint, and clipping the labels instead would
-// leave the header advertising fewer columns than the rows print.
-func routeMemColumnsFit(width, statusReserve int) bool {
-	return width-statusReserve-routeFixedNonPattern(true) >= colRoutePatternMax
+// a wide terminal leaves once Pattern is capped. Pattern is the only column that
+// identifies a route — at the root view it also carries the host — so squeezing
+// it to make room for memory would trade the row's identity for its footprint.
+func routeMemColumnsFit(width int) bool {
+	return width-routeFixedNonPattern(true) >= colRoutePatternMax
 }
 
 func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortBy model.RouteSortField, showHost, showMem bool, rightStatus, emptyHint string) string {
-	reserve := routeStatusReserve(rightStatus)
-	if showMem && !routeMemColumnsFit(width, reserve) {
+	if showMem && !routeMemColumnsFit(width) {
 		showMem = false
 	}
 
@@ -72,13 +59,12 @@ func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortB
 		patternW = colRoutePatternMax
 	}
 	// Any leftover width pushes the right-hand columns toward the edge so a
-	// wide terminal does not stretch Pattern across half the screen — and it is
-	// where the status pill gets its room. With no slack to spare the labels
-	// truncate as they always have, Pattern keeping every cell it had.
+	// wide terminal does not stretch Pattern across half the screen. The columns
+	// stay pinned there whatever the header's status pill does: spending cells
+	// on the pill would slide the whole numeric block left one cell per typed
+	// filter character, and renderLogHeader already clips the labels — the same
+	// trade every other table in the app makes.
 	gap := remaining - patternW
-	if gap >= reserve {
-		gap -= reserve
-	}
 
 	headerLine := renderLogHeader(buildRoutesHeader(sortBy, patternW, gap, showMem), rightStatus, width)
 

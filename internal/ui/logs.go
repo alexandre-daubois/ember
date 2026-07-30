@@ -88,7 +88,7 @@ func (a *App) renderRoutesView(width, height int, rightStatus string) string {
 	// Record what the renderer settled on: it also drops the columns when the
 	// table is too narrow, and the sort cycle must follow the columns actually
 	// drawn rather than re-deriving a width it does not know.
-	a.routeMemColumns = a.showRouteMem() && routeMemColumnsFit(width, routeStatusReserve(rightStatus))
+	a.routeMemColumns = a.showRouteMem() && routeMemColumnsFit(width)
 	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.routeMemColumns, rightStatus, hint)
 }
 
