@@ -37,6 +37,12 @@ type routeMemStat struct {
 	MaxBytes int64
 }
 
+// memBucketsMax caps the memory-sample map. Unlike the access-log buckets it
+// can hold keys no bucket ever matches (a URI sampled mid-request that Caddy
+// never logs under that pattern), so its growth is invisible in the UI and in
+// BucketCount — a server being path-scanned would grow it without bound.
+const memBucketsMax = 10_000
+
 func NewRouteAggregator() *RouteAggregator {
 	return &RouteAggregator{
 		buckets:    make(map[RouteKey]*RouteStat, 64),
@@ -87,7 +93,8 @@ func (a *RouteAggregator) Track(e fetcher.LogEntry) {
 // the access-log buckets because they arrive on a different path (the poll
 // loop, mid-request) and carry no host; Snapshot merges them into every
 // bucket sharing the (method, pattern). Empty method/URI and non-positive
-// measurements are skipped so callers can pass thread states unfiltered.
+// measurements are skipped so callers can pass thread states unfiltered, and
+// samples for an unseen pattern are dropped once memBucketsMax keys are held.
 func (a *RouteAggregator) TrackMemory(method, uri string, bytes int64) {
 	if method == "" || uri == "" || bytes <= 0 {
 		return
@@ -99,6 +106,9 @@ func (a *RouteAggregator) TrackMemory(method, uri string, bytes int64) {
 
 	stat, ok := a.memBuckets[key]
 	if !ok {
+		if len(a.memBuckets) >= memBucketsMax {
+			return
+		}
 		stat = &routeMemStat{}
 		a.memBuckets[key] = stat
 	}

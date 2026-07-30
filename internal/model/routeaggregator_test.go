@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"testing"
@@ -203,6 +204,21 @@ func TestRouteAggregator_TrackMemory_SkipsInvalidSamples(t *testing.T) {
 	require.Len(t, snap, 1)
 	assert.Zero(t, snap[0].MemSamples)
 	assert.Zero(t, snap[0].MemMaxBytes)
+}
+
+func TestRouteAggregator_TrackMemory_CapsDistinctKeys(t *testing.T) {
+	// Keys sampled mid-request may never match an access-log bucket (a
+	// path-scanned server), so their growth is invisible in the UI: the cap is
+	// the only thing bounding it.
+	agg := NewRouteAggregator()
+	for i := 0; i < memBucketsMax+10; i++ {
+		agg.TrackMemory("GET", fmt.Sprintf("/scan-%d", i), 1<<20)
+	}
+	assert.Len(t, agg.memBuckets, memBucketsMax)
+
+	// Already-known keys keep aggregating once the cap is reached.
+	agg.TrackMemory("GET", "/scan-0", 8<<20)
+	assert.Equal(t, 2, agg.memBuckets[routeMemKey{Method: "GET", Pattern: "/scan-0"}].Samples)
 }
 
 func TestRouteAggregator_TrackMemory_BeforeAccessLog(t *testing.T) {
