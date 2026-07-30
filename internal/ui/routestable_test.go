@@ -59,6 +59,22 @@ func TestRenderRoutesTable_MemColumns(t *testing.T) {
 	assert.Contains(t, out, "—", "unsampled route must show the dash fallback")
 }
 
+func TestRenderRoutesTable_MemColumnsDropOutOnNarrowWidth(t *testing.T) {
+	// The memory columns cost 20 cells; below the Pattern minimum they must
+	// yield rather than starve the only column that identifies the route.
+	stats := []model.RouteStat{{
+		Key:         model.RouteKey{Method: "GET", Pattern: "/api/users/:id/orders"},
+		Count:       1,
+		Status2xx:   1,
+		MemSamples:  1,
+		MemSumBytes: float64(50 << 20),
+		MemMaxBytes: 50 << 20,
+	}}
+	out := stripANSI(renderRoutesTable(stats, -1, 98, 4, model.SortByRouteCount, false, true, "", ""))
+	assert.NotContains(t, out, "Avg Mem")
+	assert.Contains(t, out, "/api/users/:id/orders", "Pattern keeps the width the memory columns gave up")
+}
+
 func TestRenderRoutesTable_HappyPath(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	stats := []model.RouteStat{

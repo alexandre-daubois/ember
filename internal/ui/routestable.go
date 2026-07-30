@@ -17,6 +17,10 @@ const (
 	colRouteAvg        = 11
 	colRouteMax        = 11
 	colRouteMem        = 10
+	// colRoutePatternMin is the narrowest Pattern column that still tells two
+	// routes apart; below it the memory columns are dropped instead of
+	// starving the only column that identifies the row.
+	colRoutePatternMin = 20
 	// Pattern is the only flex column; everything else is fixed so the
 	// status counters and latency columns line up vertically across rows.
 	colRouteFixedNonPattern = 1 + colRouteCount + colRouteMethod + 4*colRouteStatus1 + colRouteAvg + colRouteMax
@@ -32,11 +36,28 @@ func routeFixedNonPattern(showMem bool) int {
 }
 
 func renderRoutesTable(stats []model.RouteStat, cursor, width, height int, sortBy model.RouteSortField, showHost, showMem bool, rightStatus, emptyHint string) string {
+	// The status pill shares the header line with the column labels, so its
+	// width comes off the column budget: otherwise renderLogHeader truncates
+	// the rightmost labels (and the "▼" sort marker) while the rows keep
+	// printing those cells. Pattern outranks the pill though: when reserving
+	// would starve it, the labels are left to truncate as they did before.
+	budget := width
+	if rightStatus != "" {
+		if reserved := width - lipgloss.Width(rightStatus) - 2; reserved-colRouteFixedNonPattern >= colRoutePatternMin {
+			budget = reserved
+		}
+	}
+
 	// Pattern absorbs whatever width is left after the fixed columns; on
 	// narrow terminals it gets squeezed (and truncated with an ellipsis by
 	// fitCellLeft) rather than pushing the row past `width` and forcing the
 	// terminal to wrap — keeping the table strictly within its allotment.
-	remaining := width - routeFixedNonPattern(showMem)
+	// The memory columns yield first: Pattern is the only column that
+	// identifies the route, so it keeps priority over them.
+	if showMem && budget-routeFixedNonPattern(true) < colRoutePatternMin {
+		showMem = false
+	}
+	remaining := budget - routeFixedNonPattern(showMem)
 	if remaining < 1 {
 		remaining = 1
 	}

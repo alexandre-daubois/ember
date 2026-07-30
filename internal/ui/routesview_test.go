@@ -244,12 +244,40 @@ func TestRenderRoutesTable_RespectsWidthAt80Columns(t *testing.T) {
 		DurationSumMs: 100,
 		DurationMaxMs: 30,
 	}}
-	for _, width := range []int{72, 80, 100, 160} {
-		out := renderRoutesTable(stats, 0, width, 4, model.SortByRouteCount, false, false, "", "")
-		for _, line := range strings.Split(stripANSI(out), "\n") {
-			assert.LessOrEqualf(t, lipgloss.Width(line), width,
-				"row exceeds requested width=%d: %q", width, line)
+	// showMem=true is the default configuration once FrankenPHP is detected,
+	// so the invariant has to hold on that path too — the memory columns cost
+	// 20 extra cells and must drop out rather than overflow.
+	for _, showMem := range []bool{false, true} {
+		for _, width := range []int{72, 80, 100, 160} {
+			out := renderRoutesTable(stats, 0, width, 4, model.SortByRouteCount, false, showMem, "", "")
+			for _, line := range strings.Split(stripANSI(out), "\n") {
+				assert.LessOrEqualf(t, lipgloss.Width(line), width,
+					"row exceeds requested width=%d (showMem=%v): %q", width, showMem, line)
+			}
 		}
+	}
+}
+
+func TestRenderRoutesTable_RespectsWidthWithRightStatus(t *testing.T) {
+	// The status pill shares the header line with the labels: the column
+	// budget must leave room for it so the rightmost labels (and their sort
+	// marker) survive instead of being truncated away.
+	stats := []model.RouteStat{{
+		Key:         model.RouteKey{Method: "GET", Pattern: "/users/:id"},
+		Count:       10,
+		Status2xx:   10,
+		MemSamples:  1,
+		MemSumBytes: float64(50 << 20),
+		MemMaxBytes: 50 << 20,
+	}}
+	status := helpStyle.Render("filter: users")
+	out := stripANSI(renderRoutesTable(stats, -1, 200, 4, model.SortByRouteMaxMem, false, true, status, ""))
+	header := strings.SplitN(out, "\n", 2)[0]
+	assert.Contains(t, header, "Avg Mem")
+	assert.Contains(t, header, "Max Mem ▼", "the active sort column must keep its marker")
+	assert.Contains(t, header, "filter: users")
+	for _, line := range strings.Split(out, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), 200, line)
 	}
 }
 
