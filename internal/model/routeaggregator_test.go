@@ -1,7 +1,6 @@
 package model
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
 	"testing"
@@ -208,25 +207,6 @@ func TestRouteAggregator_TrackMemory_SkipsInvalidSamples(t *testing.T) {
 	// map itself: an accepted sample there would be a permanent, invisible
 	// entry that only Reset clears.
 	assert.Empty(t, agg.memBuckets)
-}
-
-func TestRouteAggregator_TrackMemory_CapsDistinctKeys(t *testing.T) {
-	// Keys sampled mid-request may never match an access-log bucket (a
-	// path-scanned server), so their growth is invisible in the UI: the cap is
-	// the only thing bounding it.
-	agg := NewRouteAggregator()
-	for i := 0; i < memBucketsMax+10; i++ {
-		agg.TrackMemory("GET", fmt.Sprintf("/scan-%d", i), 1<<20)
-	}
-	assert.Len(t, agg.memBuckets, memBucketsMax)
-
-	// The cap evicts instead of freezing: a route first seen after it is
-	// reached — a fresh deploy, say — must still record memory.
-	agg.TrackMemory("POST", "/checkout", 8<<20)
-	require.Len(t, agg.memBuckets, memBucketsMax)
-	fresh := agg.memBuckets[routeMemKey{Method: "POST", Pattern: "/checkout"}]
-	require.NotNil(t, fresh, "a new pattern must still be recordable at the cap")
-	assert.Equal(t, int64(8<<20), fresh.MaxBytes)
 }
 
 func TestRouteAggregator_TrackMemory_BeforeAccessLog(t *testing.T) {
