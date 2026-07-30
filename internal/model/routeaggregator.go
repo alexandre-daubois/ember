@@ -150,26 +150,6 @@ func (a *RouteAggregator) Snapshot() []RouteStat {
 	return out
 }
 
-// HasMemorySamples reports whether any tracked route resolves to a memory
-// sample. The UI gates the memory columns on it rather than on FrankenPHP
-// detection alone: FrankenPHP older than 1.12.2 reports no per-thread memory
-// usage, and two all-dash columns are not worth the width they cost Pattern.
-// It tests the join, not just the side map, because a sampled pattern no
-// access log ever produced surfaces on no row at all.
-func (a *RouteAggregator) HasMemorySamples() bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if len(a.memBuckets) == 0 {
-		return false
-	}
-	for k := range a.buckets {
-		if _, ok := a.memBuckets[routeMemKey{Method: k.Method, Pattern: k.Pattern}]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 // BucketCount returns the number of distinct (host, method, pattern) buckets
 // currently tracked. Callers that only need the cardinality should prefer
 // this over Snapshot — it avoids the per-bucket copy.

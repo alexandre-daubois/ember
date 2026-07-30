@@ -208,7 +208,6 @@ func TestRouteAggregator_TrackMemory_SkipsInvalidSamples(t *testing.T) {
 	// map itself: an accepted sample there would be a permanent, invisible
 	// entry that only Reset clears.
 	assert.Empty(t, agg.memBuckets)
-	assert.False(t, agg.HasMemorySamples())
 }
 
 func TestRouteAggregator_TrackMemory_CapsDistinctKeys(t *testing.T) {
@@ -228,21 +227,6 @@ func TestRouteAggregator_TrackMemory_CapsDistinctKeys(t *testing.T) {
 	fresh := agg.memBuckets[routeMemKey{Method: "POST", Pattern: "/checkout"}]
 	require.NotNil(t, fresh, "a new pattern must still be recordable at the cap")
 	assert.Equal(t, int64(8<<20), fresh.MaxBytes)
-}
-
-func TestRouteAggregator_HasMemorySamples_RequiresAJoinedRoute(t *testing.T) {
-	// A sampled pattern no access log ever produced surfaces on no row, so the
-	// columns it would unlock could only ever render dashes.
-	agg := NewRouteAggregator()
-	agg.TrackMemory("GET", "/never-logged", 30<<20)
-	require.NotEmpty(t, agg.memBuckets)
-	assert.False(t, agg.HasMemorySamples(), "an unjoinable sample must not unlock the columns")
-
-	agg.Track(makeAccessEntry("GET", "/other", 200, 0, time.Now()))
-	assert.False(t, agg.HasMemorySamples(), "a bucket on another pattern still joins nothing")
-
-	agg.Track(makeAccessEntry("GET", "/never-logged", 200, 0, time.Now()))
-	assert.True(t, agg.HasMemorySamples())
 }
 
 func TestRouteAggregator_TrackMemory_BeforeAccessLog(t *testing.T) {
@@ -310,7 +294,6 @@ func TestRouteAggregator_ConcurrentTrackAndSnapshot(t *testing.T) {
 					return
 				default:
 					_ = agg.Snapshot()
-					_ = agg.HasMemorySamples()
 				}
 			}
 		})

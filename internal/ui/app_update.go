@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
-	"github.com/alexandre-daubois/ember/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -44,12 +43,6 @@ func (a *App) scheduleLogRefresh() tea.Cmd {
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Narrowing the window retires the memory columns behind the sort cycle's
-	// back; leaving routeSortBy on one of them would order the table by a
-	// column that is no longer on screen, with no header marker to explain it.
-	if a.isRoutesView() && !a.routeMemColumns && isRouteMemSort(a.routeSortBy) {
-		a.routeSortBy = model.SortByRouteCount
-	}
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return a.handleKey(msg)

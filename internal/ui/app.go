@@ -290,7 +290,9 @@ func (a *App) View() string {
 		}
 	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts, a.pluginTabs)
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.routeSortBy, a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView(), a.pendingTabSelect, a.activePluginTab())
+	// The footer must name the sort the By Route table actually applied, not the
+	// memory key it holds in reserve while the columns are off screen.
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.effectiveRouteSort(), a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView(), a.pendingTabSelect, a.activePluginTab())
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived

@@ -122,7 +122,7 @@ func TestRenderRoutesView_TinyHeightStillRenders(t *testing.T) {
 	assert.NotEmpty(t, out)
 }
 
-func TestCurrentRouteStats_DrillsByHostAndFilters(t *testing.T) {
+func TestRouteStatsInScope_DrillsByHostAndFilters(t *testing.T) {
 	agg := model.NewRouteAggregator()
 	trackAccess(agg, "api.localhost", "GET", "/users/1", 200)
 	trackAccess(agg, "api.localhost", "POST", "/orders", 201)
@@ -131,21 +131,21 @@ func TestCurrentRouteStats_DrillsByHostAndFilters(t *testing.T) {
 
 	app.logSel = logSel{kind: logSelRoutesHost, host: "api.localhost"}
 	app.filter = ""
-	got := app.currentRouteStats()
+	got := app.routeStatsInScope()
 	require.Len(t, got, 2, "drill-down on api.localhost must drop app.localhost")
 	for _, s := range got {
 		assert.Equal(t, "api.localhost", s.Key.Host)
 	}
 
 	app.filter = "post"
-	got = app.currentRouteStats()
+	got = app.routeStatsInScope()
 	require.Len(t, got, 1, "filter must compose with the host drill-down")
 	assert.Equal(t, "POST", got[0].Key.Method)
 }
 
-func TestCurrentRouteStats_NilAggregatorReturnsNil(t *testing.T) {
+func TestRouteStatsInScope_NilAggregatorReturnsNil(t *testing.T) {
 	app := newRoutesApp(nil)
-	assert.Nil(t, app.currentRouteStats())
+	assert.Nil(t, app.routeStatsInScope())
 }
 
 func TestHandleLogsListKey_ClearRoutes_ResetsCursorAndOffset(t *testing.T) {
@@ -190,11 +190,13 @@ func TestHandleLogsListKey_SortCyclesInRoutesView(t *testing.T) {
 	assert.Equal(t, model.SortByRouteCount, app.routeSortBy, "S walks back to Count")
 }
 
-func TestCycleRouteSort_SkipsMemFieldsWithoutFrankenPHP(t *testing.T) {
-	// The memory columns only render once memory samples exist; cycling onto
-	// them anyway would reorder rows on an invisible key.
-	app := newRoutesApp(model.NewRouteAggregator())
-	require.False(t, app.hasFrankenPHP)
+func TestCycleRouteSort_SkipsMemFieldsWithoutSamples(t *testing.T) {
+	// No sample has landed, so a wide frame still draws no memory columns and
+	// cycling onto them would reorder rows on a key with nothing behind it.
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/x", 200)
+	app := newRoutesApp(agg)
+	require.NotContains(t, stripANSI(app.renderRoutesView(200, 8, "")), "Avg Mem")
 
 	app.routeSortBy = model.SortByRouteMax
 	app.cycleRouteSort(true)
@@ -209,7 +211,6 @@ func TestCycleRouteSort_ReachesMemFieldsWithFrankenPHP(t *testing.T) {
 	trackAccess(agg, "api.localhost", "GET", "/x", 200)
 	agg.TrackMemory("GET", "/x", 50<<20)
 	app := newRoutesApp(agg)
-	app.hasFrankenPHP = true
 	// The cycle follows what the last frame actually drew, so render wide
 	// enough for the columns to be on screen first.
 	app.renderRoutesView(200, 8, "")
@@ -230,7 +231,6 @@ func TestCycleRouteSort_SkipsMemFieldsWhenTableIsTooNarrow(t *testing.T) {
 	trackAccess(agg, "api.localhost", "GET", "/x", 200)
 	agg.TrackMemory("GET", "/x", 50<<20)
 	app := newRoutesApp(agg)
-	app.hasFrankenPHP = true
 	require.NotContains(t, stripANSI(app.renderRoutesView(100, 8, "")), "Avg Mem")
 
 	app.routeSortBy = model.SortByRouteMax
@@ -238,51 +238,81 @@ func TestCycleRouteSort_SkipsMemFieldsWhenTableIsTooNarrow(t *testing.T) {
 	assert.Equal(t, model.SortByRouteCount, app.routeSortBy)
 }
 
-func TestUpdate_ClearsMemSortWhenColumnsGoOffScreen(t *testing.T) {
-	// Narrowing the window retires the columns behind the sort cycle's back;
-	// the next Update must not leave the table ordered by a hidden column.
+func TestRenderRoutesView_MemSortIsInertNotDestroyedWhenColumnsGoOffScreen(t *testing.T) {
+	// A narrower window or a scope change must not order rows by a column that
+	// is off screen — nor throw away the sort the user picked, which has to come
+	// back untouched when the columns do.
 	agg := model.NewRouteAggregator()
-	trackAccess(agg, "api.localhost", "GET", "/x", 200)
-	agg.TrackMemory("GET", "/x", 50<<20)
+	trackAccess(agg, "api.localhost", "GET", "/a", 200)
+	trackAccess(agg, "api.localhost", "GET", "/b", 200)
+	trackAccess(agg, "api.localhost", "GET", "/b", 200)
+	agg.TrackMemory("GET", "/a", 90<<20)
+	agg.TrackMemory("GET", "/b", 10<<20)
 	app := newRoutesApp(agg)
-	app.hasFrankenPHP = true
-	app.renderRoutesView(200, 8, "")
 	app.routeSortBy = model.SortByRouteMaxMem
 
-	app.renderRoutesView(100, 8, "")
-	_, _ = app.Update(tickMsg{})
-	assert.Equal(t, model.SortByRouteCount, app.routeSortBy)
+	wide := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.Less(t, strings.Index(wide, "/a"), strings.Index(wide, "/b"), "wide frame sorts by max mem")
+	assert.Contains(t, wide, "Max Mem ▼")
+
+	narrow := stripANSI(app.renderRoutesView(100, 8, ""))
+	assert.NotContains(t, narrow, "Max Mem")
+	assert.Contains(t, narrow, "Count ▼", "the narrow frame must mark the sort it actually applied")
+	assert.Less(t, strings.Index(narrow, "/b"), strings.Index(narrow, "/a"), "narrow frame falls back to count")
+	assert.Equal(t, model.SortByRouteMaxMem, app.routeSortBy, "the user's choice must survive the resize")
+
+	back := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.Contains(t, back, "Max Mem ▼", "widening restores the sort without a keypress")
+	assert.Less(t, strings.Index(back, "/a"), strings.Index(back, "/b"))
 }
 
-func TestHandleLogsListKey_ClearDropsMemSort(t *testing.T) {
-	// `c` wipes the memory samples, so the columns vanish on the next frame:
-	// the sort key must not outlive them.
+func TestHandleLogsListKey_ClearLeavesMemSortInert(t *testing.T) {
+	// `c` wipes the samples, so the columns go away: the sort must stop being
+	// applied without being destroyed.
 	agg := model.NewRouteAggregator()
 	trackAccess(agg, "api.localhost", "GET", "/x", 200)
 	agg.TrackMemory("GET", "/x", 50<<20)
 	app := newRoutesApp(agg)
-	app.hasFrankenPHP = true
 	app.renderRoutesView(200, 8, "")
 	app.routeSortBy = model.SortByRouteMaxMem
 
 	_, _ = app.handleLogsListKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	assert.Equal(t, model.SortByRouteCount, app.routeSortBy)
+	trackAccess(agg, "api.localhost", "GET", "/x", 200)
+	out := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.NotContains(t, out, "Max Mem")
+	assert.Contains(t, out, "Count ▼")
+	assert.Equal(t, model.SortByRouteMaxMem, app.routeSortBy)
 }
 
-func TestRenderRoutesView_MemColumnsFollowFrankenPHPDetection(t *testing.T) {
+func TestRenderRoutesView_MemColumnsFollowSampleAvailability(t *testing.T) {
 	agg := model.NewRouteAggregator()
 	trackAccess(agg, "api.localhost", "GET", "/users/1", 200)
-	agg.TrackMemory("GET", "/users/1", 50<<20)
 	app := newRoutesApp(agg)
 
 	without := stripANSI(app.renderRoutesView(200, 8, ""))
-	assert.NotContains(t, without, "Avg Mem", "no FrankenPHP -> no memory columns")
+	assert.NotContains(t, without, "Avg Mem", "no sample -> no memory columns")
 
-	app.hasFrankenPHP = true
+	agg.TrackMemory("GET", "/users/1", 50<<20)
 	with := stripANSI(app.renderRoutesView(200, 8, ""))
 	assert.Contains(t, with, "Avg Mem")
 	assert.Contains(t, with, "Max Mem")
 	assert.Contains(t, with, "50.0 MB")
+}
+
+func TestRenderRoutesView_MemColumnsHiddenWhenNoRowInScopeWasSampled(t *testing.T) {
+	// A filter or a per-host drill-down that admits no sampled route must not
+	// pay 20 cells of Pattern for two columns of dashes.
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/users/1", 200)
+	trackAccess(agg, "api.localhost", "GET", "/health", 200)
+	agg.TrackMemory("GET", "/users/1", 50<<20)
+	app := newRoutesApp(agg)
+	require.Contains(t, stripANSI(app.renderRoutesView(200, 8, "")), "Avg Mem")
+
+	app.filter = "health"
+	out := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.Contains(t, out, "/health")
+	assert.NotContains(t, out, "Avg Mem", "no row in scope carries a sample")
 }
 
 func TestRenderRoutesView_MemColumnsNeverSqueezePattern(t *testing.T) {
@@ -355,18 +385,17 @@ func TestRenderRoutesTable_StatusPillNeverMovesTheColumns(t *testing.T) {
 	}
 }
 
-func TestRenderRoutesView_MemColumnsHiddenWithoutSamples(t *testing.T) {
-	// FrankenPHP detected but no memory sample recorded (e.g. FrankenPHP
-	// older than 1.12.2 reports no per-thread memory usage): the columns must
-	// stay hidden instead of eating Pattern's width for two empty cells.
+func TestRenderLogsTab_MemColumnsThresholdInTerminalColumns(t *testing.T) {
+	// The documented "roughly 153 columns" threshold is a terminal width: it only
+	// holds because the sidepanel takes its share first, so drive the real entry
+	// point rather than a hand-picked table width.
 	agg := model.NewRouteAggregator()
 	trackAccess(agg, "api.localhost", "GET", "/users/1", 200)
+	agg.TrackMemory("GET", "/users/1", 50<<20)
 	app := newRoutesApp(agg)
-	app.hasFrankenPHP = true
 
-	out := stripANSI(app.renderRoutesView(200, 8, ""))
-	assert.NotContains(t, out, "Avg Mem")
-	assert.NotContains(t, out, "Max Mem")
+	assert.NotContains(t, stripANSI(app.renderLogsTab(152, 10)), "Avg Mem", "152 columns is below the threshold")
+	assert.Contains(t, stripANSI(app.renderLogsTab(153, 10)), "Avg Mem", "153 columns clears it")
 }
 
 func TestSliceRoutesViewport(t *testing.T) {

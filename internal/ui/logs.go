@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
@@ -25,15 +26,8 @@ func (a *App) renderLogsTab(width, height int) string {
 	items := a.sidepanelItems()
 	a.logSel = normalizeLogSel(items, a.logSel)
 
-	// The sidepanel is the only affordance to switch scopes, so we keep it
-	// visible at every width. On very narrow terminals the table columns
-	// get squeezed or clip — acceptable, since making the sidepanel
-	// disappear would leave the user unable to change scope at all.
 	sidepanelW := sidepanelFixedWidth
-	tableW := width - sidepanelW
-	if tableW < 20 {
-		tableW = 20
-	}
+	tableW := logsTableWidth(width)
 
 	rightStatus := a.buildLogsHeaderStatus()
 
@@ -68,13 +62,34 @@ func (a *App) renderLogsTab(width, height int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, sidepanel, table)
 }
 
+// logsTableWidth converts the Logs tab's content width into the width the table
+// itself gets. The sidepanel is the only affordance to switch scopes, so we keep
+// it visible at every width and let the table columns absorb the squeeze; making
+// the sidepanel disappear would leave the user unable to change scope at all.
+func logsTableWidth(contentWidth int) int {
+	if w := contentWidth - sidepanelFixedWidth; w >= 20 {
+		return w
+	}
+	return 20
+}
+
 // renderRoutesView aggregates access logs into per-route stats and slices
 // them through the cursor/scroll state shared with the log views. The host
 // column is folded into Pattern as a soft prefix at the root view (showHost)
 // so two hosts on the same path stay distinguishable; per-host drill-downs
 // drop it because the sidepanel already encodes the scope.
 func (a *App) renderRoutesView(width, height int, rightStatus string) string {
-	stats := a.currentRouteStats()
+	stats := a.routeStatsInScope()
+	// Gate the columns on the rows actually in scope: a filter or a per-host
+	// drill-down that admits no sampled route would otherwise pay 20 cells of
+	// Pattern for two columns of dashes. Recorded so the sort cycle and the help
+	// footer can follow what the last frame drew.
+	a.routeMemColumns = routeMemColumnsFit(width) && slices.ContainsFunc(stats, func(s model.RouteStat) bool {
+		return s.MemSamples > 0
+	})
+	sortBy := a.effectiveRouteSort()
+	model.SortRoutes(stats, sortBy)
+
 	bodyHeight := height - logHeaderHeight
 	if bodyHeight < 1 {
 		bodyHeight = 1
@@ -85,19 +100,19 @@ func (a *App) renderRoutesView(width, height int, rightStatus string) string {
 	}
 	hint := a.routesEmptyHint(len(visible))
 	showHost := a.logSel.kind == logSelRoutes
-	// Record what the renderer settled on: it also drops the columns when the
-	// table is too narrow, and the sort cycle must follow the columns actually
-	// drawn rather than re-deriving a width it does not know.
-	a.routeMemColumns = a.showRouteMem() && routeMemColumnsFit(width)
-	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.routeMemColumns, rightStatus, hint)
+	return renderRoutesTable(visible, localCursor, width, height, sortBy, showHost, a.routeMemColumns, rightStatus, hint)
 }
 
-// showRouteMem gates the memory columns on samples having actually landed, not
-// just on FrankenPHP being detected: versions older than 1.12.2 report no
-// per-thread memory usage, and rendering two permanently empty columns would
-// cost the Pattern column 20 cells for nothing.
-func (a *App) showRouteMem() bool {
-	return a.hasFrankenPHP && a.routeAggregator != nil && a.routeAggregator.HasMemorySamples()
+// effectiveRouteSort is the sort the By Route table actually applies. A memory
+// key is inert while its column is off screen, so the table falls back to Count
+// rather than ordering rows by something the user cannot see. a.routeSortBy is
+// deliberately left alone: the user's choice comes back with the columns instead
+// of being destroyed by a transient resize or filter.
+func (a *App) effectiveRouteSort() model.RouteSortField {
+	if !a.routeMemColumns && isRouteMemSort(a.routeSortBy) {
+		return model.SortByRouteCount
+	}
+	return a.routeSortBy
 }
 
 func (a *App) isRoutesView() bool {
@@ -124,11 +139,13 @@ func isRouteMemSort(f model.RouteSortField) bool {
 	return f == model.SortByRouteAvgMem || f == model.SortByRouteMaxMem
 }
 
-// currentRouteStats returns the route table the UI should display. The
-// aggregator counts every access log Ember has seen this session, so the
-// numbers are not capped by the access buffer's ring capacity — that
-// matters as soon as a busy server wraps the 10 000-entry buffer.
-func (a *App) currentRouteStats() []model.RouteStat {
+// routeStatsInScope returns the route rows the sidepanel selection and the
+// filter admit, unsorted: the sort key depends on which columns the table can
+// draw, which only the renderer knows. The aggregator counts every access log
+// Ember has seen this session, so the numbers are not capped by the access
+// buffer's ring capacity — that matters as soon as a busy server wraps the
+// 10 000-entry buffer.
+func (a *App) routeStatsInScope() []model.RouteStat {
 	if a.routeAggregator == nil {
 		return nil
 	}
@@ -139,7 +156,6 @@ func (a *App) currentRouteStats() []model.RouteStat {
 	if a.filter != "" {
 		stats = filterRouteStats(stats, a.filter)
 	}
-	model.SortRoutes(stats, a.routeSortBy)
 	return stats
 }
 
@@ -581,11 +597,6 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if a.isRoutesView() {
 			if a.routeAggregator != nil {
 				a.routeAggregator.Reset()
-				// Reset drops the memory samples, so the columns disappear from
-				// the very next frame: a memory sort key would outlive them.
-				if isRouteMemSort(a.routeSortBy) {
-					a.routeSortBy = model.SortByRouteCount
-				}
 				a.cursor = 0
 				a.logScrollOffset = 0
 				a.status = "route stats cleared"
@@ -604,7 +615,7 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a *App) currentLogsListLen() int {
 	if a.isRoutesView() {
-		return len(a.currentRouteStats())
+		return len(a.routeStatsInScope())
 	}
 	return len(a.filteredLogEntries())
 }
