@@ -221,9 +221,13 @@ func TestRouteAggregator_TrackMemory_CapsDistinctKeys(t *testing.T) {
 	}
 	assert.Len(t, agg.memBuckets, memBucketsMax)
 
-	// Already-known keys keep aggregating once the cap is reached.
-	agg.TrackMemory("GET", "/scan-0", 8<<20)
-	assert.Equal(t, 2, agg.memBuckets[routeMemKey{Method: "GET", Pattern: "/scan-0"}].Samples)
+	// The cap evicts instead of freezing: a route first seen after it is
+	// reached — a fresh deploy, say — must still record memory.
+	agg.TrackMemory("POST", "/checkout", 8<<20)
+	require.Len(t, agg.memBuckets, memBucketsMax)
+	fresh := agg.memBuckets[routeMemKey{Method: "POST", Pattern: "/checkout"}]
+	require.NotNil(t, fresh, "a new pattern must still be recordable at the cap")
+	assert.Equal(t, int64(8<<20), fresh.MaxBytes)
 }
 
 func TestRouteAggregator_TrackMemory_BeforeAccessLog(t *testing.T) {

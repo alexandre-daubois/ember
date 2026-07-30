@@ -106,8 +106,15 @@ func (a *RouteAggregator) TrackMemory(method, uri string, bytes int64) {
 
 	stat, ok := a.memBuckets[key]
 	if !ok {
+		// Evict rather than refuse: a hard stop would mean every route first
+		// seen after the cap — including one deployed mid-session — never
+		// records memory again. Which key goes is arbitrary, but at 10 000
+		// distinct sampled patterns the map is dominated by junk anyway.
 		if len(a.memBuckets) >= memBucketsMax {
-			return
+			for k := range a.memBuckets {
+				delete(a.memBuckets, k)
+				break
+			}
 		}
 		stat = &routeMemStat{}
 		a.memBuckets[key] = stat
