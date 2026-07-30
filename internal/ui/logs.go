@@ -85,7 +85,15 @@ func (a *App) renderRoutesView(width, height int, rightStatus string) string {
 	}
 	hint := a.routesEmptyHint(len(visible))
 	showHost := a.logSel.kind == logSelRoutes
-	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.hasFrankenPHP, rightStatus, hint)
+	return renderRoutesTable(visible, localCursor, width, height, a.routeSortBy, showHost, a.showRouteMem(), rightStatus, hint)
+}
+
+// showRouteMem gates the memory columns on samples having actually landed, not
+// just on FrankenPHP being detected: versions older than 1.12.2 report no
+// per-thread memory usage, and rendering two permanently empty columns would
+// cost the Pattern column 20 cells for nothing.
+func (a *App) showRouteMem() bool {
+	return a.hasFrankenPHP && a.routeAggregator != nil && a.routeAggregator.HasMemorySamples()
 }
 
 func (a *App) isRoutesView() bool {
@@ -93,16 +101,17 @@ func (a *App) isRoutesView() bool {
 }
 
 // cycleRouteSort walks the sort cycle, skipping the memory fields when the
-// columns are hidden (no FrankenPHP): sorting on an invisible column would
-// reorder rows with no visual cue.
+// columns are hidden: sorting on an invisible column would reorder rows with
+// no visual cue.
 func (a *App) cycleRouteSort(forward bool) {
+	showMem := a.showRouteMem()
 	for {
 		if forward {
 			a.routeSortBy = a.routeSortBy.Next()
 		} else {
 			a.routeSortBy = a.routeSortBy.Prev()
 		}
-		if a.hasFrankenPHP || (a.routeSortBy != model.SortByRouteAvgMem && a.routeSortBy != model.SortByRouteMaxMem) {
+		if showMem || (a.routeSortBy != model.SortByRouteAvgMem && a.routeSortBy != model.SortByRouteMaxMem) {
 			return
 		}
 	}

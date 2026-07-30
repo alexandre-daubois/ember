@@ -191,8 +191,8 @@ func TestHandleLogsListKey_SortCyclesInRoutesView(t *testing.T) {
 }
 
 func TestCycleRouteSort_SkipsMemFieldsWithoutFrankenPHP(t *testing.T) {
-	// The memory columns only render when FrankenPHP is detected; cycling
-	// onto them anyway would reorder rows on an invisible key.
+	// The memory columns only render once memory samples exist; cycling onto
+	// them anyway would reorder rows on an invisible key.
 	app := newRoutesApp(model.NewRouteAggregator())
 	require.False(t, app.hasFrankenPHP)
 
@@ -205,7 +205,9 @@ func TestCycleRouteSort_SkipsMemFieldsWithoutFrankenPHP(t *testing.T) {
 }
 
 func TestCycleRouteSort_ReachesMemFieldsWithFrankenPHP(t *testing.T) {
-	app := newRoutesApp(model.NewRouteAggregator())
+	agg := model.NewRouteAggregator()
+	agg.TrackMemory("GET", "/x", 50<<20)
+	app := newRoutesApp(agg)
 	app.hasFrankenPHP = true
 
 	app.routeSortBy = model.SortByRouteMax
@@ -279,6 +281,20 @@ func TestRenderRoutesTable_RespectsWidthWithRightStatus(t *testing.T) {
 	for _, line := range strings.Split(out, "\n") {
 		assert.LessOrEqual(t, lipgloss.Width(line), 200, line)
 	}
+}
+
+func TestRenderRoutesView_MemColumnsHiddenWithoutSamples(t *testing.T) {
+	// FrankenPHP detected but no memory sample recorded (e.g. FrankenPHP
+	// older than 1.12.2 reports no per-thread memory usage): the columns must
+	// stay hidden instead of eating Pattern's width for two empty cells.
+	agg := model.NewRouteAggregator()
+	trackAccess(agg, "api.localhost", "GET", "/users/1", 200)
+	app := newRoutesApp(agg)
+	app.hasFrankenPHP = true
+
+	out := stripANSI(app.renderRoutesView(200, 8, ""))
+	assert.NotContains(t, out, "Avg Mem")
+	assert.NotContains(t, out, "Max Mem")
 }
 
 func TestSliceRoutesViewport(t *testing.T) {
