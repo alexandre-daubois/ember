@@ -76,9 +76,10 @@ func TestRenderRoutesTable_MemColumns(t *testing.T) {
 	assert.NotContains(t, unsampled, "0 B")
 }
 
-func TestRenderRoutesTable_MemColumnsDropOutOnNarrowWidth(t *testing.T) {
-	// The memory columns cost 20 cells; below the Pattern minimum they must
-	// yield rather than starve the only column that identifies the route.
+func TestRenderRoutesTable_MemColumnsNeverCostPatternCells(t *testing.T) {
+	// The memory columns cost 20 cells and are only drawn when that comes out
+	// of the slack past Pattern's cap: at every width, Pattern must be exactly
+	// as wide as it would be with the columns off.
 	stats := []model.RouteStat{{
 		Key:         model.RouteKey{Method: "GET", Pattern: "/api/users/:id/orders"},
 		Count:       1,
@@ -87,9 +88,78 @@ func TestRenderRoutesTable_MemColumnsDropOutOnNarrowWidth(t *testing.T) {
 		MemSumBytes: float64(50 << 20),
 		MemMaxBytes: 50 << 20,
 	}}
-	out := stripANSI(renderRoutesTable(stats, -1, 98, 4, model.SortByRouteCount, false, true, "", ""))
-	assert.NotContains(t, out, "Avg Mem")
-	assert.Contains(t, out, "/api/users/:id/orders", "Pattern keeps the width the memory columns gave up")
+	for _, width := range []int{98, 111, 125, 130, 131, 160, 200} {
+		withMem := stripANSI(renderRoutesTable(stats, -1, width, 4, model.SortByRouteCount, false, true, "", ""))
+		without := stripANSI(renderRoutesTable(stats, -1, width, 4, model.SortByRouteCount, false, false, "", ""))
+		patternAt := func(out string) string {
+			row := lineContaining(t, strings.Split(out, "\n"), "/api/users")
+			return row[:strings.Index(row, "/api/users")+colRoutePatternMax]
+		}
+		assert.Equalf(t, patternAt(without), patternAt(withMem),
+			"memory columns must not change how Pattern renders at width=%d", width)
+		if width < 131 {
+			assert.NotContainsf(t, withMem, "Avg Mem", "width=%d has no slack for the columns", width)
+		} else {
+			assert.Containsf(t, withMem, "Avg Mem", "width=%d has slack for the columns", width)
+		}
+	}
+}
+
+func TestRenderRoutesTable_HeaderAgreesWithRowsOnMemColumns(t *testing.T) {
+	// Whatever the width and whatever the pill, the header must never advertise
+	// a different set of memory columns than the rows print, and the sort marker
+	// must survive alongside them.
+	stats := []model.RouteStat{{
+		Key:           model.RouteKey{Method: "GET", Pattern: "/users/:id"},
+		Count:         10,
+		Status2xx:     10,
+		DurationSumMs: 100,
+		DurationMaxMs: 30,
+		MemSamples:    2,
+		MemSumBytes:   float64(6 << 20),
+		MemMaxBytes:   3 << 20,
+	}}
+	for _, status := range []string{"", helpStyle.Render("filter: users"), helpStyle.Render("filter: "+strings.Repeat("x", 40))} {
+		for width := 72; width <= 220; width++ {
+			lines := strings.Split(stripANSI(renderRoutesTable(stats, -1, width, 4, model.SortByRouteMaxMem, false, true, status, "")), "\n")
+			// header + border, then the single data row: Pattern is ellipsized to
+			// "…" on the narrowest widths, so the row cannot be matched by content.
+			require.Len(t, lines, 4)
+			header := lines[0]
+			inHeader := strings.Contains(header, "Max Mem")
+			inRow := strings.Contains(lines[2], "3 MB")
+			assert.Equalf(t, inHeader, inRow,
+				"header and rows disagree on the memory columns at width=%d status=%q", width, stripANSI(status))
+			if inHeader {
+				assert.Containsf(t, header, "Max Mem ▼", "sort marker lost at width=%d", width)
+			}
+		}
+	}
+}
+
+func TestRenderRoutesTable_StatusPillFallbackOnNarrowWidth(t *testing.T) {
+	// With no slack past Pattern's cap there is nowhere to put the pill, so the
+	// header truncates its labels as it always has — but Pattern keeps every
+	// cell it had before the pill appeared.
+	stats := []model.RouteStat{{
+		Key:           model.RouteKey{Method: "GET", Pattern: "/api/v1/organizations/:uuid/members"},
+		Count:         10,
+		Status2xx:     10,
+		DurationSumMs: 100,
+		DurationMaxMs: 10,
+	}}
+	render := func(status string) string {
+		return stripANSI(renderRoutesTable(stats, -1, 110, 4, model.SortByRouteCount, false, false, status, ""))
+	}
+	bare, piped := render(""), render(helpStyle.Render("filter: organizations"))
+	assert.Contains(t, piped, "filter: organizations")
+	assert.Equal(t,
+		lineContaining(t, strings.Split(bare, "\n"), "/api/v1/organizations"),
+		lineContaining(t, strings.Split(piped, "\n"), "/api/v1/organizations"),
+		"the pill must not take cells from the rows")
+	for _, line := range strings.Split(piped, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), 110, line)
+	}
 }
 
 func lineContaining(t *testing.T, lines []string, needle string) string {

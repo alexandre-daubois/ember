@@ -235,6 +235,25 @@ func TestRenderRoutesView_MemColumnsFollowFrankenPHPDetection(t *testing.T) {
 	assert.Contains(t, with, "50 MB")
 }
 
+func TestRenderRoutesView_MemColumnsNeverSqueezePattern(t *testing.T) {
+	// The columns must come out of a wide terminal's slack, never out of
+	// Pattern: at the root view Pattern also carries the host, so two routes on
+	// the same vhost would otherwise render as identical rows.
+	agg := model.NewRouteAggregator()
+	for _, uri := range []string{"/users/1", "/orders/1"} {
+		trackAccess(agg, "api.staging.example.com", "GET", uri, 200)
+		agg.TrackMemory("GET", uri, 50<<20)
+	}
+	app := newRoutesApp(agg)
+	app.hasFrankenPHP = true
+
+	for _, width := range []int{111, 120, 131, 160} {
+		out := stripANSI(app.renderRoutesView(width, 8, ""))
+		assert.Containsf(t, out, "/users/:id", "width=%d", width)
+		assert.Containsf(t, out, "/orders/:id", "width=%d", width)
+	}
+}
+
 func TestRenderRoutesTable_RespectsWidthAt80Columns(t *testing.T) {
 	// Regression: the previous implementation forced remaining≥12, which
 	// pushed the row past `width` on terminals just under 83 cols. The fix
