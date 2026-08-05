@@ -206,6 +206,27 @@ func TestValidate_OnceWithJSONOK(t *testing.T) {
 	assert.NoError(t, validate(cfg))
 }
 
+func TestValidate_StdinLogsWithDaemon(t *testing.T) {
+	cfg := &config{stdinLogs: true, daemon: true, expose: ":9191", interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--stdin-logs / --from-stdin is incompatible with --daemon")
+}
+
+func TestValidate_StdinLogsWithJSON(t *testing.T) {
+	cfg := &config{stdinLogs: true, jsonMode: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--stdin-logs / --from-stdin is incompatible with --json")
+}
+
+func TestValidate_StdinLogsWithLogListen(t *testing.T) {
+	cfg := &config{stdinLogs: true, logListen: ":9210", interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--stdin-logs / --from-stdin is incompatible with --log-listen")
+}
+
 func TestRun_OnceWithoutJSON(t *testing.T) {
 	err := Run([]string{"--once"}, "0.0.0")
 	require.Error(t, err)
@@ -538,6 +559,43 @@ func TestBindEnv_AddrFromEnv(t *testing.T) {
 	require.NoError(t, bindEnv(cmd))
 
 	assert.Equal(t, "[http://remote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_CaddyApiUrlFromEnv(t *testing.T) {
+	t.Setenv("CADDY_API_URL", "http://caddyremote:2019")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "[http://caddyremote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_CaddyApiUrlTakesPrecedenceOverEmberAddr(t *testing.T) {
+	t.Setenv("CADDY_API_URL", "http://caddyremote:2019")
+	t.Setenv("EMBER_ADDR", "http://emberremote:2019")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "[http://caddyremote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_StdinLogsFromEnv(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "true")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "true", cmd.Flag("stdin-logs").Value.String())
+}
+
+func TestBindEnv_FromStdinFromEnv(t *testing.T) {
+	t.Setenv("EMBER_FROM_STDIN", "true")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "true", cmd.Flag("from-stdin").Value.String())
 }
 
 func TestBindEnv_InvalidIntervalIsError(t *testing.T) {
