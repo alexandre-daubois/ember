@@ -44,6 +44,7 @@ ends the session exactly where it started.
 | Caddy over a Unix socket                     | `ember --addr unix//path/to/admin.sock`                 |
 | Caddy on a remote host                       | `ember --addr http://remote:2019 --log-listen :9210`    |
 | Caddy in Docker (macOS/Windows)              | `ember --log-listen host.docker.internal:9210`          |
+| Caddy in Kubernetes Pod (CLI)                | `kubectl logs -f <pod> \| ember --stdin-logs --addr http://localhost:2019` |
 
 When `--addr` points at a non-local host, Ember does **not** auto-bind a
 listener: a `127.0.0.1:<port>` address would not be reachable from the remote
@@ -55,6 +56,32 @@ When the hostname in `--log-listen` cannot be resolved locally (e.g.
 `host.docker.internal`), Ember binds on `0.0.0.0:<port>` instead and
 advertises the original address to Caddy. This lets a containerised Caddy
 reach the host without extra networking setup.
+
+## Reading from Stdin (Kubernetes CLI Monitoring)
+
+In environments like Kubernetes where egress is restricted, or when you want to monitor a remote Pod locally without changing Caddy's configuration, you can use the `--stdin-logs` (or `--from-stdin`) flag. 
+
+This enables a completely unidirectional mode where:
+1. Ember does **not** attempt to register any network sinks in Caddy.
+2. Ember reads JSON logs directly from its standard input (`stdin`).
+
+### Step-by-Step Guide
+
+1. **Port-forward Caddy's Admin API** to your local machine so Ember can fetch metrics and configurations:
+   ```bash
+   kubectl port-forward pod/my-caddy-pod-abcde 2019:2019
+   ```
+
+2. **Stream Pod logs and pipe them into Ember** on your local machine:
+   ```bash
+   kubectl logs -f pod/my-caddy-pod-abcde -c caddy \| ember --stdin-logs --addr http://localhost:2019
+   ```
+
+   *(Note: The `-c caddy` flag specifies the container name if you are running Caddy alongside other containers in a sidecar pattern).*
+
+### Why use this approach?
+- **No Side-Effects:** Since Ember reads from stdin, it does not alter Caddy's log writers, making it perfectly safe for read-only production environments.
+- **Full TUI Features:** You still get the full terminal UI experience including real-time access logs, runtime logs, and the **By Route** aggregated statistics.
 
 ## Hot-registered sinks
 
