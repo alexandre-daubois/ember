@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -589,13 +590,39 @@ func TestBindEnv_StdinLogsFromEnv(t *testing.T) {
 	assert.Equal(t, "true", cmd.Flag("stdin-logs").Value.String())
 }
 
-func TestBindEnv_FromStdinFromEnv(t *testing.T) {
-	t.Setenv("EMBER_FROM_STDIN", "true")
+func TestBindEnv_Precedence_StdinLogs(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "true")
 
 	cmd := newRootCmd("0.0.0")
+	require.NoError(t, cmd.Flags().Set("stdin-logs", "false"))
 	require.NoError(t, bindEnv(cmd))
 
-	assert.Equal(t, "true", cmd.Flag("from-stdin").Value.String())
+	assert.Equal(t, "false", cmd.Flag("stdin-logs").Value.String())
+}
+
+func TestBindEnv_Precedence_FromStdin(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "true")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, cmd.Flags().Set("from-stdin", "false"))
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "false", cmd.Flag("stdin-logs").Value.String())
+}
+
+func TestValidate_StdinIsTerminal(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	defer f.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = f
+	defer func() { os.Stdin = oldStdin }()
+
+	cfg := &config{stdinLogs: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err = validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stdin is a terminal; cannot stream logs from it")
 }
 
 func TestBindEnv_InvalidIntervalIsError(t *testing.T) {

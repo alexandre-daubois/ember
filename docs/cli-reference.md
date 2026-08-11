@@ -44,8 +44,7 @@ Some flags can be set via environment variables. Explicit flags always take prec
 | `EMBER_METRICS_PREFIX` | `--metrics-prefix` | `EMBER_METRICS_PREFIX=myapp` |
 | `EMBER_METRICS_AUTH` | `--metrics-auth` | `EMBER_METRICS_AUTH=admin:secret` |
 | `EMBER_LOG_LISTEN` | `--log-listen` | `EMBER_LOG_LISTEN=:9210` |
-| `EMBER_STDIN_LOGS` | `--stdin-logs` | `EMBER_STDIN_LOGS=true` |
-| `EMBER_FROM_STDIN` | `--from-stdin` | `EMBER_FROM_STDIN=true` |
+| `EMBER_STDIN_LOGS` | `--stdin-logs`, `--from-stdin` | `EMBER_STDIN_LOGS=true` |
 | `CADDY_API_URL` | `--addr` | `CADDY_API_URL=http://localhost:2019` |
 | `EMBER_CONFIG` | `--config` | `EMBER_CONFIG=/etc/ember/prod.toml` |
 

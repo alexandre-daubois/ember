@@ -227,7 +227,6 @@ var envBindings = map[string]string{
 	"log-listen":     "EMBER_LOG_LISTEN",
 	"config":         "EMBER_CONFIG",
 	"stdin-logs":     "EMBER_STDIN_LOGS",
-	"from-stdin":     "EMBER_FROM_STDIN",
 }
 
 // bindEnv applies EMBER_* and other supported variables (e.g. CADDY_API_URL)
@@ -238,7 +237,15 @@ var envBindings = map[string]string{
 func bindEnv(cmd *cobra.Command) error {
 	for name, env := range envBindings {
 		f := cmd.Flag(name)
-		if f == nil || f.Changed {
+		if f == nil {
+			continue
+		}
+		if name == "stdin-logs" {
+			fromStdinFlag := cmd.Flag("from-stdin")
+			if f.Changed || (fromStdinFlag != nil && fromStdinFlag.Changed) {
+				continue
+			}
+		} else if f.Changed {
 			continue
 		}
 		var val string
@@ -301,6 +308,12 @@ func validate(cfg *config) error {
 	}
 	if cfg.stdinLogs && cfg.logListen != "" {
 		return fmt.Errorf("--stdin-logs / --from-stdin is incompatible with --log-listen")
+	}
+	if cfg.stdinLogs {
+		stat, err := os.Stdin.Stat()
+		if err == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
+			return fmt.Errorf("stdin is a terminal; cannot stream logs from it (use a pipe or redirection)")
+		}
 	}
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)

@@ -74,7 +74,7 @@ This enables a completely unidirectional mode where:
 
 2. **Stream Pod logs and pipe them into Ember** on your local machine:
    ```bash
-   kubectl logs -f pod/my-caddy-pod-abcde -c caddy \| ember --stdin-logs --addr http://localhost:2019
+   kubectl logs -f pod/my-caddy-pod-abcde -c caddy | ember --stdin-logs --addr http://localhost:2019
    ```
 
    *(Note: The `-c caddy` flag specifies the container name if you are running Caddy alongside other containers in a sidecar pattern).*
