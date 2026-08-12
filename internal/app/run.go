@@ -42,6 +42,7 @@ type config struct {
 	configPath    string
 	configDefault string
 	addrsFromFile bool
+	stdinLogs     bool
 }
 
 func Run(args []string, version string) error {
@@ -173,6 +174,8 @@ Keybindings:
 	f.StringVar(&cfg.logFormat, "log-format", "text", "Log format for daemon/json modes (text or json)")
 	f.StringVar(&cfg.metricsAuth, "metrics-auth", "", "Basic auth for metrics endpoint (user:password)")
 	f.StringVar(&cfg.logListen, "log-listen", "", "Receive logs from Caddy via TCP, e.g. ':9210' or '127.0.0.1:9210'. Required when Caddy is on a remote host; auto-bound on a local loopback port otherwise.")
+	f.BoolVar(&cfg.stdinLogs, "stdin-logs", false, "Read Caddy logs directly from stdin instead of registering a net_writer")
+	f.BoolVar(&cfg.stdinLogs, "from-stdin", false, "Read Caddy logs directly from stdin instead of registering a net_writer (alias for --stdin-logs)")
 
 	cmd.AddCommand(newStatusCmd(&cfg))
 	cmd.AddCommand(newWaitCmd(&cfg))
@@ -223,19 +226,38 @@ var envBindings = map[string]string{
 	"metrics-auth":   "EMBER_METRICS_AUTH",
 	"log-listen":     "EMBER_LOG_LISTEN",
 	"config":         "EMBER_CONFIG",
+	"stdin-logs":     "EMBER_STDIN_LOGS",
 }
 
-// bindEnv applies EMBER_* variables to flags the user did not set on the
-// command line. Value.Set does not flip Changed, so we set it explicitly once a
-// value lands: env-provided values must win over the config file, which is
-// skipped precisely when the addr (or per-key) flag is Changed.
+// bindEnv applies EMBER_* and other supported variables (e.g. CADDY_API_URL)
+// to flags the user did not set on the command line. Value.Set does not flip
+// Changed, so we set it explicitly once a value lands: env-provided values
+// must win over the config file, which is skipped precisely when the addr
+// (or per-key) flag is Changed.
 func bindEnv(cmd *cobra.Command) error {
 	for name, env := range envBindings {
 		f := cmd.Flag(name)
-		if f == nil || f.Changed {
+		if f == nil {
 			continue
 		}
-		val, ok := os.LookupEnv(env)
+		if name == "stdin-logs" {
+			fromStdinFlag := cmd.Flag("from-stdin")
+			if f.Changed || (fromStdinFlag != nil && fromStdinFlag.Changed) {
+				continue
+			}
+		} else if f.Changed {
+			continue
+		}
+		var val string
+		var ok bool
+		if name == "addr" {
+			val, ok = os.LookupEnv("CADDY_API_URL")
+			if !ok {
+				val, ok = os.LookupEnv("EMBER_ADDR")
+			}
+		} else {
+			val, ok = os.LookupEnv(env)
+		}
 		if !ok {
 			continue
 		}
@@ -246,7 +268,11 @@ func bindEnv(cmd *cobra.Command) error {
 					continue
 				}
 				if err := f.Value.Set(v); err != nil {
-					return fmt.Errorf("%s=%q: %w", env, v, err)
+					envName := "EMBER_ADDR"
+					if _, okCaddy := os.LookupEnv("CADDY_API_URL"); okCaddy {
+						envName = "CADDY_API_URL"
+					}
+					return fmt.Errorf("%s=%q: %w", envName, v, err)
 				}
 				f.Changed = true
 			}
@@ -273,6 +299,21 @@ func validate(cfg *config) error {
 	}
 	if cfg.once && cfg.daemon {
 		return fmt.Errorf("--once is incompatible with --daemon")
+	}
+	if cfg.stdinLogs && cfg.daemon {
+		return fmt.Errorf("--stdin-logs / --from-stdin is incompatible with --daemon")
+	}
+	if cfg.stdinLogs && cfg.jsonMode {
+		return fmt.Errorf("--stdin-logs / --from-stdin is incompatible with --json")
+	}
+	if cfg.stdinLogs && cfg.logListen != "" {
+		return fmt.Errorf("--stdin-logs / --from-stdin is incompatible with --log-listen")
+	}
+	if cfg.stdinLogs {
+		stat, err := os.Stdin.Stat()
+		if err == nil && (stat.Mode()&os.ModeCharDevice) != 0 {
+			return fmt.Errorf("stdin is a terminal; cannot stream logs from it (use a pipe or redirection)")
+		}
 	}
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)

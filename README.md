@@ -26,7 +26,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Config Inspector tab: browse the live Caddy JSON config as a collapsible tree
 - Certificates tab: TLS certificate monitoring with expiry tracking, color-coded warnings, and likely auto-renewal indication
 - Upstreams tab: reverse proxy upstream health monitoring with per-upstream status, auto-detected when `reverse_proxy` is configured
-- Logs tab: live access and runtime log streaming in a single view, with a sidepanel tree (Runtime, Access, per-host children, [By Route](docs/logs.md#by-route-view) aggregation) and a free-text filter. Zero-config: Ember hot-registers two transient sinks in Caddy via the admin API (`__ember__` for access logs, `__ember_runtime__` for everything else) and receives logs over TCP with no Caddyfile changes
+- Logs tab: live access and runtime log streaming in a single view, with a sidepanel tree (Runtime, Access, per-host children, [By Route](docs/logs.md#by-route-view) aggregation) and a free-text filter. Zero-config: Ember hot-registers two transient sinks in Caddy via the admin API (`__ember__` for access logs, `__ember_runtime__` for everything else) and receives logs over TCP with no Caddyfile changes, or streams them directly from standard input (stdin)
 - Automatic Caddy restart detection
 
 **FrankenPHP Introspection**
@@ -49,7 +49,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Zero-config setup: `ember init` checks Caddy, enables metrics, and warns about missing host matchers
 - Unix socket support for Caddy admin APIs configured with `admin unix//path`
 - TLS and mTLS support for secured Caddy admin APIs
-- Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, `EMBER_LOG_LISTEN`, ...) for container deployments
+- Environment variable configuration (`EMBER_ADDR`, `EMBER_EXPOSE`, `EMBER_LOG_LISTEN`, `EMBER_STDIN_LOGS`, ...) for container deployments
 - [Config file](docs/cli-reference.md#config-file) (`.ember.toml`): declare a fleet of named endpoints once instead of repeating `--addr`. The TUI connects to one (a saved `default` or an interactive picker); `--daemon`, `--json`, `status`, `wait`, and `init` fan out across all of them. `ember config use <name>` sets the TUI default
 - `NO_COLOR` env var support ([no-color.org](https://no-color.org/))
 - Lightweight: ~15 MB RSS, ~0.3 ms per poll cycle with 100 threads and 10 hosts ([benchmarks](internal/app/daemon_bench_test.go))

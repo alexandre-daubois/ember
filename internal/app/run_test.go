@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -204,6 +205,27 @@ func TestValidate_OnceWithDaemon(t *testing.T) {
 func TestValidate_OnceWithJSONOK(t *testing.T) {
 	cfg := &config{once: true, jsonMode: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))
+}
+
+func TestValidate_StdinLogsWithDaemon(t *testing.T) {
+	cfg := &config{stdinLogs: true, daemon: true, expose: ":9191", interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--stdin-logs / --from-stdin is incompatible with --daemon")
+}
+
+func TestValidate_StdinLogsWithJSON(t *testing.T) {
+	cfg := &config{stdinLogs: true, jsonMode: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--stdin-logs / --from-stdin is incompatible with --json")
+}
+
+func TestValidate_StdinLogsWithLogListen(t *testing.T) {
+	cfg := &config{stdinLogs: true, logListen: ":9210", interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--stdin-logs / --from-stdin is incompatible with --log-listen")
 }
 
 func TestRun_OnceWithoutJSON(t *testing.T) {
@@ -538,6 +560,69 @@ func TestBindEnv_AddrFromEnv(t *testing.T) {
 	require.NoError(t, bindEnv(cmd))
 
 	assert.Equal(t, "[http://remote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_CaddyApiUrlFromEnv(t *testing.T) {
+	t.Setenv("CADDY_API_URL", "http://caddyremote:2019")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "[http://caddyremote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_CaddyApiUrlTakesPrecedenceOverEmberAddr(t *testing.T) {
+	t.Setenv("CADDY_API_URL", "http://caddyremote:2019")
+	t.Setenv("EMBER_ADDR", "http://emberremote:2019")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "[http://caddyremote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_StdinLogsFromEnv(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "true")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "true", cmd.Flag("stdin-logs").Value.String())
+}
+
+func TestBindEnv_Precedence_StdinLogs(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "true")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, cmd.Flags().Set("stdin-logs", "false"))
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "false", cmd.Flag("stdin-logs").Value.String())
+}
+
+func TestBindEnv_Precedence_FromStdin(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "true")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, cmd.Flags().Set("from-stdin", "false"))
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "false", cmd.Flag("stdin-logs").Value.String())
+}
+
+func TestValidate_StdinIsTerminal(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	defer f.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = f
+	defer func() { os.Stdin = oldStdin }()
+
+	cfg := &config{stdinLogs: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err = validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stdin is a terminal; cannot stream logs from it")
 }
 
 func TestBindEnv_InvalidIntervalIsError(t *testing.T) {

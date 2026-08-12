@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -112,6 +114,12 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 // access logging on every server that did not already have a logs block. The
 // returned cleanup function reverses both changes.
 func setupLogSource(cfg *config, f fetcher.Fetcher, uiCfg *ui.Config) func() {
+	if cfg.stdinLogs {
+		if cleanup, ok := startStdinListener(f, uiCfg); ok {
+			return cleanup
+		}
+		return func() {}
+	}
 	addr := cfg.logListen
 	if addr == "" {
 		if !isLocalAdminAddr(cfg.addrs[0].url) {
@@ -123,6 +131,78 @@ func setupLogSource(cfg *config, f fetcher.Fetcher, uiCfg *ui.Config) func() {
 		return cleanup
 	}
 	return func() {}
+}
+
+func startStdinListener(f fetcher.Fetcher, uiCfg *ui.Config) (func(), bool) {
+	accessBuf := model.NewLogBuffer(0)
+	runtimeBuf := model.NewLogBuffer(0)
+	routeAgg := model.NewRouteAggregator()
+	uiCfg.LogBuffer = accessBuf
+	uiCfg.RuntimeLogBuffer = runtimeBuf
+	uiCfg.RouteAggregator = routeAgg
+	uiCfg.LogSource = "stdin"
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			if !scanner.Scan() {
+				return
+			}
+
+			line := scanner.Text()
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+
+			start := strings.Index(trimmed, "{")
+			end := strings.LastIndex(trimmed, "}")
+			if start != -1 && end != -1 && end > start {
+				trimmed = trimmed[start : end+1]
+			}
+
+			if !isJSONLogLine(trimmed) {
+				continue
+			}
+
+			e := fetcher.ParseLogLine(trimmed)
+			if e.IsAccessLog() {
+				accessBuf.Append(e)
+				routeAgg.Track(e)
+			} else {
+				runtimeBuf.Append(e)
+			}
+		}
+	}()
+
+	return func() {
+		cancel()
+	}, true
+}
+
+func isJSONLogLine(line string) bool {
+	if !strings.HasPrefix(line, "{") || !strings.HasSuffix(line, "}") {
+		return false
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(line), &m); err != nil {
+		return false
+	}
+	_, hasLevel := m["level"]
+	_, hasTS := m["ts"]
+	_, hasMsg := m["msg"]
+	_, hasLogger := m["logger"]
+	return hasLevel || hasTS || hasMsg || hasLogger
 }
 
 var sinkWatchdogInterval = 30 * time.Second
