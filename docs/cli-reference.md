@@ -48,6 +48,8 @@ Some flags can be set via environment variables. Explicit flags always take prec
 | `CADDY_API_URL` | `--addr` | `CADDY_API_URL=http://localhost:2019` |
 | `EMBER_CONFIG` | `--config` | `EMBER_CONFIG=/etc/ember/prod.toml` |
 
+`CADDY_API_URL` is read before `EMBER_ADDR` and wins when both hold a value; an empty or blank one is ignored so it cannot mask `EMBER_ADDR`. Either of them setting `--addr` also skips the [config file](#config-file), the same way an explicit `--addr` does.
+
 This is especially useful in container deployments where flags are less convenient than environment variables. Using `EMBER_METRICS_AUTH` is recommended over the flag to avoid exposing credentials in `ps` output.
 
 ## Config file

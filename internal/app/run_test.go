@@ -581,6 +581,31 @@ func TestBindEnv_CaddyApiUrlTakesPrecedenceOverEmberAddr(t *testing.T) {
 	assert.Equal(t, "[http://caddyremote:2019]", cmd.Flag("addr").Value.String())
 }
 
+func TestBindEnv_EmptyCaddyApiUrlDoesNotMaskEmberAddr(t *testing.T) {
+	// CADDY_API_URL is not Ember-namespaced, so surrounding tooling may export
+	// it empty. LookupEnv reports that as present: falling through is what
+	// keeps EMBER_ADDR (and, when neither is set, the config file) alive.
+	t.Setenv("CADDY_API_URL", "")
+	t.Setenv("EMBER_ADDR", "http://emberremote:2019")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.Equal(t, "[http://emberremote:2019]", cmd.Flag("addr").Value.String())
+}
+
+func TestBindEnv_EmptyAddrEnvLeavesConfigFileEligible(t *testing.T) {
+	// bindEnv marks the config file as consumed by flipping Changed, so an
+	// empty variable must not flip it: `.ember.toml` still has to be read.
+	t.Setenv("CADDY_API_URL", "   ")
+	t.Setenv("EMBER_ADDR", "")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+
+	assert.False(t, cmd.Flag("addr").Changed)
+}
+
 func TestBindEnv_StdinLogsFromEnv(t *testing.T) {
 	t.Setenv("EMBER_STDIN_LOGS", "true")
 

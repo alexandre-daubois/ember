@@ -251,10 +251,7 @@ func bindEnv(cmd *cobra.Command) error {
 		var val string
 		var ok bool
 		if name == "addr" {
-			val, ok = os.LookupEnv("CADDY_API_URL")
-			if !ok {
-				val, ok = os.LookupEnv("EMBER_ADDR")
-			}
+			env, val, ok = lookupAddrEnv()
 		} else {
 			val, ok = os.LookupEnv(env)
 		}
@@ -268,11 +265,7 @@ func bindEnv(cmd *cobra.Command) error {
 					continue
 				}
 				if err := f.Value.Set(v); err != nil {
-					envName := "EMBER_ADDR"
-					if _, okCaddy := os.LookupEnv("CADDY_API_URL"); okCaddy {
-						envName = "CADDY_API_URL"
-					}
-					return fmt.Errorf("%s=%q: %w", envName, v, err)
+					return fmt.Errorf("%s=%q: %w", env, v, err)
 				}
 				f.Changed = true
 			}
@@ -286,6 +279,22 @@ func bindEnv(cmd *cobra.Command) error {
 		f.Changed = true
 	}
 	return nil
+}
+
+// lookupAddrEnv resolves --addr from the environment and reports which
+// variable the value came from, so a malformed one is named accurately in the
+// error. CADDY_API_URL is honoured first but an empty value must not mask
+// EMBER_ADDR: it is not an Ember-namespaced variable, so it may well be
+// exported empty by surrounding Caddy tooling, and swallowing the address
+// would also skip the config file — bindEnv marks that as consumed as soon as
+// it sets the flag.
+func lookupAddrEnv() (string, string, bool) {
+	for _, env := range []string{"CADDY_API_URL", "EMBER_ADDR"} {
+		if val := strings.TrimSpace(os.Getenv(env)); val != "" {
+			return env, val, true
+		}
+	}
+	return "EMBER_ADDR", "", false
 }
 
 const minInterval = 100 * time.Millisecond
