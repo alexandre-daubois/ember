@@ -2,7 +2,7 @@
 
 All notable changes to Ember are documented here.
 
-## Unreleased
+## 1.6.0 - 2026-08-17
 
 ### Added
 
