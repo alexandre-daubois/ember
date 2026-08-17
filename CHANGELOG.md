@@ -6,7 +6,10 @@ All notable changes to Ember are documented here.
 
 ### Added
 
-- **Avg Mem** and **Max Mem** columns in the Logs tab's By Route view: per-route PHP memory usage sampled from busy FrankenPHP threads, sortable like the latency columns. Helps spot memory-hungry routes, detect leaks in worker mode, and size servers from the max footprint. Requires FrankenPHP 1.12.2 or later, and a terminal wide enough that the columns cost the Pattern column nothing.
+- `Avg Mem` and `Max Mem` columns in the Logs tab's By Route view: per-route PHP memory usage sampled from busy FrankenPHP threads, sortable like the latency columns. Helps spot memory-hungry routes, detect leaks in worker mode, and size servers from the max footprint. Requires FrankenPHP 1.12.2 or later, and a terminal wide enough that the columns cost the Pattern column nothing.
+- Worker utilization gauge in the FrankenPHP header: worker threads get their own busy/idle/inactive bar, and the existing Threads bar now covers regular threads only. Each bar is drawn only when threads of that kind exist.
+- `--stdin-logs` (alias `--from-stdin`, env `EMBER_STDIN_LOGS`): read Caddy logs from standard input instead of hot-registering a net_writer, for read-only or unidirectional environments such as `kubectl logs -f <pod> | ember --stdin-logs`. Incompatible with `--daemon`, `--json` and `--log-listen`.
+- `CADDY_API_URL` is accepted as a source for `--addr`, taking precedence over `EMBER_ADDR` when both hold a value.
 
 ## 1.5.0 - 2026-07-13
 
