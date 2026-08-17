@@ -290,9 +290,6 @@ func (a *App) View() string {
 		}
 	}
 	tabBar := renderTabBar(a.tabs, a.activeTab, listWidth, counts, a.pluginTabs)
-	// The footer must name the sort the By Route table actually applied, not the
-	// memory key it holds in reserve while the columns are off screen.
-	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.effectiveRouteSort(), a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView(), a.pendingTabSelect, a.activePluginTab())
 
 	var threads []fetcher.ThreadDebugState
 	var hosts []model.HostDerived
@@ -383,6 +380,12 @@ func (a *App) View() string {
 			}
 		}
 	}
+
+	// Built after the content: rendering the By Route table is what decides
+	// whether the memory columns are on screen, and the footer must name the
+	// sort that table actually applied rather than the memory key it holds in
+	// reserve while the columns are off screen.
+	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.effectiveRouteSort(), a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView(), a.pendingTabSelect, a.activePluginTab())
 
 	var statusLine string
 	if a.status != "" {
