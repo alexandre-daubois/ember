@@ -105,19 +105,19 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 
 // setupLogSource starts streaming Caddy access logs into the UI buffer.
 // Strategy:
-//  1. --log-listen <addr>: bind on the given address (e.g. ":9210" for remote
+//  1. --stdin-logs: read the logs already being piped in and touch Caddy not
+//     at all, which is the only option when the admin API is read-only.
+//  2. --log-listen <addr>: bind on the given address (e.g. ":9210" for remote
 //     Caddy).
-//  2. Auto: when Caddy looks reachable from the same host, bind a free
+//  3. Auto: when Caddy looks reachable from the same host, bind a free
 //     loopback port and ask Caddy to push logs to it.
 //
-// In both modes Ember hot-registers an "__ember__" sink in Caddy and enables
-// access logging on every server that did not already have a logs block. The
-// returned cleanup function reverses both changes.
+// In the two listener modes Ember hot-registers an "__ember__" sink in Caddy
+// and enables access logging on every server that did not already have a logs
+// block. The returned cleanup function reverses both changes.
 func setupLogSource(cfg *config, f fetcher.Fetcher, uiCfg *ui.Config) func() {
 	if cfg.stdinLogs {
-		if cleanup, ok := startStdinListener(f, uiCfg); ok {
-			return cleanup
-		}
+		startStdinListener(uiCfg)
 		return func() {}
 	}
 	addr := cfg.logListen
@@ -133,7 +133,11 @@ func setupLogSource(cfg *config, f fetcher.Fetcher, uiCfg *ui.Config) func() {
 	return func() {}
 }
 
-func startStdinListener(f fetcher.Fetcher, uiCfg *ui.Config) (func(), bool) {
+// startStdinListener feeds the UI buffers from standard input. There is no
+// cleanup counterpart to the net listener's: nothing was registered in Caddy,
+// and a blocking Scan cannot be interrupted, so the reader simply lives until
+// the process exits.
+func startStdinListener(uiCfg *ui.Config) {
 	accessBuf := model.NewLogBuffer(0)
 	runtimeBuf := model.NewLogBuffer(0)
 	routeAgg := model.NewRouteAggregator()
@@ -142,25 +146,12 @@ func startStdinListener(f fetcher.Fetcher, uiCfg *ui.Config) (func(), bool) {
 	uiCfg.RouteAggregator = routeAgg
 	uiCfg.LogSource = "stdin"
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		scanner.Buffer(make([]byte, 0, 64*1024), stdinMaxLineBytes)
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			if !scanner.Scan() {
-				return
-			}
-
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
+		for scanner.Scan() {
+			trimmed := strings.TrimSpace(scanner.Text())
 			if trimmed == "" {
 				continue
 			}
@@ -183,12 +174,27 @@ func startStdinListener(f fetcher.Fetcher, uiCfg *ui.Config) (func(), bool) {
 				runtimeBuf.Append(e)
 			}
 		}
-	}()
 
-	return func() {
-		cancel()
-	}, true
+		// Scan stops for good on the first over-long line or read error, so
+		// the stream is dead from here on. Without this the TUI would keep
+		// showing the last entries as if logs were still flowing.
+		msg := "stdin log stream ended"
+		if err := scanner.Err(); err != nil {
+			msg = "stdin log stream stopped: " + err.Error()
+		}
+		runtimeBuf.Append(fetcher.LogEntry{
+			Timestamp: time.Now(),
+			Level:     "error",
+			Logger:    "ember.stdin",
+			Message:   msg,
+		})
+	}()
 }
+
+// stdinMaxLineBytes caps a single log line. Caddy access logs stay well under
+// it; the ceiling is there so a non-log stream piped in by mistake cannot make
+// the scanner buffer grow without bound.
+const stdinMaxLineBytes = 1024 * 1024
 
 func isJSONLogLine(line string) bool {
 	if !strings.HasPrefix(line, "{") || !strings.HasSuffix(line, "}") {
