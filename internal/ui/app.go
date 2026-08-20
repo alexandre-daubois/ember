@@ -251,6 +251,10 @@ func (a *App) View() string {
 		}
 	}
 	listWidth := a.width - panelWidth
+	panelHeight := a.height
+	if a.status != "" || a.err != nil {
+		panelHeight--
+	}
 
 	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.history.rps, sparklineSize), lastN(a.history.cpu, sparklineSize), a.stale, a.paused, a.hasFrankenPHP)
 	counts := make(map[tab]string)
@@ -299,13 +303,17 @@ func (a *App) View() string {
 	if a.mode == viewFilter {
 		contentAreaHeight--
 	}
+	if a.status != "" || a.err != nil {
+		contentAreaHeight--
+	}
+
 	// In the stacked (non side-panel) detail layout the panel is appended below
 	// the list. Reserve its height from the list so the two together fit the
 	// terminal instead of pushing the dashboard and tab bar off the top.
 	bottomDetailHeight := 0
 	if a.mode == viewDetail && !sidePanel {
 		bottomDetailHeight = detailPanelHeight
-		if a.activeTab == tabCaddy {
+		if a.activeTab == tabCaddy || a.activeTab == tabLogs || a.activeTab == tabFrankenPHP {
 			bottomDetailHeight = detailPanelHeight + 6
 		}
 		if maxPanel := contentAreaHeight - detailBottomListMin; bottomDetailHeight > maxPanel {
@@ -314,16 +322,17 @@ func (a *App) View() string {
 		if bottomDetailHeight < detailBottomMinHeight {
 			bottomDetailHeight = detailBottomMinHeight
 		}
-		contentAreaHeight -= bottomDetailHeight
+		// Account for the newline added by JoinVertical between contentList/help and the panel
+		contentAreaHeight -= (bottomDetailHeight + 1)
 	}
 	if contentAreaHeight < 5 {
 		contentAreaHeight = 5
 	}
 	switch a.activeTab {
 	case tabConfig:
-		configAreaHeight := a.height - dashLines - 4
-		if configAreaHeight < 5 {
-			configAreaHeight = 5
+		configAreaHeight := contentAreaHeight
+		if a.mode == viewDetail && !sidePanel {
+			configAreaHeight += (bottomDetailHeight + 1)
 		}
 		if a.configRoot != nil {
 			contentList = renderConfigTree(a.configRoot, a.configCursor, listWidth, configAreaHeight, a.configFilter, a.configFilterMode)
@@ -371,7 +380,12 @@ func (a *App) View() string {
 			contentList = renderHostTable(hosts, a.cursor, listWidth, contentAreaHeight, a.hostSortBy, a.history.hostRPS)
 		}
 	case tabLogs:
-		contentList = a.renderLogsTab(listWidth, contentAreaHeight)
+		all := a.filteredLogEntries()
+		if len(all) == 0 && a.filter != "" {
+			contentList = greyStyle.Render(fmt.Sprintf(" No matches for '%s'", a.filter))
+		} else {
+			contentList = a.renderLogsTab(listWidth, contentAreaHeight)
+		}
 	default:
 		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
 			contentList = safePluginView(pt.renderer, listWidth, a.height-10)
@@ -406,10 +420,16 @@ func (a *App) View() string {
 	switch a.mode {
 	case viewGraph:
 		graphAreaHeight := a.height - dashLines - 2
+		if a.status != "" || a.err != nil {
+			graphAreaHeight--
+		}
 		if graphAreaHeight < 5 {
 			graphAreaHeight = 5
 		}
 		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.history.cpu, a.history.rps, a.history.rss, a.history.queue, a.history.busy, a.hasFrankenPHP))
+		if statusLine != "" {
+			parts = append(parts, statusLine)
+		}
 		parts = append(parts, helpStyle.Width(listWidth).Render(" "+helpKeyStyle.Render("g/Esc")+" back  "+helpKeyStyle.Render("q")+" quit"))
 	default:
 		if filterLine != "" && a.activeTab != tabConfig {
@@ -429,18 +449,29 @@ func (a *App) View() string {
 			if a.cursor >= 0 && a.cursor < len(hosts) {
 				h := hosts[a.cursor]
 				if sidePanel {
-					panel := renderHostDetailPanel(h, panelWidth, a.height)
-					return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
+					panel := renderHostDetailPanel(h, panelWidth, panelHeight)
+					return clampHeight(lipgloss.JoinHorizontal(lipgloss.Top, base, panel), a.height)
 				}
 				panel := renderHostDetailPanel(h, a.width, bottomDetailHeight)
+				return clampHeight(lipgloss.JoinVertical(lipgloss.Left, base, panel), a.height)
+			}
+		} else if a.activeTab == tabLogs {
+			all := a.filteredLogEntries()
+			if a.cursor >= 0 && a.cursor < len(all) {
+				e := all[a.cursor]
+				if sidePanel {
+					panel := renderLogDetailPanel(e, panelWidth, panelHeight)
+					return clampHeight(lipgloss.JoinHorizontal(lipgloss.Top, base, panel), a.height)
+				}
+				panel := renderLogDetailPanel(e, a.width, bottomDetailHeight)
 				return clampHeight(lipgloss.JoinVertical(lipgloss.Left, base, panel), a.height)
 			}
 		} else if a.cursor >= 0 && a.cursor < len(threads) {
 			t := threads[a.cursor]
 			samples := a.history.mem[t.Index]
 			if sidePanel {
-				panel := renderDetailPanel(t, panelWidth, a.height, samples, a.viewTime)
-				return lipgloss.JoinHorizontal(lipgloss.Top, base, panel)
+				panel := renderDetailPanel(t, panelWidth, panelHeight, samples, a.viewTime)
+				return clampHeight(lipgloss.JoinHorizontal(lipgloss.Top, base, panel), a.height)
 			}
 			panel := renderDetailPanel(t, a.width, bottomDetailHeight, samples, a.viewTime)
 			return clampHeight(lipgloss.JoinVertical(lipgloss.Left, base, panel), a.height)
