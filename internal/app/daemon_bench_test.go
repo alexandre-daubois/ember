@@ -158,14 +158,14 @@ func BenchmarkDaemonPollCycle(b *testing.B) {
 	// warm up
 	snap, _ := f.Fetch(context.Background())
 	state.Update(snap)
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
 		snap, _ := f.Fetch(context.Background())
 		state.Update(snap)
-		holder.Store(state.CopyForExport())
+		holder.StoreAll(state.CopyForExport(), nil)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestDaemonMemoryFootprint(t *testing.T) {
 			t.Fatalf("fetch: %v", err)
 		}
 		state.Update(snap)
-		holder.Store(state.CopyForExport())
+		holder.StoreAll(state.CopyForExport(), nil)
 	}
 
 	runtime.GC()

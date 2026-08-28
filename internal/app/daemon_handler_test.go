@@ -23,7 +23,7 @@ func freshHolder() *exporter.StateHolder {
 	st.Update(&fetcher.Snapshot{
 		Process: fetcher.ProcessMetrics{CPUPercent: 1.0, RSS: 1024},
 	})
-	holder.Store(st.CopyForExport())
+	holder.StoreAll(st.CopyForExport(), nil)
 	return holder
 }
 
@@ -183,7 +183,7 @@ frankenphp_busy_threads 1
 	state.Update(snap)
 
 	holder := &exporter.StateHolder{}
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	cfg := &config{interval: time.Second}
 	handler := newMetricsHandler(holder, cfg, nil)
