@@ -4,7 +4,7 @@ Thanks for your interest in contributing to Ember! Here's everything you need to
 
 ## Prerequisites
 
-- Go 1.26+
+- Go 1.27+
 - [golangci-lint](https://golangci-lint.run/) (for linting)
 - A running Caddy instance (optional, for manual testing)
 
