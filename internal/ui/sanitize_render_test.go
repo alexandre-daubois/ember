@@ -92,6 +92,12 @@ func TestRenderSinksNeutralizeControlBytes(t *testing.T) {
 		{"renderConnectionError fetch error", func() string {
 			return renderConnectionError(evil, 120, 40)
 		}},
+		{"renderConfigLine object key", func() string {
+			return renderConfigLine(&jsonNode{key: evil, index: -1, kind: jsonString, value: "v"}, 120, false, false)
+		}},
+		{"renderConfigLine object key selected", func() string {
+			return renderConfigLine(&jsonNode{key: evil, index: -1, kind: jsonString, value: "v"}, 120, true, false)
+		}},
 	}
 
 	for _, tc := range cases {
