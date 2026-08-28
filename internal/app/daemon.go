@@ -42,6 +42,10 @@ func (e *errorThrottle) recover(log *slog.Logger) {
 		log.Info("fetch recovered")
 		e.failing = false
 		e.suppressed = 0
+		// A new outage is news even when the last one was logged seconds ago,
+		// so clear the window too. Leaving it meant a peer flapping faster than
+		// errorThrottleInterval only ever logged "fetch recovered".
+		e.lastLogged = time.Time{}
 	}
 }
 
