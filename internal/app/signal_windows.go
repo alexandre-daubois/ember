@@ -10,8 +10,8 @@ import (
 )
 
 // dumpSignal returns a channel that never receives on Windows (no SIGUSR1 support).
-func dumpSignal() <-chan os.Signal {
-	return make(chan os.Signal)
+func dumpSignal() (<-chan os.Signal, func()) {
+	return make(chan os.Signal), func() {}
 }
 
 func dumpState(_ *model.State, log *slog.Logger) {
@@ -19,6 +19,6 @@ func dumpState(_ *model.State, log *slog.Logger) {
 }
 
 // reloadSignal returns a channel that never receives on Windows (no SIGHUP support).
-func reloadSignal() <-chan os.Signal {
-	return make(chan os.Signal)
+func reloadSignal() (<-chan os.Signal, func()) {
+	return make(chan os.Signal), func() {}
 }

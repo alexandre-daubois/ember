@@ -12,18 +12,20 @@ import (
 	"github.com/alexandre-daubois/ember/internal/model"
 )
 
-// dumpSignal returns a channel that receives a value each time SIGUSR1 is sent to the process.
-func dumpSignal() <-chan os.Signal {
+// dumpSignal returns a channel that receives a value each time SIGUSR1 is sent
+// to the process, along with the function that stops the delivery.
+func dumpSignal() (<-chan os.Signal, func()) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGUSR1)
-	return ch
+	return ch, func() { signal.Stop(ch) }
 }
 
-// reloadSignal returns a channel that receives a value each time SIGHUP is sent to the process.
-func reloadSignal() <-chan os.Signal {
+// reloadSignal returns a channel that receives a value each time SIGHUP is sent
+// to the process, along with the function that stops the delivery.
+func reloadSignal() (<-chan os.Signal, func()) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGHUP)
-	return ch
+	return ch, func() { signal.Stop(ch) }
 }
 
 func dumpState(state *model.State, log *slog.Logger) {
