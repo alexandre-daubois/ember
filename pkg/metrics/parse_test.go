@@ -91,6 +91,27 @@ func TestParsePrometheus_WorkerMetrics(t *testing.T) {
 	assert.Equal(t, float64(0), api.Crashes, "api.Crashes")
 }
 
+func TestParsePrometheus_NonFiniteSamplesBecomeZero(t *testing.T) {
+	const text = `# TYPE frankenphp_busy_threads gauge
+frankenphp_busy_threads NaN
+# TYPE caddy_http_requests_in_flight gauge
+caddy_http_requests_in_flight{host="a.test"} +Inf
+# TYPE caddy_http_request_duration_seconds histogram
+caddy_http_request_duration_seconds_bucket{host="a.test",le="+Inf"} 3
+caddy_http_request_duration_seconds_sum{host="a.test"} NaN
+caddy_http_request_duration_seconds_count{host="a.test"} 3
+`
+
+	snap, err := metrics.ParsePrometheus(strings.NewReader(text))
+	require.NoError(t, err)
+
+	assert.Zero(t, snap.BusyThreads, "a NaN gauge means no value, not a poisoned average")
+	assert.Zero(t, snap.HTTPRequestsInFlight)
+	assert.Zero(t, snap.HTTPRequestDurationSum)
+	assert.InDelta(t, 3.0, snap.HTTPRequestDurationCount, 0.001,
+		"the counts alongside a NaN sum are still good")
+}
+
 func TestParsePrometheus_Empty(t *testing.T) {
 	snap, err := metrics.ParsePrometheus(strings.NewReader(""))
 	require.NoError(t, err)
