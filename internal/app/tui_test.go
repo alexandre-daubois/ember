@@ -114,7 +114,7 @@ func TestStartMetricsServer_ClosesChannelOnCleanShutdown(t *testing.T) {
 	select {
 	case err, ok := <-errCh:
 		assert.False(t, ok, "a clean shutdown must close the channel, not leave the reader blocked")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("the channel stayed open, so the TUI command would block forever")
 	}
@@ -131,7 +131,7 @@ func TestStartMetricsServer_ReportsListenFailure(t *testing.T) {
 	select {
 	case err, ok := <-errCh:
 		require.True(t, ok, "a listen failure must arrive before the channel closes")
-		assert.ErrorContains(t, err, "metrics server on ")
+		require.ErrorContains(t, err, "metrics server on ")
 	case <-time.After(2 * time.Second):
 		t.Fatal("the listen failure was never reported")
 	}
