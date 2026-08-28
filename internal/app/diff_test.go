@@ -531,6 +531,42 @@ func TestRunDiff_JSONLMultiInstance_InstanceRemoved(t *testing.T) {
 	assert.NotContains(t, out, "-100.0%", "a missing instance is not a 100% drop in every metric")
 }
 
+func TestRunDiff_RefusesACaptureThatRecordedAFetchError(t *testing.T) {
+	dir := t.TempDir()
+
+	failed := jsonOutput{
+		Errors:  []string{"fetch metrics: Get \"http://127.0.0.1:2019/metrics\": connection refused"},
+		Process: fetcher.ProcessMetrics{},
+	}
+	before := writeSnapshot(t, dir, "before.json", failed)
+	after := writeSnapshot(t, dir, "after.json", failed)
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.Error(t, err, "two captures of nothing must not compare clean")
+	assert.Contains(t, err.Error(), "connection refused")
+	assert.NotContains(t, buf.String(), "No regressions detected")
+}
+
+func TestRunDiff_CleanCapturesStillCompare(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeSnapshot(t, dir, "before.json", jsonOutput{
+		Derived: &jsonDerived{RPS: 100},
+		Process: fetcher.ProcessMetrics{},
+	})
+	after := writeSnapshot(t, dir, "after.json", jsonOutput{
+		Derived: &jsonDerived{RPS: 101},
+		Process: fetcher.ProcessMetrics{},
+	})
+
+	var buf bytes.Buffer
+
+	require.NoError(t, runDiff(&buf, before, after))
+	assert.Contains(t, buf.String(), "No regressions detected")
+}
+
 func TestRunDiff_CounterResetIsNotAVerdict(t *testing.T) {
 	dir := t.TempDir()
 
