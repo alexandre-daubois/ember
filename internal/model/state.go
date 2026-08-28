@@ -295,6 +295,10 @@ func (s *State) CopyForExport() State {
 			}
 			snap.Metrics.Upstreams = upstreams
 		}
+		// The families themselves are read-only once parsed, so cloning the
+		// map is enough to stop a later scrape from reshaping what the
+		// exporter is walking.
+		snap.Metrics.Extra = maps.Clone(snap.Metrics.Extra)
 		cp.Current = &snap
 	}
 	if s.HostDerived != nil {
