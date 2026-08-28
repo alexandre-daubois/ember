@@ -1029,6 +1029,16 @@ func TestHandleFilterKey_TypeCharacter(t *testing.T) {
 	assert.Equal(t, 0, app.cursor, "typing should reset cursor")
 }
 
+func TestHandleFilterKey_CtrlCQuits(t *testing.T) {
+	app := &App{mode: viewFilter, filter: "test"}
+
+	_, cmd := app.handleFilterKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	require.NotNil(t, cmd, "ctrl+c must quit from the filter prompt like everywhere else")
+	assert.IsType(t, tea.QuitMsg{}, cmd())
+	assert.Equal(t, "test", app.filter, "the interrupt must not be typed into the filter")
+}
+
 func TestHandleConfirmKey_YConfirmsRestart(t *testing.T) {
 	app := &App{mode: viewConfirmRestart}
 	_, cmd := app.handleConfirmRestartKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})

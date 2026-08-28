@@ -230,6 +230,18 @@ func TestDetailPanel_EscClosesPanel(t *testing.T) {
 	assert.Equal(t, viewList, app.mode)
 }
 
+func TestDetailPanel_CtrlCQuits(t *testing.T) {
+	app := &App{
+		mode: viewDetail,
+	}
+
+	_, cmd := app.handleDetailKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	require.NotNil(t, cmd, "ctrl+c must quit from the detail view like everywhere else")
+	assert.IsType(t, tea.QuitMsg{}, cmd())
+	assert.Equal(t, viewDetail, app.mode, "quitting must not silently fall back to the list")
+}
+
 func TestRenderStateBadge(t *testing.T) {
 	busy := renderStateBadge(fetcher.ThreadDebugState{IsBusy: true})
 	assert.Contains(t, busy, "BUSY")

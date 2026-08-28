@@ -307,6 +307,8 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc", "q":
 		a.mode = viewList
+	case "ctrl+c":
+		return a, tea.Quit
 	case "r":
 		if a.activeTab == tabFrankenPHP {
 			a.mode = viewConfirmRestart
@@ -320,6 +322,8 @@ func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a *App) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "ctrl+c":
+		return a, tea.Quit
 	case "esc":
 		a.mode = viewList
 		a.filter = ""
