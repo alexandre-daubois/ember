@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -103,6 +104,49 @@ func TestErrorThrottle_RecoverNoopWhenNotFailing(t *testing.T) {
 	et.recover(log)
 
 	assert.Empty(t, buf.String(), "recover should not log when not failing")
+}
+
+func daemonTestConfig(t *testing.T, expose string) (*config, []*instance) {
+	t.Helper()
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(caddy.Close)
+
+	cfg := &config{
+		addrs:    []addrSpec{{url: caddy.URL}},
+		interval: 50 * time.Millisecond,
+		expose:   expose,
+		daemon:   true,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	instances, err := newInstances(context.Background(), cfg, "v-test")
+	require.NoError(t, err)
+	return cfg, instances
+}
+
+func TestRunDaemon_TimeoutExpiryIsNotAFailure(t *testing.T) {
+	cfg, instances := daemonTestConfig(t, "127.0.0.1:0")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	assert.NoError(t, runDaemon(ctx, instances, cfg, nil),
+		"a --timeout expiry is a requested shutdown, not a failure")
+}
+
+func TestRunDaemon_ListenFailureIsReported(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = busy.Close() }()
+
+	cfg, instances := daemonTestConfig(t, busy.Addr().String())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	assert.Error(t, runDaemon(ctx, instances, cfg, nil),
+		"a real failure must still reach the caller")
 }
 
 func TestReloadTLS_NoTLSConfig(t *testing.T) {
