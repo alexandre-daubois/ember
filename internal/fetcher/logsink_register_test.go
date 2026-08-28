@@ -209,7 +209,11 @@ func TestRegisterEmberLogSink_BootstrapsLoggingPath(t *testing.T) {
 }
 
 func TestRegisterEmberLogSink_ServerError(t *testing.T) {
+	var loggingWrites atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/config/logging" || r.URL.Path == "/config/logging/logs" {
+			loggingWrites.Add(1)
+		}
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -218,6 +222,17 @@ func TestRegisterEmberLogSink_ServerError(t *testing.T) {
 	err := f.RegisterEmberLogSink(context.Background(), "127.0.0.1:9210")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
+	assert.Zero(t, loggingWrites.Load(),
+		"a server fault is no reason to write into the shared logging config")
+}
+
+func TestRegisterEmberLogSink_TransportErrorDoesNotBootstrap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.Error(t, f.RegisterEmberLogSink(context.Background(), "127.0.0.1:9210"),
+		"an unreachable admin API must not fall through to the bootstrap PUT")
 }
 
 func TestUnregisterEmberLogSink_OK(t *testing.T) {
