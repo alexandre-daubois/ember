@@ -214,6 +214,32 @@ func TestRunInit_Unreachable(t *testing.T) {
 	assert.Contains(t, buf.String(), "✗")
 }
 
+func TestInitCmd_QuietWithoutYesIsRejected(t *testing.T) {
+	cfg := &config{addrs: []addrSpec{{url: "http://127.0.0.1:1"}}}
+	cmd := newInitCmd(cfg)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"-q"})
+
+	err := cmd.Execute()
+
+	require.Error(t, err, "a discarded prompt would block on stdin with nothing on screen")
+	assert.Contains(t, err.Error(), "--yes")
+}
+
+func TestInitCmd_QuietWithYesIsAccepted(t *testing.T) {
+	srv := newInitTestServer(&initServer{metricsEnabled: true, hasHTTPMetrics: true})
+	defer srv.Close()
+
+	cfg := &config{addrs: []addrSpec{{url: srv.URL}}}
+	cmd := newInitCmd(cfg)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"-q", "-y"})
+
+	assert.NoError(t, cmd.Execute())
+}
+
 func TestPromptYesNo_AutoYes(t *testing.T) {
 	var buf bytes.Buffer
 	assert.True(t, promptYesNo(&buf, strings.NewReader(""), "test?", true))
