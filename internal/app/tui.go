@@ -60,7 +60,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 		// effective polling interval keeps /healthz from flapping to "stale"
 		// between polls when an ,interval= suffix (or TOML endpoint key)
 		// exceeds the threshold derived from the global --interval.
-		srv = &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg, map[string]time.Duration{"": interval})}
+		srv = newMetricsServer(cfg.expose, newMetricsHandler(holder, cfg, map[string]time.Duration{"": interval}))
 
 		listenErr := make(chan error, 1)
 		go func() {

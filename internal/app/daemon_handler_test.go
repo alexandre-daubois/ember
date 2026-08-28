@@ -135,6 +135,13 @@ func TestNewMetricsHandler_RecorderIsExposed(t *testing.T) {
 		"a wired-up recorder must surface its self-metrics on /metrics")
 }
 
+func TestNewMetricsServer_BoundsHeaderReads(t *testing.T) {
+	srv := newMetricsServer("127.0.0.1:0", http.NotFoundHandler())
+
+	assert.Equal(t, "127.0.0.1:0", srv.Addr)
+	assert.Positive(t, srv.ReadHeaderTimeout)
+}
+
 func TestEndToEnd_FetcherToExporter(t *testing.T) {
 	// End-to-end: a stubbed Caddy admin API feeds the HTTPFetcher, the
 	// snapshot updates a model.State, and the resulting export is scraped via

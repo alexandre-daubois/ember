@@ -84,6 +84,20 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance ma
 	return handler
 }
 
+// metricsReadHeaderTimeout bounds how long a client may take to send its
+// request headers. --expose is meant for a shared network, where a connection
+// that never finishes its headers would otherwise pin a goroutine and a file
+// descriptor for as long as it stays open.
+const metricsReadHeaderTimeout = 10 * time.Second
+
+func newMetricsServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: metricsReadHeaderTimeout,
+	}
+}
+
 func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins []plugin.Plugin) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -93,7 +107,7 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 
 	dPlugins := newDaemonPlugins(plugins)
 
-	srv := &http.Server{Addr: cfg.expose, Handler: newMetricsHandler(holder, cfg, perInstanceIntervals(instances))}
+	srv := newMetricsServer(cfg.expose, newMetricsHandler(holder, cfg, perInstanceIntervals(instances)))
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
