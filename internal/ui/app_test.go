@@ -179,6 +179,26 @@ func TestGraphGReturns(t *testing.T) {
 	assert.Equal(t, viewDetail, app.mode, "g should return to previous view")
 }
 
+func TestInit_MarksTheFirstFetchInFlight(t *testing.T) {
+	app := NewApp(noOpFetcher{}, Config{Interval: time.Second})
+
+	require.NotNil(t, app.Init())
+
+	assert.True(t, app.fetching,
+		"Init dispatches a fetch, so the first tick must not start a second one")
+}
+
+func TestInit_TickFetchesAgainOnceTheFirstFetchLands(t *testing.T) {
+	app := NewApp(noOpFetcher{}, Config{Interval: time.Second})
+	app.Init()
+
+	_, _ = app.Update(fetchMsg{snap: &fetcher.Snapshot{}})
+	require.False(t, app.fetching)
+
+	_, _ = app.Update(tickMsg{})
+	assert.True(t, app.fetching, "the guard must not wedge polling shut")
+}
+
 func TestFetchMsg_SkipsWhenAlreadyFetching(t *testing.T) {
 	app := &App{fetching: true}
 	_, cmd := app.Update(tickMsg{})

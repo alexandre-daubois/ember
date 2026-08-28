@@ -211,6 +211,10 @@ func (a *App) Close() {
 }
 
 func (a *App) Init() tea.Cmd {
+	// Mark the fetch in flight the way the tick branch does. Without it the
+	// first tick fires a second concurrent Fetch on the same fetcher, and the
+	// process handle behind it is not safe for two callers at once.
+	a.fetching = true
 	cmds := []tea.Cmd{a.doFetch(), a.doTick()}
 	cmds = append(cmds, a.doPluginFetches()...)
 	if a.config.MetricsServerErr != nil {
