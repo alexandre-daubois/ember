@@ -38,6 +38,9 @@ type fakeCaddyLogAPI struct {
 	sinkGone atomic.Bool
 	// unavailable simulates Caddy not being reachable at all.
 	unavailable atomic.Bool
+	// serverPostsFail simulates the admin API rejecting only the per-server
+	// access-log writes, so a retry can fail while cleanup still works.
+	serverPostsFail atomic.Bool
 
 	// servers maps server name to its current logs JSON (empty string = unset).
 	serversMu sync.Mutex
@@ -113,6 +116,10 @@ func newFakeCaddyLogAPI(t *testing.T) *fakeCaddyLogAPI {
 					_, _ = io.WriteString(w, "null")
 				}
 			case http.MethodPost:
+				if api.serverPostsFail.Load() {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
 				body, _ := io.ReadAll(r.Body)
 				api.servers[name] = strings.TrimSpace(string(body))
 				api.serverPosts[name]++
@@ -273,6 +280,35 @@ func TestSetupLogSource_AutoEnablesAccessLogsAndRestores(t *testing.T) {
 	assert.Equal(t, 1, api.serverDeleteCount("srv0"), "should restore srv0 we enabled")
 	assert.Equal(t, 1, api.serverDeleteCount("srv1"), "should restore srv1 we enabled")
 	assert.Equal(t, 0, api.serverDeleteCount("user"), "must not delete user-owned logs config")
+}
+
+func TestSetupLogSource_BlipDoesNotForgetEnabledServers(t *testing.T) {
+	orig := sinkWatchdogInterval
+	sinkWatchdogInterval = 50 * time.Millisecond
+	defer func() { sinkWatchdogInterval = orig }()
+
+	api := newFakeCaddyLogAPI(t)
+	defer api.srv.Close()
+	api.addServer("srv0", "")
+	api.addServer("srv1", "")
+
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
+	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
+
+	cleanup := setupLogSource(cfg, f, &ui.Config{})
+	require.Equal(t, 1, api.serverPostCount("srv0"))
+	require.Equal(t, 1, api.serverPostCount("srv1"))
+
+	// A blip: the sink reads as gone and every re-enable attempt fails with
+	// it. The watchdog must not take that as "Ember changed nothing".
+	api.serverPostsFail.Store(true)
+	api.sinkGone.Store(true)
+	time.Sleep(250 * time.Millisecond)
+
+	cleanup()
+
+	assert.Equal(t, 1, api.serverDeleteCount("srv0"), "srv0 must still be restored after a failed retry")
+	assert.Equal(t, 1, api.serverDeleteCount("srv1"), "srv1 must still be restored after a failed retry")
 }
 
 // Make sure the cleanup function is non-nil and safe to call when no source
