@@ -79,6 +79,22 @@ func TestErrorThrottle_RecoverLogs(t *testing.T) {
 	assert.False(t, et.failing)
 }
 
+func TestErrorThrottle_LogsFirstErrorAfterRecovery(t *testing.T) {
+	var buf bytes.Buffer
+	log := testLogger(&buf)
+
+	var et errorThrottle
+	et.record(log, assert.AnError)
+	et.recover(log)
+	buf.Reset()
+
+	et.record(log, assert.AnError)
+
+	assert.Contains(t, buf.String(), "fetch failed",
+		"a fresh outage must be logged even when the previous one was seconds ago")
+	assert.Equal(t, 0, et.suppressed)
+}
+
 func TestErrorThrottle_RecoverNoopWhenNotFailing(t *testing.T) {
 	var buf bytes.Buffer
 	log := testLogger(&buf)
