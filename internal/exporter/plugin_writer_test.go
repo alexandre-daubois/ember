@@ -2,9 +2,11 @@ package exporter
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeAndFlush(t *testing.T, instance string, in string, helpSeen map[string]struct{}) string {
@@ -134,6 +136,48 @@ func TestPluginWriter_BuffersAcrossMultipleWriteCalls(t *testing.T) {
 	_, _ = pw.Write([]byte("1\nbar 2"))
 	pw.flush()
 	assert.Equal(t, "foo{ember_instance=\"web1\"} 1\nbar{ember_instance=\"web1\"} 2\n", out.String())
+}
+
+// flakyWriter fails on one chosen call and accepts the rest, the way a
+// ResponseWriter behaves when the client goes away mid-response.
+type flakyWriter struct {
+	bytes.Buffer
+	failOn int
+	calls  int
+}
+
+func (w *flakyWriter) Write(p []byte) (int, error) {
+	w.calls++
+	if w.calls == w.failOn {
+		return 0, errors.New("connection reset")
+	}
+	return w.Buffer.Write(p)
+}
+
+func TestPluginWriter_ReportsShortWriteOnError(t *testing.T) {
+	out := &flakyWriter{failOn: 2}
+	pw := newPluginWriter(out, "", make(map[string]struct{}))
+
+	n, err := pw.Write([]byte("foo 1\nbar 2\nbaz 3\n"))
+
+	require.Error(t, err)
+	assert.Equal(t, len("foo 1\n"), n, "only the lines that reached the writer count as written")
+}
+
+func TestPluginWriter_StopsAfterWriteError(t *testing.T) {
+	out := &flakyWriter{failOn: 2}
+	pw := newPluginWriter(out, "", make(map[string]struct{}))
+
+	_, err := pw.Write([]byte("foo 1\nbar 2\nbaz 3"))
+	require.Error(t, err)
+
+	n, err := pw.Write([]byte("qux 4\n"))
+	require.Error(t, err)
+	assert.Zero(t, n)
+
+	pw.flush()
+
+	assert.Equal(t, "foo 1\n", out.String(), "pending bytes must not be spliced into a later line")
 }
 
 func TestHelpTypeKey_RecognizesHelp(t *testing.T) {

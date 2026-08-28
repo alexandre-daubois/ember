@@ -21,6 +21,7 @@ type pluginWriter struct {
 	label    string
 	helpSeen map[string]struct{}
 	buf      bytes.Buffer
+	err      error
 }
 
 func newPluginWriter(out io.Writer, instance string, helpSeen map[string]struct{}) *pluginWriter {
@@ -32,22 +33,31 @@ func newPluginWriter(out io.Writer, instance string, helpSeen map[string]struct{
 }
 
 func (w *pluginWriter) Write(p []byte) (int, error) {
-	n := len(p)
+	if w.err != nil {
+		return 0, w.err
+	}
 	w.buf.Write(p)
 	for {
 		i := bytes.IndexByte(w.buf.Bytes(), '\n')
 		if i < 0 {
-			return n, nil
+			return len(p), nil
 		}
 		line := w.buf.Next(i + 1)
 		if err := w.emitLine(line); err != nil {
+			// Reporting len(p) here would tell a plugin writing through
+			// io.Copy or fmt.Fprintf that everything landed, and the bytes
+			// left in the buffer would be spliced into the next plugin's
+			// output by flush.
+			n := max(len(p)-w.buf.Len()-len(line), 0)
+			w.err = err
+			w.buf.Reset()
 			return n, err
 		}
 	}
 }
 
 func (w *pluginWriter) flush() {
-	if w.buf.Len() == 0 {
+	if w.err != nil || w.buf.Len() == 0 {
 		return
 	}
 	// A plugin whose output does not end with a newline would otherwise let the
