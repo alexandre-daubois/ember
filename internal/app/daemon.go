@@ -122,6 +122,15 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 	log := cfg.logger
 	log.Info("daemon started", "metrics_url", metricsURL(cfg.expose), "instances", len(instances))
 
+	// Arm the handlers before the first poll: pollAll blocks on a full fetch of
+	// every instance, and until Notify runs both signals still carry their
+	// default disposition, so a supervisor rotating certificates right after
+	// startup killed the daemon instead of reloading it.
+	dumpCh, stopDump := dumpSignal()
+	defer stopDump()
+	reloadCh, stopReload := reloadSignal()
+	defer stopReload()
+
 	pollAll(ctx, instances, holder, dPlugins, log)
 
 	multi := isMulti(instances)
@@ -135,9 +144,6 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 			pollLoop(ctx, inst, holder, multi, dPlugins, log, dump)
 		}(inst, dumpChans[i])
 	}
-
-	dumpCh := dumpSignal()
-	reloadCh := reloadSignal()
 
 	for {
 		select {

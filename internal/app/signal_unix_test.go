@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"log/slog"
 	"math"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDumpState_WithData(t *testing.T) {
@@ -51,7 +53,35 @@ func TestDumpState_NoData(t *testing.T) {
 	assert.Contains(t, buf.String(), "no data")
 }
 
-func TestDumpSignal_ReturnsChannel(t *testing.T) {
-	ch := dumpSignal()
-	assert.NotNil(t, ch)
+func TestDumpSignal_DeliversUntilStopped(t *testing.T) {
+	ch, stop := dumpSignal()
+	require.NotNil(t, ch)
+
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGUSR1))
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("SIGUSR1 was not delivered on the dump channel")
+	}
+
+	stop()
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGUSR1))
+	select {
+	case <-ch:
+		t.Fatal("the channel must go quiet once delivery is stopped")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestReloadSignal_DeliversUntilStopped(t *testing.T) {
+	ch, stop := reloadSignal()
+	require.NotNil(t, ch)
+	defer stop()
+
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGHUP))
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("SIGHUP was not delivered on the reload channel")
+	}
 }
