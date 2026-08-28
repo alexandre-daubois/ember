@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -184,7 +185,7 @@ func histogramData(families map[string]*dto.MetricFamily, name string) (float64,
 	bucketMap := make(map[float64]float64)
 	for _, m := range fam.GetMetric() {
 		if h := m.GetHistogram(); h != nil {
-			sumTotal += h.GetSampleSum()
+			sumTotal += finite(h.GetSampleSum())
 			countTotal += float64(h.GetSampleCount())
 			for _, b := range h.GetBucket() {
 				bucketMap[b.GetUpperBound()] += float64(b.GetCumulativeCount())
@@ -223,15 +224,26 @@ func scalarValue(families map[string]*dto.MetricFamily, name string) float64 {
 
 func metricValue(m *dto.Metric) float64 {
 	if g := m.GetGauge(); g != nil {
-		return g.GetValue()
+		return finite(g.GetValue())
 	}
 	if c := m.GetCounter(); c != nil {
-		return c.GetValue()
+		return finite(c.GetValue())
 	}
 	if u := m.GetUntyped(); u != nil {
-		return u.GetValue()
+		return finite(u.GetValue())
 	}
 	return 0
+}
+
+// finite maps NaN and the infinities to zero. A NaN gauge is Prometheus for
+// "no value right now", and letting one through poisons every average and rate
+// derived from it, then makes encoding/json refuse the whole snapshot: the
+// --json output would silently come out empty.
+func finite(v float64) float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
+	}
+	return v
 }
 
 func labelValue(m *dto.Metric, name string) string {

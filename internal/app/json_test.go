@@ -262,6 +262,50 @@ func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 	assert.InDelta(t, 120.0, *out.Derived.P99, 0.001)
 }
 
+func TestRunJSON_OnceSurvivesANaNSample(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/metrics" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="a.test",code="200"} 100
+# TYPE caddy_http_requests_in_flight gauge
+caddy_http_requests_in_flight{host="a.test"} NaN
+`))
+	}))
+	defer srv.Close()
+
+	r, w, _ := os.Pipe()
+	origStdout := os.Stdout
+	os.Stdout = w
+
+	cfg := &config{
+		interval: time.Second,
+		once:     true,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	inst := &instance{name: "test", addr: srv.URL, fetcher: fetcher.NewHTTPFetcher(srv.URL, 0)}
+	err := runJSON(context.Background(), []*instance{inst}, cfg)
+
+	w.Close()
+	os.Stdout = origStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	require.NoError(t, err)
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	require.Len(t, lines, 1, "one NaN sample must not swallow the whole snapshot")
+
+	var parsed jsonOutput
+	require.NoError(t, json.Unmarshal(lines[0], &parsed))
+	assert.Zero(t, parsed.Metrics.HTTPRequestsInFlight)
+	assert.InDelta(t, 100.0, parsed.Metrics.HTTPRequestsTotal, 0.001,
+		"the samples that were fine must still be there")
+}
+
 func TestRunJSON_OnceFailsWhenNothingCouldBeCollected(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

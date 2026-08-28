@@ -116,13 +116,19 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 		return &out
 	}
 
-	emit := func(out *jsonOutput) {
+	// Encode refuses NaN and the infinities outright. Swallowing that made
+	// --json write nothing at all and still exit 0, so say it out loud.
+	emit := func(out *jsonOutput) error {
 		if out == nil {
-			return
+			return nil
 		}
 		encMu.Lock()
-		_ = enc.Encode(out)
+		err := enc.Encode(out)
 		encMu.Unlock()
+		if err != nil {
+			cfg.logger.Error("encode snapshot failed", "err", err)
+		}
+		return err
 	}
 
 	results := make([]*jsonOutput, len(instances))
@@ -136,11 +142,14 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 	}
 	wg.Wait()
 	emitted := 0
+	var emitErr error
 	for _, idx := range order {
 		if results[idx] != nil {
 			emitted++
 		}
-		emit(results[idx])
+		if err := emit(results[idx]); err != nil {
+			emitErr = err
+		}
 	}
 
 	if cfg.once {
@@ -149,7 +158,7 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 		if emitted == 0 {
 			return fmt.Errorf("no snapshot could be collected")
 		}
-		return nil
+		return emitErr
 	}
 
 	for _, inst := range instances {
@@ -161,7 +170,7 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					emit(pollOne(inst))
+					_ = emit(pollOne(inst))
 				}
 			}
 		}(inst)
