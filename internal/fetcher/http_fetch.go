@@ -234,12 +234,13 @@ func (f *HTTPFetcher) onConnected(ctx context.Context) {
 	fpStale := time.Since(f.lastFrankenPHPCheck) >= serverNamesRefreshInterval
 	f.mu.Unlock()
 	if fpStale {
-		detected := f.DetectFrankenPHP(ctx)
-		if detected {
-			f.mu.Lock()
-			f.lastFrankenPHPCheck = time.Now()
-			f.mu.Unlock()
-		}
+		// Stamp whatever the answer is: "no FrankenPHP here" is a result, not
+		// a failure, and only recording the positive one made plain Caddy pay
+		// for an extra admin API request on every single poll.
+		f.DetectFrankenPHP(ctx)
+		f.mu.Lock()
+		f.lastFrankenPHPCheck = time.Now()
+		f.mu.Unlock()
 	}
 
 	f.mu.Lock()
