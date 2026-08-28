@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"sort"
@@ -134,11 +135,20 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 		}(i, inst)
 	}
 	wg.Wait()
+	emitted := 0
 	for _, idx := range order {
+		if results[idx] != nil {
+			emitted++
+		}
 		emit(results[idx])
 	}
 
 	if cfg.once {
+		// Exiting 0 after writing nothing would hand `ember diff` an empty
+		// file and make it blame the wrong command.
+		if emitted == 0 {
+			return fmt.Errorf("no snapshot could be collected")
+		}
 		return nil
 	}
 

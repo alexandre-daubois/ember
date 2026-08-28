@@ -557,3 +557,17 @@ func TestNotifyDaemonSubscribers_PanicDoesNotCrash(t *testing.T) {
 	})
 	assert.True(t, normalSub.called, "subscriber after panicking one should still be called")
 }
+
+func TestPollInstance_FailedFetchLeavesHealthzUnhealthy(t *testing.T) {
+	cfg, instances := daemonTestConfig(t, "127.0.0.1:0")
+
+	holder := &exporter.StateHolder{}
+	pollInstance(context.Background(), instances[0], holder, false, nil, cfg.logger)
+
+	rec := httptest.NewRecorder()
+	newMetricsHandler(holder, cfg, nil).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	assert.NotEqual(t, http.StatusOK, rec.Code,
+		"/healthz must not answer ok while the monitored Caddy is down")
+}

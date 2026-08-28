@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -259,6 +260,34 @@ func TestBuildJSONOutput_DerivedPercentiles(t *testing.T) {
 	assert.InDelta(t, 30.0, *out.Derived.P90, 0.001)
 	assert.InDelta(t, 45.0, *out.Derived.P95, 0.001)
 	assert.InDelta(t, 120.0, *out.Derived.P99, 0.001)
+}
+
+func TestRunJSON_OnceFailsWhenNothingCouldBeCollected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	r, w, _ := os.Pipe()
+	origStdout := os.Stdout
+	os.Stdout = w
+
+	cfg := &config{
+		interval: time.Second,
+		once:     true,
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	inst := &instance{name: "test", addr: srv.URL, fetcher: fetcher.NewHTTPFetcher(srv.URL, 0)}
+	err := runJSON(context.Background(), []*instance{inst}, cfg)
+
+	w.Close()
+	os.Stdout = origStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	require.Error(t, err, "writing nothing and exiting 0 would hand ember diff an empty file")
+	assert.Empty(t, buf.String(), "no snapshot means no line")
 }
 
 func TestRunJSON_Once(t *testing.T) {
