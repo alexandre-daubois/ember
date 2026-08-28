@@ -75,6 +75,22 @@ func TestBuildTLSConfig_ClientCertBadPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "load client cert")
 }
 
+func TestBuildTLSConfig_ClientCertWithoutKey(t *testing.T) {
+	certFile, _ := generateTestClientCert(t)
+
+	_, err := BuildTLSConfig(TLSOptions{ClientCert: certFile})
+	require.Error(t, err, "a half pair must fail rather than quietly disable mTLS")
+	assert.Contains(t, err.Error(), "must be set together")
+}
+
+func TestBuildTLSConfig_ClientKeyWithoutCert(t *testing.T) {
+	_, keyFile := generateTestClientCert(t)
+
+	_, err := BuildTLSConfig(TLSOptions{ClientKey: keyFile})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be set together")
+}
+
 func TestBuildTLSConfig_Full(t *testing.T) {
 	caFile := generateTestCA(t)
 	certFile, keyFile := generateTestClientCert(t)
