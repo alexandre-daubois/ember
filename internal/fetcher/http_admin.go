@@ -52,6 +52,9 @@ func (f *HTTPFetcher) CheckAdminAPI(ctx context.Context) error {
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("admin API returned HTTP %d", resp.StatusCode)
+	}
 	return nil
 }
 

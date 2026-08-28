@@ -35,6 +35,18 @@ func TestCheckAdminAPI_Unreachable(t *testing.T) {
 	assert.Contains(t, err.Error(), "unreachable")
 }
 
+func TestCheckAdminAPI_NotAnAdminEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	err := f.CheckAdminAPI(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 404")
+}
+
 func TestCheckMetricsEnabled_True(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/apps/http/metrics" {
