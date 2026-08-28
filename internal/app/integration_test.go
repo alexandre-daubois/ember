@@ -235,14 +235,14 @@ func TestIntegration_Daemon_Metrics(t *testing.T) {
 	snap, err := f.Fetch(ctx)
 	require.NoError(t, err)
 	state.Update(snap)
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	time.Sleep(200 * time.Millisecond)
 
 	snap, err = f.Fetch(ctx)
 	require.NoError(t, err)
 	state.Update(snap)
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	metricsURL := fmt.Sprintf("http://%s/metrics", expose)
 	resp, err := http.Get(metricsURL)
@@ -295,7 +295,7 @@ func TestIntegration_Daemon_Healthz(t *testing.T) {
 	snap, err := f.Fetch(ctx)
 	require.NoError(t, err)
 	state.Update(snap)
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	// now healthy: 200
 	resp, err = http.Get(healthURL)
@@ -339,7 +339,7 @@ func TestIntegration_Daemon_BasicAuth(t *testing.T) {
 	snap, err := f.Fetch(ctx)
 	require.NoError(t, err)
 	state.Update(snap)
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))
@@ -403,7 +403,7 @@ func TestIntegration_Daemon_MetricsPrefix(t *testing.T) {
 	snap, err := f.Fetch(ctx)
 	require.NoError(t, err)
 	state.Update(snap)
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, "myapp", nil))
@@ -610,7 +610,7 @@ func TestIntegration_PrometheusRoundTrip_WithHosts(t *testing.T) {
 
 	expose := freePort(t)
 	holder := &exporter.StateHolder{}
-	holder.Store(state.CopyForExport())
+	holder.StoreAll(state.CopyForExport(), nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, "", nil))

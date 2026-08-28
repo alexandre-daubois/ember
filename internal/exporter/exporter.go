@@ -44,21 +44,8 @@ func (h *StateHolder) put(name string, slot *instanceSlot) {
 	h.mu.Unlock()
 }
 
-func (h *StateHolder) Store(s model.State) {
-	h.put("", &instanceSlot{state: s})
-}
-
 func (h *StateHolder) StoreAll(s model.State, exports []plugin.PluginExport) {
 	h.put("", &instanceSlot{state: s, pluginExports: exports})
-}
-
-func (h *StateHolder) Load() model.State {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if slot, ok := h.instances[""]; ok {
-		return slot.state
-	}
-	return model.State{}
 }
 
 func (h *StateHolder) SetMulti(multi bool) {

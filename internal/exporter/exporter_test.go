@@ -57,7 +57,7 @@ func TestHandler_NoData_Returns503(t *testing.T) {
 
 func TestHandler_ContentType(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	rec := get(holder)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -72,7 +72,7 @@ func TestHandler_ThreadMetrics(t *testing.T) {
 		{Index: 3, State: "starting"},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(threads, nil))
+	holder.StoreAll(stateWithThreads(threads, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, `frankenphp_threads_total{state="busy"} 2`)
@@ -89,7 +89,7 @@ func TestHandler_ThreadMemory(t *testing.T) {
 		{Index: 2, MemoryUsage: 5 * 1024 * 1024},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(threads, nil))
+	holder.StoreAll(stateWithThreads(threads, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, `frankenphp_thread_memory_bytes{index="0"} 10485760`)
@@ -103,7 +103,7 @@ func TestHandler_ThreadMemory_SkippedWhenAllZero(t *testing.T) {
 		{Index: 1, MemoryUsage: 0},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(threads, nil))
+	holder.StoreAll(stateWithThreads(threads, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.NotContains(t, body, "frankenphp_thread_memory_bytes")
@@ -115,7 +115,7 @@ func TestHandler_WorkerMetrics(t *testing.T) {
 		"/app/api.php":    {Crashes: 0, Restarts: 1, QueueDepth: 0, RequestCount: 3000},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, workers))
+	holder.StoreAll(stateWithThreads(nil, workers), nil)
 
 	body := get(holder).Body.String()
 
@@ -129,7 +129,7 @@ func TestHandler_WorkerMetrics(t *testing.T) {
 
 func TestHandler_WorkerMetrics_SkippedWhenNoWorkers(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.NotContains(t, body, "frankenphp_worker_crashes_total")
@@ -144,7 +144,7 @@ func TestHandler_Percentiles(t *testing.T) {
 	s.Derived.P99 = 120.3
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, `frankenphp_request_duration_milliseconds{quantile="0.5"} 12.50`)
@@ -155,7 +155,7 @@ func TestHandler_Percentiles(t *testing.T) {
 
 func TestHandler_NoPercentiles(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.NotContains(t, body, "frankenphp_request_duration_milliseconds")
@@ -163,7 +163,7 @@ func TestHandler_NoPercentiles(t *testing.T) {
 
 func TestHandler_ProcessMetrics(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, "process_cpu_percent 42.50")
@@ -178,11 +178,11 @@ func TestStateHolder_Concurrent(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			holder.Store(stateWithThreads(nil, nil))
+			holder.StoreAll(stateWithThreads(nil, nil), nil)
 		}()
 		go func() {
 			defer wg.Done()
-			_ = holder.Load()
+			_, _ = holder.entries()
 		}()
 	}
 	wg.Wait()
@@ -211,7 +211,7 @@ func TestHandler_RoundTrip_ValidPrometheus(t *testing.T) {
 	s.Derived.P99 = 120.3
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	rec := get(holder)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -235,7 +235,7 @@ func TestHandler_WorkerMetrics_SortedDeterministic(t *testing.T) {
 		"/m.php": {Crashes: 3},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, workers))
+	holder.StoreAll(stateWithThreads(nil, workers), nil)
 
 	body1 := get(holder).Body.String()
 	body2 := get(holder).Body.String()
@@ -261,7 +261,7 @@ func TestHandler_ThreadMetrics_NegativeOtherClampedToZero(t *testing.T) {
 	s.Derived.TotalIdle = 2
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, `frankenphp_threads_total{state="other"} 0`)
@@ -301,7 +301,7 @@ func TestHandler_HostMetrics(t *testing.T) {
 		},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	body := get(holder).Body.String()
 
@@ -328,7 +328,7 @@ func TestHandler_HostMetrics(t *testing.T) {
 
 func TestHandler_HostMetrics_SkippedWhenNoHosts(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	body := get(holder).Body.String()
 	assert.NotContains(t, body, "ember_host_rps")
@@ -347,7 +347,7 @@ func TestHandler_HostStatusRate_SkippedWhenAllHostsHaveNoStatusCodes(t *testing.
 		{Host: "api.example.com", RPS: 1.0},
 		{Host: "web.example.com", RPS: 0.5},
 	}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	body := get(holder).Body.String()
 	assert.Contains(t, body, "ember_host_rps", "host RPS should still be emitted")
@@ -362,7 +362,7 @@ func TestHandler_HostMetrics_SortedDeterministic(t *testing.T) {
 		{Host: "m.example.com", RPS: 3},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	body1 := get(holder).Body.String()
 	body2 := get(holder).Body.String()
@@ -382,7 +382,7 @@ func TestHandler_HostMetrics_ValidPrometheus(t *testing.T) {
 		},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	rec := get(holder)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -424,7 +424,7 @@ func TestHandler_WithPrefix_AllMetricsPrefixed(t *testing.T) {
 	}
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	rec := getWithPrefix(holder, "prod")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -458,7 +458,7 @@ func TestHandler_ErrorMetrics(t *testing.T) {
 		{Host: "cdn.example.com", ErrorRate: 1.2},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	body := get(holder).Body.String()
 
@@ -475,7 +475,7 @@ func TestHandler_ErrorMetrics_SkippedWhenAllZero(t *testing.T) {
 		{Host: "web.example.com", ErrorRate: 0},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	body := get(holder).Body.String()
 	assert.NotContains(t, body, "ember_host_error_rate")
@@ -486,7 +486,7 @@ func TestHandler_ErrorMetrics_ValidPrometheus(t *testing.T) {
 		{Host: "api.example.com", ErrorRate: 5.0},
 	}
 	holder := &StateHolder{}
-	holder.Store(stateWithHosts(hosts))
+	holder.StoreAll(stateWithHosts(hosts), nil)
 
 	rec := get(holder)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -499,7 +499,7 @@ func TestHandler_ErrorMetrics_ValidPrometheus(t *testing.T) {
 
 func TestHandler_EmptyPrefix_DefaultNames(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	rec := getWithPrefix(holder, "")
 	body := rec.Body.String()
@@ -535,7 +535,7 @@ func TestHealthHandler_FreshData(t *testing.T) {
 	s.Update(snap)
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	rec := healthz(holder, time.Second)
 
@@ -557,7 +557,7 @@ func TestHealthHandler_StaleData(t *testing.T) {
 	s.Update(snap)
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	rec := healthz(holder, time.Second)
 
@@ -578,7 +578,7 @@ func TestHealthHandler_StaleThresholdFloor(t *testing.T) {
 	s.Update(snap)
 
 	holder := &StateHolder{}
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	// interval=500ms -> 3x = 1.5s, but floor is 5s, so 4s-old data should be OK
 	rec := healthz(holder, 500*time.Millisecond)
@@ -681,7 +681,7 @@ func TestInstanceHealthHandler_SingleInstanceModeAlways404(t *testing.T) {
 	}
 	var s model.State
 	s.Update(snap)
-	holder.Store(s)
+	holder.StoreAll(s, nil)
 
 	rec := instanceHealthz(holder, "/healthz/web1", time.Second)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
@@ -906,7 +906,7 @@ func TestBasicAuth_InvalidUser(t *testing.T) {
 
 func TestHandler_WithRecorder_GoldenPath(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads(nil, nil))
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
 
 	rec := instrumentation.New("v")
 	rec.Record(instrumentation.StageMetrics, 12*time.Millisecond, nil)
@@ -1001,7 +1001,7 @@ func TestHandler_Multi_NoBuildInfoLabel(t *testing.T) {
 
 func TestHandler_Single_NoEmberInstanceLabel(t *testing.T) {
 	holder := &StateHolder{}
-	holder.Store(stateWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsBusy: true}}, nil))
+	holder.StoreAll(stateWithThreads([]fetcher.ThreadDebugState{{Index: 0, IsBusy: true}}, nil), nil)
 
 	rec := get(holder)
 	body := rec.Body.String()
