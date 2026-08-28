@@ -819,6 +819,32 @@ func (e *richExporter) WriteMetrics(w io.Writer, _ any, _ string) {
 	_, _ = io.WriteString(w, "plugin_metric{kind=\"foo\"} 2\n")
 }
 
+type collidingExporter struct{}
+
+func (e *collidingExporter) WriteMetrics(w io.Writer, _ any, _ string) {
+	_, _ = io.WriteString(w, "# HELP frankenphp_threads_total the plugin's own description\n")
+	_, _ = io.WriteString(w, "# TYPE frankenphp_threads_total gauge\n")
+	_, _ = io.WriteString(w, "frankenphp_threads_total{state=\"custom\"} 1\n")
+}
+
+func TestHandler_PluginFamilyCollidingWithCoreEmitsOneHelp(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), []plugin.PluginExport{
+		{Exporter: &collidingExporter{}, Data: "d"},
+	})
+
+	rec := get(holder)
+	body := rec.Body.String()
+
+	assert.Equal(t, 1, strings.Count(body, "# HELP frankenphp_threads_total"),
+		"a plugin must not re-declare a family the core writer already declared")
+	assert.Equal(t, 1, strings.Count(body, "# TYPE frankenphp_threads_total"))
+
+	parser := expfmt.NewTextParser(prommodel.UTF8Validation)
+	_, err := parser.TextToMetricFamilies(strings.NewReader(body))
+	require.NoError(t, err, "a colliding plugin family must not invalidate the whole scrape")
+}
+
 func TestHandler_Multi_PluginMetricsCarryEmberInstanceLabel(t *testing.T) {
 	holder := &StateHolder{}
 	holder.SetMulti(true)

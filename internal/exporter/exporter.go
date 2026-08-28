@@ -102,22 +102,24 @@ type renderEntry struct {
 
 // metricCtx tracks which metric families have already received their HELP/TYPE
 // lines so a single family rendered for several instances stays valid Prometheus
-// text.
+// text. helpSeen is keyed the way helpTypeKey keys it, so the plugin writer can
+// share the same set and a plugin family colliding with a core one is caught.
 type metricCtx struct {
 	out      io.Writer
 	prefix   string
-	helpSeen map[string]bool
+	helpSeen map[string]struct{}
 }
 
 func newMetricCtx(w io.Writer, prefix string) *metricCtx {
-	return &metricCtx{out: w, prefix: prefix, helpSeen: make(map[string]bool)}
+	return &metricCtx{out: w, prefix: prefix, helpSeen: make(map[string]struct{})}
 }
 
 func (c *metricCtx) help(name, help, typ string) {
-	if c.helpSeen[name] {
+	if _, dup := c.helpSeen["HELP "+name]; dup {
 		return
 	}
-	c.helpSeen[name] = true
+	c.helpSeen["HELP "+name] = struct{}{}
+	c.helpSeen["TYPE "+name] = struct{}{}
 	fmt.Fprintf(c.out, "# HELP %s %s\n", name, help)
 	fmt.Fprintf(c.out, "# TYPE %s %s\n", name, typ)
 }
@@ -158,7 +160,6 @@ func Handler(holder *StateHolder, prefix string, fallbackRecorder *instrumentati
 
 		writeAllSelfMetrics(ctx, entries, multi, fallbackRecorder)
 
-		pluginHelpSeen := make(map[string]struct{})
 		for _, e := range entries {
 			label := ""
 			if multi {
@@ -166,7 +167,7 @@ func Handler(holder *StateHolder, prefix string, fallbackRecorder *instrumentati
 			}
 			for _, pe := range e.slot.pluginExports {
 				if pe.Exporter != nil && pe.Data != nil {
-					safeWriteMetrics(w, pe.Exporter, pe.Data, prefix, label, pluginHelpSeen)
+					safeWriteMetrics(w, pe.Exporter, pe.Data, prefix, label, ctx.helpSeen)
 				}
 			}
 		}
