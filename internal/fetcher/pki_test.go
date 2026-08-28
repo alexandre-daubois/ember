@@ -125,6 +125,32 @@ func TestFetchPKICertificates_MultipleCAs(t *testing.T) {
 	assert.Len(t, certs, 2)
 }
 
+func TestFetchPKICertificates_EscapesCAIDInPath(t *testing.T) {
+	rootPEM, _ := generateTestCAPEM(t)
+	const caID = "tenant a/../../config"
+
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.EscapedPath() {
+		case "/config/apps/pki/certificate_authorities":
+			json.NewEncoder(w).Encode(map[string]json.RawMessage{caID: json.RawMessage(`{}`)})
+		case "/pki/ca/tenant%20a%2F..%2F..%2Fconfig":
+			gotPath = r.URL.EscapedPath()
+			json.NewEncoder(w).Encode(pkiCAInfo{ID: caID, RootCertificate: string(rootPEM)})
+		default:
+			gotPath = r.URL.EscapedPath()
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	certs := f.FetchPKICertificates(context.Background())
+
+	assert.Equal(t, "/pki/ca/tenant%20a%2F..%2F..%2Fconfig", gotPath)
+	assert.Len(t, certs, 1)
+}
+
 func TestFetchPKICertificates_NoPKI(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

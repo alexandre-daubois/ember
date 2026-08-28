@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +80,7 @@ func (f *HTTPFetcher) fetchCAInfo(ctx context.Context, caID string) (*pkiCAInfo,
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	req, err := newGetRequest(ctx, f.baseURL+"/pki/ca/"+caID)
+	req, err := newGetRequest(ctx, f.baseURL+"/pki/ca/"+url.PathEscape(caID))
 	if err != nil {
 		return nil, err
 	}
