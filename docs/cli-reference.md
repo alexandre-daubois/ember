@@ -22,7 +22,7 @@ ember [flags]
 | `--metrics-prefix` | string | _(none)_ | Prefix for exported Prometheus metric names. See [Prometheus Export](prometheus-export.md). |
 | `--log-format`     | string | `text` | Log format for daemon/json modes (`text` or `json`). JSON format is suitable for log aggregation systems. |
 | `--ca-cert`        | string | _(none)_ | Path to CA certificate for TLS verification |
-| `--client-cert`    | string | _(none)_ | Path to client certificate for mTLS |
+| `--client-cert`    | string | _(none)_ | Path to client certificate for mTLS; must be paired with `--client-key` |
 | `--client-key`     | string | _(none)_ | Path to client private key for mTLS |
 | `--insecure`       | bool | `false` | Skip TLS certificate verification |
 | `-f`, `--config`   | string | `.ember.toml` | Path to the Ember config file (TOML). Read only when neither `--addr` nor `EMBER_ADDR` is set. See [Config file](#config-file). |
@@ -34,7 +34,7 @@ ember [flags]
 
 ## Environment Variables
 
-Some flags can be set via environment variables. Explicit flags always take precedence over environment variables.
+Some flags can be set via environment variables. Explicit flags always take precedence over environment variables. A variable exported with no value is treated as unset, so a `.env` file or a ConfigMap carrying an empty key leaves the default in place instead of aborting the command.
 
 | Variable | Flag | Example |
 |----------|------|---------|
@@ -218,12 +218,14 @@ ember init -yq   # skip prompts, suppress output
 ember init -y --addr web1=https://a --addr web2=https://b   # multi-instance
 ```
 
+`--quiet` (`-q`) also requires `--yes` (`-y`): the confirmation prompt would otherwise be written to a discarded stream while the command waits for an answer nobody can see it wants.
+
 With multiple `--addr` values, the checklist is run against every instance, output is grouped per instance under a `--- <name> ---` header sorted by name, and the exit code is non-zero if any instance fails. Interactive prompts are disabled in multi-instance mode: `--yes` (`-y`) is required, otherwise the command errors out.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `-y`, `--yes` | bool | `false` | Skip confirmation prompts (required when multiple `--addr` are provided) |
-| `-q`, `--quiet` | bool | `false` | Suppress output (errors still reported via exit code) |
+| `-q`, `--quiet` | bool | `false` | Suppress output (errors still reported via exit code); requires `-y`, since a confirmation prompt cannot be shown |
 
 ### `ember version`
 
@@ -352,6 +354,10 @@ Compares two JSON or JSONL snapshots produced by `ember --json --once` and shows
 
 Exit code 0 means no regressions detected, 1 means regressions found (>10% degradation on latency, error rate, or CPU; >10% drop on RPS).
 
+A snapshot whose `errors` array is non-empty is refused outright: comparing two captures Ember could not collect would report "no regressions" while it never reached Caddy.
+
+When the cumulative counters (`Requests`, `Avg (cumul.)`, `Errors`) went backwards between the two captures, Caddy restarted in between and those three lines are left out rather than scored as a 100% collapse. The gauges beside them still compare.
+
 **Examples:**
 
 ```bash
@@ -385,7 +391,7 @@ No regressions detected
 
 **Multi-instance input:**
 
-When a snapshot was produced with repeated `--addr` (multi-instance JSONL with one line per instance per tick), `ember diff` groups lines by the `instance` field, keeps the last entry per instance in each file, and emits one diff block per instance. The exit code is non-zero if any single instance regresses.
+When a snapshot was produced with repeated `--addr` (multi-instance JSONL with one line per instance per tick), `ember diff` groups lines by the `instance` field, keeps the last entry per instance in each file, and emits one diff block per instance. The exit code is non-zero if any single instance regresses. An instance present in only one of the two files is reported as absent rather than diffed against zero: missing from the second capture counts as a regression, present only in the second one does not.
 
 ```bash
 ember --json --once --addr web1=https://web1.fr --addr web2=https://web2.fr > before.jsonl

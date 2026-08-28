@@ -2,6 +2,33 @@
 
 All notable changes to Ember are documented here.
 
+## Unreleased
+
+### Fixed
+
+- `/healthz` no longer reports `ok` while the monitored Caddy is down: a failed `/metrics` scrape is now reported by the fetcher, so the daemon stops storing a zeroed snapshot stamped with a fresh timestamp, logs the outage, and lets the endpoint go stale.
+- `ember --json --once` no longer writes an empty file and exits 0 when nothing could be collected, and a single `NaN` sample no longer swallows the whole snapshot: non-finite values are read as zero at the parser, and an encoding failure is reported instead of discarded.
+- `ember diff` refuses two captures that recorded a fetch error, skips the cumulative counters when the target restarted between them, and names an instance present in only one file instead of diffing it against zero.
+- An `EMBER_*` variable exported with no value is treated as unset instead of aborting the command; an empty `EMBER_CONFIG` no longer hides `.ember.toml`.
+- `--client-cert` given without `--client-key` (or the reverse) now fails instead of connecting with mTLS silently disabled.
+- `ember init -q` requires `-y`, instead of blocking on a confirmation prompt written to a discarded stream.
+- `ember --daemon --timeout <d>` exits 0 when the timeout expires, matching `--json`.
+- SIGHUP and SIGUSR1 are armed before the daemon's first poll, so a signal sent during startup no longer terminates the process.
+- A Caddy log line over 1 MiB no longer ends the log stream for the whole connection.
+- A transient admin API failure no longer erases the record of which servers Ember enabled access logs on, so the injected `logs` blocks are still removed on quit.
+- A failed `/metrics` scrape is no longer read as a Caddy restart, which was discarding the latency window and the rate baseline on every timeout.
+- The TUI marks its first fetch in flight, so the first tick no longer starts a second concurrent fetch against the same process handle.
+- A plugin metric family colliding with an Ember one no longer emits a duplicate `# HELP` line, which Prometheus rejects for the whole scrape.
+- `ember init` reports a non-2xx answer from the admin API instead of accepting it as reachable.
+- Control bytes in a Caddy config object key are scrubbed before the Config tab renders them.
+- `ctrl+c` quits from the detail view and the filter prompt.
+- The exposed metrics server sets a read-header timeout, and the TUI no longer leaks its listener goroutines on quit.
+- FrankenPHP detection honours its refresh interval on plain Caddy instead of probing the admin API on every poll.
+- Clearing the log buffer releases the entries it held.
+- Ember bootstraps Caddy's logging config only when Caddy rejected the sink write, so a timeout or a server error no longer triggers a write into the shared logging section.
+- A CA identifier from the PKI admin API is URL-escaped before it is put in the request path.
+- The plugin metric writer reports the bytes that actually reached the response and stops writing once the stream failed, instead of splicing leftovers into the next plugin's output.
+
 ## 1.6.0 - 2026-08-17
 
 ### Added
