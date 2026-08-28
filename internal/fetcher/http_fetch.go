@@ -230,6 +230,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 		FetchedAt:     time.Now(),
 		Errors:        errs,
 		HasFrankenPHP: currentHasFP,
+		MetricsFailed: !metricsOK,
 	}, metricsErr
 }
 
