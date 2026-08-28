@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -69,17 +70,32 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 		return fmt.Errorf("marshal %s log sink payload: %w", name, err)
 	}
 
-	if err := f.putLogSink(ctx, name, body); err == nil {
+	err = f.putLogSink(ctx, name, body)
+	if err == nil {
 		return nil
 	}
 
-	// The PUT fails when /config/logging/logs does not exist yet (Caddyfile
-	// has no log directive). Bootstrap the path, then retry.
+	// The PUT fails with 400 "invalid traversal path" when /config/logging/logs
+	// does not exist yet (Caddyfile has no log directive). Bootstrap the path,
+	// then retry. Only a rejection means that: a timeout or a 500 under load
+	// says nothing about the config tree, and the bootstrap writes into the
+	// shared logging section that already holds the operator's own loggers.
+	var status statusError
+	if !errors.As(err, &status) || status.code >= http.StatusInternalServerError {
+		return fmt.Errorf("register %s log sink: %w", name, err)
+	}
+
 	if err := f.ensureLoggingPath(ctx); err != nil {
 		return fmt.Errorf("register %s log sink: %w", name, err)
 	}
 	return f.putLogSink(ctx, name, body)
 }
+
+// statusError carries the status code of an admin API answer so callers can
+// tell a rejection apart from a server fault or a dead connection.
+type statusError struct{ code int }
+
+func (e statusError) Error() string { return fmt.Sprintf("HTTP %d", e.code) }
 
 func (f *HTTPFetcher) putLogSink(ctx context.Context, name string, body []byte) error {
 	endpoint := f.baseURL + "/config/logging/logs/" + name
@@ -98,7 +114,7 @@ func (f *HTTPFetcher) putLogSink(ctx context.Context, name string, body []byte) 
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		return statusError{code: resp.StatusCode}
 	}
 	return nil
 }
