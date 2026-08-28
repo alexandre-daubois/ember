@@ -56,6 +56,13 @@ func runDiff(w io.Writer, beforePath, afterPath string) error {
 		return fmt.Errorf("load %s: %w", afterPath, err)
 	}
 
+	if err := rejectFailedCaptures(beforePath, before); err != nil {
+		return err
+	}
+	if err := rejectFailedCaptures(afterPath, after); err != nil {
+		return err
+	}
+
 	hasRegressions := false
 	if isSingleInstance(before) && isSingleInstance(after) {
 		d := computeDiff(before[""], after[""])
@@ -114,6 +121,27 @@ func runDiff(w io.Writer, beforePath, afterPath string) error {
 	}
 	fmt.Fprint(w, "\nNo regressions detected\n")
 	return nil
+}
+
+// rejectFailedCaptures refuses a snapshot whose fetch errors were recorded in
+// the file. Two captures made of nothing but failed fetches compare clean and
+// turn a deployment gate green while Ember never reached Caddy at all.
+func rejectFailedCaptures(path string, snaps map[string]jsonOutput) error {
+	names := make([]string, 0, len(snaps))
+	for name, snap := range snaps {
+		if len(snap.Errors) > 0 {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	first := snaps[names[0]]
+	if names[0] == "" {
+		return fmt.Errorf("%s: the snapshot recorded a fetch error: %s", path, first.Errors[0])
+	}
+	return fmt.Errorf("%s: the snapshot for %s recorded a fetch error: %s", path, names[0], first.Errors[0])
 }
 
 func isSingleInstance(snaps map[string]jsonOutput) bool {
