@@ -155,7 +155,11 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 			for _, inst := range instances {
 				inst.fetcher.CloseIdleConnections()
 			}
-			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+			// A --timeout expiry is a requested shutdown, not a failure: the
+			// cancel cause is DeadlineExceeded rather than Canceled, and only
+			// excluding the latter made --daemon exit 1 where --json exits 0.
+			if cause := context.Cause(ctx); cause != nil &&
+				!errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) {
 				return cause
 			}
 			return nil
