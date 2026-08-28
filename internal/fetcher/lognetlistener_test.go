@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -271,10 +272,9 @@ func TestLogNetListener_OversizedLineDropped(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 
-	// Send a line exceeding maxLogLineBytes (1 MiB) without a newline,
-	// followed by a normal line. The oversized data triggers a scanner
-	// error, closing the connection. The listener must survive and accept
-	// a fresh connection carrying the normal line.
+	// Send a line exceeding maxLogLineBytes (1 MiB) without a newline, then
+	// hang up. The oversized data is dropped, and the listener must accept a
+	// fresh connection carrying a normal line.
 	huge := make([]byte, maxLogLineBytes+1024)
 	for i := range huge {
 		huge[i] = 'x'
@@ -292,6 +292,45 @@ func TestLogNetListener_OversizedLineDropped(t *testing.T) {
 
 	entries := col.waitFor(t, 1, 2*time.Second)
 	assert.Equal(t, "ok.com", entries[0].Host)
+
+	cancel()
+	<-done
+}
+
+func TestLogNetListener_OversizedLineDoesNotEndTheStream(t *testing.T) {
+	listener, err := NewLogNetListener("127.0.0.1:0")
+	require.NoError(t, err)
+
+	col := &netCollector{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		listener.Start(ctx, col.onBatch)
+		close(done)
+	}()
+
+	conn, err := net.Dial("tcp", listener.Addr())
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	_, err = conn.Write([]byte(makeJSONLine("GET", "before.com", "/", 200) + "\n"))
+	require.NoError(t, err)
+
+	// One request with very large headers is enough to blow past the cap. The
+	// entry itself is lost, but the connection carries on.
+	huge := append(bytes.Repeat([]byte("x"), maxLogLineBytes+1024), '\n')
+	_, err = conn.Write(huge)
+	require.NoError(t, err)
+
+	_, err = conn.Write([]byte(makeJSONLine("GET", "after.com", "/", 200) + "\n"))
+	require.NoError(t, err)
+
+	entries := col.waitFor(t, 2, 3*time.Second)
+	assert.Equal(t, "before.com", entries[0].Host)
+	assert.Equal(t, "after.com", entries[1].Host,
+		"an oversized line must not cost the rest of the connection")
 
 	cancel()
 	<-done
