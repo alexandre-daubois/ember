@@ -2,10 +2,14 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,5 +101,38 @@ func TestIsLocalAdminAddr(t *testing.T) {
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, isLocalAdminAddr(c.addr), "addr=%s", c.addr)
+	}
+}
+
+func TestStartMetricsServer_ClosesChannelOnCleanShutdown(t *testing.T) {
+	srv := newMetricsServer("127.0.0.1:0", http.NotFoundHandler())
+	errCh := startMetricsServer(srv)
+
+	time.Sleep(50 * time.Millisecond)
+	require.NoError(t, srv.Shutdown(context.Background()))
+
+	select {
+	case err, ok := <-errCh:
+		assert.False(t, ok, "a clean shutdown must close the channel, not leave the reader blocked")
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the channel stayed open, so the TUI command would block forever")
+	}
+}
+
+func TestStartMetricsServer_ReportsListenFailure(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = busy.Close() }()
+
+	srv := newMetricsServer(busy.Addr().String(), http.NotFoundHandler())
+	errCh := startMetricsServer(srv)
+
+	select {
+	case err, ok := <-errCh:
+		require.True(t, ok, "a listen failure must arrive before the channel closes")
+		assert.ErrorContains(t, err, "metrics server on ")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the listen failure was never reported")
 	}
 }

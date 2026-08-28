@@ -63,16 +63,13 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 		// exceeds the threshold derived from the global --interval.
 		srv = newMetricsServer(cfg.expose, newMetricsHandler(holder, cfg, map[string]time.Duration{"": interval}))
 
-		listenErr := make(chan error, 1)
-		go func() {
-			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				listenErr <- fmt.Errorf("metrics server on %s: %w", cfg.expose, err)
-			}
-		}()
+		listenErr := startMetricsServer(srv)
 
 		select {
-		case err := <-listenErr:
-			return err
+		case err, ok := <-listenErr:
+			if ok {
+				return err
+			}
 		case <-time.After(50 * time.Millisecond):
 		}
 
@@ -102,6 +99,22 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 	}
 
 	return nil
+}
+
+// startMetricsServer runs the exposed metrics server and reports a listen
+// failure on the returned channel. The channel is closed once the server stops
+// for any other reason: without that, the TUI command waiting on it never
+// returns, since a clean Shutdown sends nothing, and it leaks along with the
+// ListenAndServe goroutine for the life of the process.
+func startMetricsServer(srv *http.Server) <-chan error {
+	errCh := make(chan error, 1)
+	go func() {
+		defer close(errCh)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("metrics server on %s: %w", srv.Addr, err)
+		}
+	}()
+	return errCh
 }
 
 // setupLogSource starts streaming Caddy access logs into the UI buffer.
