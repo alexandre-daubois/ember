@@ -549,6 +549,28 @@ func TestRunDiff_RefusesACaptureThatRecordedAFetchError(t *testing.T) {
 	assert.NotContains(t, buf.String(), "No regressions detected")
 }
 
+func TestRunDiff_ACaptureWithMetricsIsStillCompared(t *testing.T) {
+	dir := t.TempDir()
+
+	// A transient threads or process failure lands in errors while the
+	// metrics scrape behind the numbers was fine.
+	withNoise := func(rps float64) jsonOutput {
+		return jsonOutput{
+			Errors:  []string{"fetch threads: HTTP 500"},
+			Derived: &jsonDerived{RPS: rps},
+			Metrics: metrics.MetricsSnapshot{HasHTTPMetrics: true, HTTPRequestDurationCount: 1000},
+			Process: fetcher.ProcessMetrics{},
+		}
+	}
+	before := writeSnapshot(t, dir, "before.json", withNoise(100))
+	after := writeSnapshot(t, dir, "after.json", withNoise(101))
+
+	var buf bytes.Buffer
+
+	require.NoError(t, runDiff(&buf, before, after))
+	assert.Contains(t, buf.String(), "No regressions detected")
+}
+
 func TestRunDiff_CleanCapturesStillCompare(t *testing.T) {
 	dir := t.TempDir()
 
