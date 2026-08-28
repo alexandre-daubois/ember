@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -140,6 +141,38 @@ func (l *LogNetListener) Close() {
 	_ = l.ln.Close()
 }
 
+// readLogLine returns the next newline-terminated line, dropping any line over
+// maxLogLineBytes instead of ending the stream. bufio.Scanner refuses to
+// resume after ErrTooLong, so one oversized request cost the connection every
+// log entry that came after it, until Caddy's net writer reconnected.
+func readLogLine(r *bufio.Reader) (string, error) {
+	var buf []byte
+	oversized := false
+	for {
+		chunk, isPrefix, err := r.ReadLine()
+		if err != nil {
+			if oversized {
+				return "", err
+			}
+			return string(buf), err
+		}
+		if !oversized {
+			if len(buf)+len(chunk) > maxLogLineBytes {
+				oversized = true
+				buf = nil
+			} else {
+				buf = append(buf, chunk...)
+			}
+		}
+		if !isPrefix {
+			if oversized {
+				return "", nil
+			}
+			return string(buf), nil
+		}
+	}
+}
+
 func (l *LogNetListener) handle(ctx context.Context, conn net.Conn, onBatch func([]LogEntry)) {
 	defer l.wg.Done()
 	defer func() { _ = conn.Close() }()
@@ -155,8 +188,7 @@ func (l *LogNetListener) handle(ctx context.Context, conn net.Conn, onBatch func
 		_ = conn.Close()
 	}()
 
-	scanner := bufio.NewScanner(conn)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxLogLineBytes)
+	reader := bufio.NewReaderSize(conn, 64*1024)
 	batch := make([]LogEntry, 0, logBatchSize)
 	flushTimer := time.NewTimer(logBatchFlushInterval)
 	defer flushTimer.Stop()
@@ -172,24 +204,29 @@ func (l *LogNetListener) handle(ctx context.Context, conn net.Conn, onBatch func
 	lineCh := make(chan string, 64)
 	doneCh := make(chan error, 1)
 	go func() {
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
+		for {
+			line, err := readLogLine(reader)
+			if line != "" {
+				select {
+				case lineCh <- line:
+				case <-ctx.Done():
+					return
+				case <-l.done:
+					return
+				}
+			}
+			if err == nil {
 				continue
 			}
-			select {
-			case lineCh <- line:
-			case <-ctx.Done():
-				return
-			case <-l.done:
-				return
+			if errors.Is(err, io.EOF) {
+				err = nil
 			}
-		}
-		err := scanner.Err()
-		select {
-		case doneCh <- err:
-		case <-ctx.Done():
-		case <-l.done:
+			select {
+			case doneCh <- err:
+			case <-ctx.Done():
+			case <-l.done:
+			}
+			return
 		}
 	}()
 
