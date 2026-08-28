@@ -659,6 +659,36 @@ func TestBindEnv_InvalidIntervalIsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "EMBER_INTERVAL")
 }
 
+func TestBindEnv_EmptyIntervalIsIgnored(t *testing.T) {
+	// A Compose env_file or a ConfigMap exports keys with no value, and
+	// LookupEnv reports those as present. Pushing "" into Set aborted every
+	// command instead of leaving the default in place.
+	t.Setenv("EMBER_INTERVAL", "")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+	assert.False(t, cmd.Flag("interval").Changed)
+}
+
+func TestBindEnv_EmptyStdinLogsIsIgnored(t *testing.T) {
+	t.Setenv("EMBER_STDIN_LOGS", "")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+	assert.False(t, cmd.Flag("stdin-logs").Changed)
+}
+
+func TestBindEnv_EmptyConfigLeavesConfigFileEligible(t *testing.T) {
+	// An empty EMBER_CONFIG used to set configPath to "" and flip Changed, so
+	// loadConfigFile treated the missing file as explicit and failed on
+	// "open :" while .ember.toml was never read.
+	t.Setenv("EMBER_CONFIG", "  ")
+
+	cmd := newRootCmd("0.0.0")
+	require.NoError(t, bindEnv(cmd))
+	assert.False(t, cmd.Flag("config").Changed)
+}
+
 func TestBindEnv_AddrFromEnv_SemicolonSeparated(t *testing.T) {
 	t.Setenv("EMBER_ADDR", "web1=http://a:2019;web2=http://b:2019")
 
