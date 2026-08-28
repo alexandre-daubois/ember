@@ -1909,6 +1909,44 @@ func TestDetectCounterReset_OnlyDurationCounterDrops(t *testing.T) {
 		"duration-count drop alone must trigger reset detection")
 }
 
+func TestDetectCounterReset_FailedScrapeIsNotARestart(t *testing.T) {
+	var s State
+	s.Current = &fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{
+		HTTPRequestDurationCount: 1000,
+		Workers:                  map[string]*fetcher.WorkerMetrics{},
+	}}
+
+	// What a timed-out /metrics leaves behind: zeroed counters that look
+	// exactly like a restart.
+	snap := &fetcher.Snapshot{
+		MetricsFailed: true,
+		Metrics:       fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	}
+
+	assert.False(t, s.detectCounterReset(snap),
+		"a scrape that never answered must not cost the percentile window")
+}
+
+func TestState_Update_FailedScrapeKeepsTheRateBaseline(t *testing.T) {
+	var s State
+	s.Update(&fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{
+		HTTPRequestDurationCount: 1000,
+		Workers:                  map[string]*fetcher.WorkerMetrics{},
+	}})
+	s.Update(&fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{
+		HTTPRequestDurationCount: 2000,
+		Workers:                  map[string]*fetcher.WorkerMetrics{},
+	}})
+	require.NotNil(t, s.Previous)
+
+	s.Update(&fetcher.Snapshot{
+		MetricsFailed: true,
+		Metrics:       fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},
+	})
+
+	assert.NotNil(t, s.Previous, "a failed scrape must not blank the next tick's RPS")
+}
+
 func TestDetectCounterReset_HTTPRequestsTotal(t *testing.T) {
 	var s State
 	s.Current = &fetcher.Snapshot{

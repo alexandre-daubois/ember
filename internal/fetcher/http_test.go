@@ -124,6 +124,23 @@ func TestFetch_AllFail(t *testing.T) {
 	assert.Empty(t, snap.Threads.ThreadDebugStates)
 }
 
+func TestFetch_MarksTheScrapeOutcome(t *testing.T) {
+	metricsText := `# TYPE caddy_http_requests_total counter
+caddy_http_requests_total{host="a.com",code="200"} 1
+`
+	ok := newTestServer(404, nil, 200, metricsText)
+	defer ok.Close()
+	snap, err := NewHTTPFetcher(ok.URL, 0).Fetch(context.Background())
+	require.NoError(t, err)
+	assert.False(t, snap.MetricsFailed)
+
+	down := newTestServer(404, nil, 500, "")
+	defer down.Close()
+	snap, err = NewHTTPFetcher(down.URL, 0).Fetch(context.Background())
+	require.Error(t, err)
+	assert.True(t, snap.MetricsFailed, "a zeroed snapshot must say why it is zeroed")
+}
+
 func TestDetectFrankenPHP_True(t *testing.T) {
 	srv := newTestServer(200, ThreadsResponse{}, 200, "")
 	defer srv.Close()

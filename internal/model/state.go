@@ -354,6 +354,12 @@ func (s *State) detectCounterReset(snap *fetcher.Snapshot) bool {
 	if s.Current == nil {
 		return false
 	}
+	// A failed scrape hands back zeroed counters, which look exactly like a
+	// restart. Treating it as one would throw away the percentile window and
+	// the rate baseline on every timeout.
+	if snap.MetricsFailed {
+		return false
+	}
 	if s.Current.Metrics.HTTPRequestDurationCount > 0 && snap.Metrics.HTTPRequestDurationCount < s.Current.Metrics.HTTPRequestDurationCount {
 		return true
 	}
