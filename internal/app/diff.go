@@ -365,7 +365,7 @@ func formatDiffBody(d diffResult) string {
 	b.WriteString("Global\n")
 	writeDiffLines(&b, d.global)
 	if d.countersReset {
-		b.WriteString("     (cumulative counters restarted, not compared)\n")
+		b.WriteString("    (cumulative counters restarted, not compared)\n")
 	}
 
 	if len(d.hosts) > 0 {
