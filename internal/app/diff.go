@@ -87,7 +87,20 @@ func runDiff(w io.Writer, beforePath, afterPath string) error {
 				label = "(unnamed)"
 			}
 			fmt.Fprintf(w, "== %s ==\n", label)
-			d := computeDiff(before[name], after[name])
+
+			b, inBefore := before[name]
+			a, inAfter := after[name]
+			switch {
+			case !inAfter:
+				fmt.Fprintf(w, "!   absent from %s\n", afterPath)
+				hasRegressions = true
+				continue
+			case !inBefore:
+				fmt.Fprintf(w, "    new in %s, nothing to compare\n", afterPath)
+				continue
+			}
+
+			d := computeDiff(b, a)
 			fmt.Fprint(w, formatDiffBody(d))
 			if d.hasRegressions {
 				hasRegressions = true

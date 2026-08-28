@@ -497,10 +497,11 @@ func TestRunDiff_JSONLMultiInstance_NewInstanceAdded(t *testing.T) {
 	var buf bytes.Buffer
 	err := runDiff(&buf, before, after)
 
-	require.NoError(t, err)
+	require.NoError(t, err, "an instance that did not exist before is not a regression")
 	out := buf.String()
 	assert.Contains(t, out, "== web1 ==")
 	assert.Contains(t, out, "== web2 ==")
+	assert.Contains(t, out, "new in", "a first-time instance has nothing to compare against")
 }
 
 func TestRunDiff_JSONLMultiInstance_InstanceRemoved(t *testing.T) {
@@ -526,6 +527,8 @@ func TestRunDiff_JSONLMultiInstance_InstanceRemoved(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, "== web1 ==")
 	assert.Contains(t, out, "== web2 ==", "the gone instance must still get a block so the operator sees it")
+	assert.Contains(t, out, "absent from", "the block must name the missing capture, not read as a traffic collapse")
+	assert.NotContains(t, out, "-100.0%", "a missing instance is not a 100% drop in every metric")
 }
 
 func TestRunDiff_SingleInstanceJSON_NoHeader(t *testing.T) {
