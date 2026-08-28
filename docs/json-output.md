@@ -71,7 +71,7 @@ Each line is a JSON object with the following fields:
 | `metrics` | Raw Caddy and FrankenPHP metrics from the admin API |
 | `process` | Monitored process info: PID, CPU %, RSS (bytes), uptime |
 | `fetchedAt` | Timestamp of this poll (RFC 3339) |
-| `errors` | Array of error strings from this poll (omitted if empty) |
+| `errors` | Array of error strings from this poll (omitted if empty). A poll whose `/metrics` scrape failed produces no line at all: the failure is logged on stderr instead, so a line in the stream always carries usable metrics. |
 | `derived` | Computed metrics: RPS, average response time, error rate, percentiles (omitted on first poll) |
 | `derived.errorRate` | Middleware errors per second (omitted when 0) |
 | `derived.p50/p95/p99` | Request duration percentiles in ms (omitted when unavailable) |
