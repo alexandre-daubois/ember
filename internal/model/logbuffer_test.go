@@ -265,6 +265,17 @@ func TestLogBuffer_Clear(t *testing.T) {
 	assert.Equal(t, "/path/100", snap[0].URI)
 }
 
+func TestLogBuffer_ClearReleasesEntries(t *testing.T) {
+	b := NewLogBuffer(3)
+	for i := 1; i <= 3; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+
+	b.Clear()
+
+	assert.Equal(t, make([]fetcher.LogEntry, 3), b.entries)
+}
+
 func TestLogBuffer_ConcurrentReadersAndWriter(t *testing.T) {
 	b := NewLogBuffer(500)
 
