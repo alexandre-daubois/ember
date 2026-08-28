@@ -211,9 +211,8 @@ func (a *App) Close() {
 }
 
 func (a *App) Init() tea.Cmd {
-	// Mark the fetch in flight the way the tick branch does. Without it the
-	// first tick fires a second concurrent Fetch on the same fetcher, and the
-	// process handle behind it is not safe for two callers at once.
+	// Without this the first tick starts a second concurrent Fetch, which the
+	// process handle behind it is not safe for.
 	a.fetching = true
 	cmds := []tea.Cmd{a.doFetch(), a.doTick()}
 	cmds = append(cmds, a.doPluginFetches()...)

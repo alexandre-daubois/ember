@@ -89,8 +89,8 @@ type renderEntry struct {
 
 // metricCtx tracks which metric families have already received their HELP/TYPE
 // lines so a single family rendered for several instances stays valid Prometheus
-// text. helpSeen is keyed the way helpTypeKey keys it, so the plugin writer can
-// share the same set and a plugin family colliding with a core one is caught.
+// text. helpSeen is keyed the way helpTypeKey keys it so the plugin writer can
+// share the same set.
 type metricCtx struct {
 	out      io.Writer
 	prefix   string

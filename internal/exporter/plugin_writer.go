@@ -44,10 +44,7 @@ func (w *pluginWriter) Write(p []byte) (int, error) {
 		}
 		line := w.buf.Next(i + 1)
 		if err := w.emitLine(line); err != nil {
-			// Reporting len(p) here would tell a plugin writing through
-			// io.Copy or fmt.Fprintf that everything landed, and the bytes
-			// left in the buffer would be spliced into the next plugin's
-			// output by flush.
+			// Reporting len(p) here would tell io.Copy everything landed.
 			n := max(len(p)-w.buf.Len()-len(line), 0)
 			w.err = err
 			w.buf.Reset()

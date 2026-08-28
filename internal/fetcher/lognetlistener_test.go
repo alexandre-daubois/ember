@@ -272,9 +272,8 @@ func TestLogNetListener_OversizedLineDropped(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 
-	// Send a line exceeding maxLogLineBytes (1 MiB) without a newline, then
-	// hang up. The oversized data is dropped, and the listener must accept a
-	// fresh connection carrying a normal line.
+	// Oversized data with no newline, then a hang-up: the listener must
+	// survive and accept a fresh connection.
 	huge := make([]byte, maxLogLineBytes+1024)
 	for i := range huge {
 		huge[i] = 'x'
@@ -318,8 +317,6 @@ func TestLogNetListener_OversizedLineDoesNotEndTheStream(t *testing.T) {
 	_, err = conn.Write([]byte(makeJSONLine("GET", "before.com", "/", 200) + "\n"))
 	require.NoError(t, err)
 
-	// One request with very large headers is enough to blow past the cap. The
-	// entry itself is lost, but the connection carries on.
 	huge := append(bytes.Repeat([]byte("x"), maxLogLineBytes+1024), '\n')
 	_, err = conn.Write(huge)
 	require.NoError(t, err)

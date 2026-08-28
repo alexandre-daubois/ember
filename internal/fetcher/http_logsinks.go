@@ -77,9 +77,9 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 
 	// The PUT fails with 400 "invalid traversal path" when /config/logging/logs
 	// does not exist yet (Caddyfile has no log directive). Bootstrap the path,
-	// then retry. Only a rejection means that: a timeout or a 500 under load
-	// says nothing about the config tree, and the bootstrap writes into the
-	// shared logging section that already holds the operator's own loggers.
+	// then retry. Only a rejection means that: a timeout or a 500 says nothing
+	// about the config tree, and the bootstrap writes into the shared logging
+	// section.
 	var status statusError
 	if !errors.As(err, &status) || status.code >= http.StatusInternalServerError {
 		return fmt.Errorf("register %s log sink: %w", name, err)
@@ -91,8 +91,8 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 	return f.putLogSink(ctx, name, body)
 }
 
-// statusError carries the status code of an admin API answer so callers can
-// tell a rejection apart from a server fault or a dead connection.
+// statusError carries the status of an admin API answer so callers can tell a
+// rejection apart from a server fault or a dead connection.
 type statusError struct{ code int }
 
 func (e statusError) Error() string { return fmt.Sprintf("HTTP %d", e.code) }

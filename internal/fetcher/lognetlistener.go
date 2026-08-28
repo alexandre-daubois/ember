@@ -142,9 +142,7 @@ func (l *LogNetListener) Close() {
 }
 
 // readLogLine returns the next newline-terminated line, dropping any line over
-// maxLogLineBytes instead of ending the stream. bufio.Scanner refuses to
-// resume after ErrTooLong, so one oversized request cost the connection every
-// log entry that came after it, until Caddy's net writer reconnected.
+// maxLogLineBytes instead of ending the stream the way bufio.Scanner does.
 func readLogLine(r *bufio.Reader) (string, error) {
 	var buf []byte
 	oversized := false

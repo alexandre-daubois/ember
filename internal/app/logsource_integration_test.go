@@ -299,8 +299,6 @@ func TestSetupLogSource_BlipDoesNotForgetEnabledServers(t *testing.T) {
 	require.Equal(t, 1, api.serverPostCount("srv0"))
 	require.Equal(t, 1, api.serverPostCount("srv1"))
 
-	// A blip: the sink reads as gone and every re-enable attempt fails with
-	// it. The watchdog must not take that as "Ember changed nothing".
 	api.serverPostsFail.Store(true)
 	api.sinkGone.Store(true)
 	time.Sleep(250 * time.Millisecond)
