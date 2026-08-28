@@ -45,6 +45,12 @@ admin API to read and optionally write configuration.`,
 
 			w := cmd.OutOrStdout()
 			if quiet {
+				// The prompt would go to io.Discard while the read still
+				// blocks on stdin, so the command would hang with nothing on
+				// screen to say it wants an answer.
+				if !yes {
+					return fmt.Errorf("`ember init` requires --yes (-y) with --quiet (-q): the confirmation prompt cannot be shown")
+				}
 				w = io.Discard
 			}
 
