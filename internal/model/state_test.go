@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1377,6 +1378,34 @@ func TestState_CopyForExport_DeepCopiesCurrent(t *testing.T) {
 	require.NotNil(t, cp.Current)
 	assert.NotSame(t, s.Current, cp.Current, "Current should be a different pointer")
 	assert.Equal(t, s.Current.FetchedAt, cp.Current.FetchedAt)
+}
+
+func TestState_CopyForExport_CopiesExtra(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		Metrics: fetcher.MetricsSnapshot{
+			Extra: map[string]*dto.MetricFamily{"custom_total": {}},
+		},
+	}
+
+	var s State
+	s.Update(snap)
+	cp := s.CopyForExport()
+
+	s.Current.Metrics.Extra["added_later"] = &dto.MetricFamily{}
+
+	require.NotNil(t, cp.Current)
+	assert.Len(t, cp.Current.Metrics.Extra, 1)
+	assert.Contains(t, cp.Current.Metrics.Extra, "custom_total")
+}
+
+func TestState_CopyForExport_CopiesNilExtra(t *testing.T) {
+	var s State
+	s.Update(&fetcher.Snapshot{})
+
+	cp := s.CopyForExport()
+
+	require.NotNil(t, cp.Current)
+	assert.Nil(t, cp.Current.Metrics.Extra)
 }
 
 func TestState_CopyForExport_NilsPrevious(t *testing.T) {
