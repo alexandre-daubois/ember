@@ -100,6 +100,10 @@ func (b *LogBuffer) Clear() {
 	b.head = 0
 	b.full = false
 	b.clearBase = b.writeCount
+	// Releasing the slots matters more than it looks: a raw line is bounded
+	// only by the 1 MiB scanner limit, so keeping capacity of them reachable
+	// defeats the point of asking for an empty buffer.
+	clear(b.entries)
 }
 
 // LogFilter restricts the entries returned by Snapshot. Search is matched
