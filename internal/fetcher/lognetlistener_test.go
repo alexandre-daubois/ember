@@ -1,10 +1,14 @@
 package fetcher
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,6 +53,72 @@ func (c *netCollector) waitFor(t *testing.T, want int, timeout time.Duration) []
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func TestReadLogLine(t *testing.T) {
+	atCap := strings.Repeat("a", maxLogLineBytes)
+	overCap := strings.Repeat("b", maxLogLineBytes+1)
+	// Longer than the 64 KiB reader buffer, so ReadLine hands it back in
+	// several chunks and the accumulation path is exercised.
+	chunked := strings.Repeat("c", 200*1024)
+
+	cases := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{"plain lines", "a\nb\n", []string{"a", "b"}},
+		{"crlf is stripped", "a\r\nb\r\n", []string{"a", "b"}},
+		{"empty lines are skipped", "a\n\n\nb\n", []string{"a", "b"}},
+		{"unterminated final line survives", "a\nb", []string{"a", "b"}},
+		{"line at the cap is kept", atCap + "\n", []string{atCap}},
+		{"line over the cap is dropped", "a\n" + overCap + "\nb\n", []string{"a", "b"}},
+		{"unterminated over-cap line is dropped", "a\n" + overCap, []string{"a"}},
+		{"line spanning several reads", chunked + "\nz\n", []string{chunked, "z"}},
+		{"empty input", "", nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := bufio.NewReaderSize(strings.NewReader(tc.input), 64*1024)
+			var got []string
+			for {
+				line, err := readLogLine(r)
+				if line != "" {
+					got = append(got, line)
+				}
+				if err != nil {
+					require.ErrorIs(t, err, io.EOF, "only EOF ends a healthy stream")
+					break
+				}
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// resetReader hands over one line, then fails every read the way a connection
+// reset does.
+type resetReader struct{ done bool }
+
+func (r *resetReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, errors.New("connection reset by peer")
+	}
+	r.done = true
+	return copy(p, "a\n"), nil
+}
+
+func TestReadLogLine_SurfacesAReadError(t *testing.T) {
+	r := bufio.NewReaderSize(&resetReader{}, 16)
+
+	line, err := readLogLine(r)
+	require.NoError(t, err)
+	assert.Equal(t, "a", line)
+
+	_, err = readLogLine(r)
+	require.Error(t, err, "a dead connection must reach the caller")
+	assert.NotErrorIs(t, err, io.EOF, "and must not be mistaken for a clean end of stream")
 }
 
 func TestLogNetListener_ReceivesAndParses(t *testing.T) {
