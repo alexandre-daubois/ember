@@ -105,6 +105,8 @@ ember --json --once | jq '.process.cpuPercent'
 ember --json --once | jq -e '.hosts[] | select(.statusCodes["500"] > 0)'
 ```
 
+When no instance could be reached, `--once` writes nothing and exits non-zero, so a redirected snapshot never leaves an empty file behind for `ember diff` to choke on.
+
 > **Note:** Derived metrics (RPS, average latency, percentiles) require two data points and will be zero on a single snapshot since there is no previous poll to compute a delta.
 
 ## Scripting Examples
