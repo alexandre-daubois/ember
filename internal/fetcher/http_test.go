@@ -483,9 +483,15 @@ func TestOnConnected_DetectsFrankenPHP(t *testing.T) {
 
 	frankenPHPAvailable = true
 
+	// A negative answer counts as a check, so the next probe waits out the
+	// refresh interval like the server-names one does.
+	f.mu.Lock()
+	f.lastFrankenPHPCheck = time.Now().Add(-serverNamesRefreshInterval - time.Second)
+	f.mu.Unlock()
+
 	snap, err = f.Fetch(context.Background())
 	require.NoError(t, err)
-	assert.True(t, snap.HasFrankenPHP, "should detect FrankenPHP on next successful fetch")
+	assert.True(t, snap.HasFrankenPHP, "should detect FrankenPHP once the check goes stale")
 	// Threads are fetched on the NEXT Fetch() after detection
 	snap, err = f.Fetch(context.Background())
 	require.NoError(t, err)
@@ -625,6 +631,31 @@ func TestOnConnected_StopsAfterSuccess(t *testing.T) {
 	// Detection is called once (first fetch), then stops because hasFrankenPHP is true
 	// But fetchThreads also hits /frankenphp/threads in subsequent fetches
 	assert.True(t, f.HasFrankenPHP())
+}
+
+func TestOnConnected_StopsAfterNegativeDetection(t *testing.T) {
+	var detectCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/frankenphp/threads":
+			detectCalls.Add(1)
+			w.WriteHeader(http.StatusNotFound)
+		case "/metrics":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+
+	f.Fetch(context.Background())
+	f.Fetch(context.Background())
+	f.Fetch(context.Background())
+
+	assert.False(t, f.HasFrankenPHP())
+	assert.Equal(t, int32(1), detectCalls.Load(), "plain Caddy must not be re-probed on every poll")
 }
 
 func TestOnConnected_RefreshesServerNamesAfterInterval(t *testing.T) {
