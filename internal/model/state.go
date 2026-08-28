@@ -295,9 +295,8 @@ func (s *State) CopyForExport() State {
 			}
 			snap.Metrics.Upstreams = upstreams
 		}
-		// The families themselves are read-only once parsed, so cloning the
-		// map is enough to stop a later scrape from reshaping what the
-		// exporter is walking.
+		// The families are read-only once parsed, so the map is all that needs
+		// its own copy.
 		snap.Metrics.Extra = maps.Clone(snap.Metrics.Extra)
 		cp.Current = &snap
 	}
@@ -354,9 +353,7 @@ func (s *State) detectCounterReset(snap *fetcher.Snapshot) bool {
 	if s.Current == nil {
 		return false
 	}
-	// A failed scrape hands back zeroed counters, which look exactly like a
-	// restart. Treating it as one would throw away the percentile window and
-	// the rate baseline on every timeout.
+	// A failed scrape hands back zeroed counters, which look like a restart.
 	if snap.MetricsFailed {
 		return false
 	}

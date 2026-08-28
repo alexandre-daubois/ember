@@ -1916,8 +1916,6 @@ func TestDetectCounterReset_FailedScrapeIsNotARestart(t *testing.T) {
 		Workers:                  map[string]*fetcher.WorkerMetrics{},
 	}}
 
-	// What a timed-out /metrics leaves behind: zeroed counters that look
-	// exactly like a restart.
 	snap := &fetcher.Snapshot{
 		MetricsFailed: true,
 		Metrics:       fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}},

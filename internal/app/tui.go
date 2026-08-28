@@ -102,10 +102,8 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 }
 
 // startMetricsServer runs the exposed metrics server and reports a listen
-// failure on the returned channel. The channel is closed once the server stops
-// for any other reason: without that, the TUI command waiting on it never
-// returns, since a clean Shutdown sends nothing, and it leaks along with the
-// ListenAndServe goroutine for the life of the process.
+// failure on the returned channel. It closes the channel when the server stops
+// for any other reason, so the TUI command parked on it can return.
 func startMetricsServer(srv *http.Server) <-chan error {
 	errCh := make(chan error, 1)
 	go func() {
@@ -352,9 +350,7 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	return func() {
 		cancel()
 		ln.Close()
-		// Join the listener too, not just the watchdog: Start only returns
-		// once every connection handler has, so without this a handler could
-		// still append into the buffers after teardown.
+		// Start only returns once every connection handler has.
 		listenerDone.Wait()
 		watchdogDone.Wait()
 		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
@@ -396,9 +392,7 @@ func enableAccessLogs(hf *fetcher.HTTPFetcher) []string {
 }
 
 // mergeEnabled folds a retry's result into the servers already recorded.
-// Replacing the list would let one failed retry, which is all a transient
-// admin API blip takes, erase the record of what Ember modified and leave the
-// injected logs blocks behind at cleanup.
+// Replacing the list would let one failed retry erase what cleanup has to undo.
 func mergeEnabled(existing, added []string) []string {
 	for _, name := range added {
 		if !slices.Contains(existing, name) {

@@ -140,9 +140,7 @@ type TLSOptions struct {
 
 // BuildTLSConfig creates a *tls.Config from file paths.
 func BuildTLSConfig(opts TLSOptions) (*tls.Config, error) {
-	// Half a pair used to fall through both gates below and leave mTLS off
-	// with no error at all, which is the one outcome nobody asks for. The
-	// per-instance addr suffixes reject the same mistake.
+	// Half a pair falls through both gates below and leaves mTLS off silently.
 	if (opts.ClientCert == "") != (opts.ClientKey == "") {
 		return nil, fmt.Errorf("client certificate and key must be set together")
 	}

@@ -116,8 +116,8 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 		return &out
 	}
 
-	// Encode refuses NaN and the infinities outright. Swallowing that made
-	// --json write nothing at all and still exit 0, so say it out loud.
+	// Encode refuses NaN and the infinities, and a silent failure here means
+	// --json writes nothing at all.
 	emit := func(out *jsonOutput) error {
 		if out == nil {
 			return nil
@@ -153,8 +153,7 @@ func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
 	}
 
 	if cfg.once {
-		// Exiting 0 after writing nothing would hand `ember diff` an empty
-		// file and make it blame the wrong command.
+		// Exiting 0 with no output hands `ember diff` an empty file.
 		if emitted == 0 {
 			return fmt.Errorf("no snapshot could be collected")
 		}

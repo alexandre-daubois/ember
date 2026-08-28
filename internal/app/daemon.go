@@ -42,9 +42,7 @@ func (e *errorThrottle) recover(log *slog.Logger) {
 		log.Info("fetch recovered")
 		e.failing = false
 		e.suppressed = 0
-		// A new outage is news even when the last one was logged seconds ago,
-		// so clear the window too. Leaving it meant a peer flapping faster than
-		// errorThrottleInterval only ever logged "fetch recovered".
+		// Without this the next outage stays suppressed for a full interval.
 		e.lastLogged = time.Time{}
 	}
 }
@@ -88,10 +86,8 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance ma
 	return handler
 }
 
-// metricsReadHeaderTimeout bounds how long a client may take to send its
-// request headers. --expose is meant for a shared network, where a connection
-// that never finishes its headers would otherwise pin a goroutine and a file
-// descriptor for as long as it stays open.
+// metricsReadHeaderTimeout caps a client that opens a connection on the
+// shared-network --expose endpoint and never finishes its headers.
 const metricsReadHeaderTimeout = 10 * time.Second
 
 func newMetricsServer(addr string, handler http.Handler) *http.Server {
@@ -122,10 +118,8 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 	log := cfg.logger
 	log.Info("daemon started", "metrics_url", metricsURL(cfg.expose), "instances", len(instances))
 
-	// Arm the handlers before the first poll: pollAll blocks on a full fetch of
-	// every instance, and until Notify runs both signals still carry their
-	// default disposition, so a supervisor rotating certificates right after
-	// startup killed the daemon instead of reloading it.
+	// Arm before pollAll: it blocks on a full fetch of every instance, and
+	// until Notify runs both signals still terminate the process.
 	dumpCh, stopDump := dumpSignal()
 	defer stopDump()
 	reloadCh, stopReload := reloadSignal()
@@ -155,9 +149,7 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 			for _, inst := range instances {
 				inst.fetcher.CloseIdleConnections()
 			}
-			// A --timeout expiry is a requested shutdown, not a failure: the
-			// cancel cause is DeadlineExceeded rather than Canceled, and only
-			// excluding the latter made --daemon exit 1 where --json exits 0.
+			// A --timeout expiry is a requested shutdown, not a failure.
 			if cause := context.Cause(ctx); cause != nil &&
 				!errors.Is(cause, context.Canceled) && !errors.Is(cause, context.DeadlineExceeded) {
 				return cause

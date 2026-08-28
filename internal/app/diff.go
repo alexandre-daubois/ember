@@ -124,8 +124,7 @@ func runDiff(w io.Writer, beforePath, afterPath string) error {
 }
 
 // rejectFailedCaptures refuses a snapshot whose fetch errors were recorded in
-// the file. Two captures made of nothing but failed fetches compare clean and
-// turn a deployment gate green while Ember never reached Caddy at all.
+// the file: two captures of nothing would otherwise compare clean.
 func rejectFailedCaptures(path string, snaps map[string]jsonOutput) error {
 	names := make([]string, 0, len(snaps))
 	for name, snap := range snaps {
@@ -300,10 +299,8 @@ func computeDiff(before, after jsonOutput) diffResult {
 	return d
 }
 
-// countersWentBackwards reports a Caddy restart between the two captures. The
-// cumulative counters go back to zero, so comparing them raw scores a -100%
-// collapse in Requests as a regression while the same drop in Errors hides a
-// genuine post-deploy spike. model.State detects the same thing per poll.
+// countersWentBackwards reports a Caddy restart between the two captures,
+// which zeroes the cumulative counters and makes their diff meaningless.
 func countersWentBackwards(before, after jsonOutput) bool {
 	return after.Metrics.HTTPRequestDurationCount < before.Metrics.HTTPRequestDurationCount ||
 		after.Metrics.HTTPRequestsTotal < before.Metrics.HTTPRequestsTotal ||

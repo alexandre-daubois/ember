@@ -165,9 +165,7 @@ type Snapshot struct {
 	Errors        []string        `json:"errors,omitempty"`
 	HasFrankenPHP bool            `json:"hasFrankenPHP"`
 
-	// MetricsFailed reports that the /metrics scrape behind this snapshot did
-	// not answer, so Metrics is at its zero value: by value alone that is
-	// indistinguishable from a Caddy that just restarted. The zero value means
-	// the scrape is trustworthy, which is what a hand-built snapshot wants.
+	// MetricsFailed reports that the /metrics scrape did not answer, so
+	// Metrics is at its zero value rather than genuinely zero.
 	MetricsFailed bool `json:"-"`
 }

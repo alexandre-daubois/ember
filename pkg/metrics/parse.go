@@ -236,9 +236,7 @@ func metricValue(m *dto.Metric) float64 {
 }
 
 // finite maps NaN and the infinities to zero. A NaN gauge is Prometheus for
-// "no value right now", and letting one through poisons every average and rate
-// derived from it, then makes encoding/json refuse the whole snapshot: the
-// --json output would silently come out empty.
+// "no value right now", and encoding/json refuses to marshal one at all.
 func finite(v float64) float64 {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return 0

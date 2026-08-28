@@ -357,10 +357,8 @@ func renderConfigLine(n *jsonNode, width int, selected, matched bool) string {
 
 	var keyPart string
 	if n.key != "" {
-		// JSON allows an escaped ESC byte inside an object key and Unmarshal turns
-		// it into a real byte, so the key needs the same render-boundary scrub
-		// as the log fields. Values are already safe: strings go through %q,
-		// and numbers and booleans cannot carry control bytes.
+		// Values are already safe: strings render through %q, and numbers and
+		// booleans cannot carry control bytes. Keys can.
 		key := sanitizeControl(n.key)
 		if plain {
 			keyPart = key + ": "

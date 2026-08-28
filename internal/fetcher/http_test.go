@@ -502,8 +502,6 @@ func TestOnConnected_DetectsFrankenPHP(t *testing.T) {
 
 	frankenPHPAvailable = true
 
-	// A negative answer counts as a check, so the next probe waits out the
-	// refresh interval like the server-names one does.
 	f.mu.Lock()
 	f.lastFrankenPHPCheck = time.Now().Add(-serverNamesRefreshInterval - time.Second)
 	f.mu.Unlock()
