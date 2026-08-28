@@ -216,8 +216,8 @@ func TestEndToEnd_FetchPropagatesPartialFailure(t *testing.T) {
 	f.DetectFrankenPHP(context.Background())
 
 	snap, err := f.Fetch(context.Background())
-	require.NoError(t, err, "Fetch must degrade gracefully when only one stage fails")
-	require.NotNil(t, snap)
+	require.Error(t, err, "the metrics scrape failed, so Fetch says so")
+	require.NotNil(t, snap, "the thread data that did come back is still returned")
 	assert.NotEmpty(t, snap.Errors, "the failed metrics fetch must be recorded in the snapshot")
 	assert.Len(t, snap.Threads.ThreadDebugStates, 1, "successful threads fetch must still surface")
 }

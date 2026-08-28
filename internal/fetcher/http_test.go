@@ -105,7 +105,8 @@ func TestFetch_GracefulDegradation(t *testing.T) {
 	f := NewHTTPFetcher(srv.URL, 0)
 	f.hasFrankenPHP = true
 	snap, err := f.Fetch(context.Background())
-	require.NoError(t, err, "Fetch should not return error on partial failure")
+	require.Error(t, err, "a failed metrics scrape must be reported")
+	require.NotNil(t, snap, "the partial snapshot must still come back")
 	assert.Len(t, snap.Threads.ThreadDebugStates, 1)
 	assert.NotEmpty(t, snap.Errors, "expected errors to be recorded for failed metrics fetch")
 }
@@ -117,7 +118,8 @@ func TestFetch_AllFail(t *testing.T) {
 	f := NewHTTPFetcher(srv.URL, 0)
 	f.hasFrankenPHP = true
 	snap, err := f.Fetch(context.Background())
-	require.NoError(t, err, "Fetch should not return error even if all fail")
+	require.Error(t, err, "a total outage must be reported, not stamped as a fresh poll")
+	require.NotNil(t, snap)
 	assert.GreaterOrEqual(t, len(snap.Errors), 2)
 	assert.Empty(t, snap.Threads.ThreadDebugStates)
 }
@@ -1052,7 +1054,7 @@ func TestFetch_RecordsErrorOnFailedStage(t *testing.T) {
 	f.SetRecorder(rec)
 
 	_, err := f.Fetch(context.Background())
-	require.NoError(t, err)
+	require.Error(t, err, "the failing stage is the metrics one, so Fetch reports it")
 
 	for _, s := range rec.Snapshot().Stages {
 		if s.Stage == instrumentation.StageMetrics {

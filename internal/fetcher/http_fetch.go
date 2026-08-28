@@ -87,16 +87,23 @@ func (f *HTTPFetcher) ServerNames() []string {
 }
 
 // Fetch collects a full snapshot from the Caddy admin API: thread states,
-// Prometheus metrics, and OS-level process stats. Partial results are returned
-// when individual sub-fetches fail.
+// Prometheus metrics, and OS-level process stats. The snapshot is always
+// returned, carrying partial results when individual sub-fetches fail, and
+// callers that only want to display what came back may ignore the error.
+//
+// The error is non-nil when the metrics scrape itself failed. Reporting that
+// is what lets /healthz go stale, the daemon log an outage and --json skip a
+// worthless snapshot: without it a zeroed snapshot stamped with a fresh
+// FetchedAt is indistinguishable from a healthy poll.
 func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 	var (
-		threads   ThreadsResponse
-		metrics   MetricsSnapshot
-		proc      ProcessMetrics
-		mu        sync.Mutex
-		errs      []string
-		metricsOK bool
+		threads    ThreadsResponse
+		metrics    MetricsSnapshot
+		proc       ProcessMetrics
+		mu         sync.Mutex
+		errs       []string
+		metricsOK  bool
+		metricsErr error
 	)
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -128,6 +135,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 		if err != nil {
 			mu.Lock()
 			errs = append(errs, err.Error())
+			metricsErr = err
 			mu.Unlock()
 			return nil
 		}
@@ -222,7 +230,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context) (*Snapshot, error) {
 		FetchedAt:     time.Now(),
 		Errors:        errs,
 		HasFrankenPHP: currentHasFP,
-	}, nil
+	}, metricsErr
 }
 
 // onConnected lazily detects FrankenPHP and refreshes Caddy server names
