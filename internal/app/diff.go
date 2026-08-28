@@ -123,12 +123,14 @@ func runDiff(w io.Writer, beforePath, afterPath string) error {
 	return nil
 }
 
-// rejectFailedCaptures refuses a snapshot whose fetch errors were recorded in
-// the file: two captures of nothing would otherwise compare clean.
+// rejectFailedCaptures refuses a snapshot that recorded errors and came back
+// with no metrics: two captures of nothing would otherwise compare clean. A
+// capture whose metrics arrived is still usable, whatever else failed
+// alongside them.
 func rejectFailedCaptures(path string, snaps map[string]jsonOutput) error {
 	names := make([]string, 0, len(snaps))
 	for name, snap := range snaps {
-		if len(snap.Errors) > 0 {
+		if len(snap.Errors) > 0 && !snap.Metrics.HasHTTPMetrics {
 			names = append(names, name)
 		}
 	}
@@ -138,9 +140,9 @@ func rejectFailedCaptures(path string, snaps map[string]jsonOutput) error {
 	sort.Strings(names)
 	first := snaps[names[0]]
 	if names[0] == "" {
-		return fmt.Errorf("%s: the snapshot recorded a fetch error: %s", path, first.Errors[0])
+		return fmt.Errorf("%s: the snapshot carries no metrics and recorded: %s", path, first.Errors[0])
 	}
-	return fmt.Errorf("%s: the snapshot for %s recorded a fetch error: %s", path, names[0], first.Errors[0])
+	return fmt.Errorf("%s: the snapshot for %s carries no metrics and recorded: %s", path, names[0], first.Errors[0])
 }
 
 func isSingleInstance(snaps map[string]jsonOutput) bool {

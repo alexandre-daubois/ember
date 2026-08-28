@@ -354,7 +354,7 @@ Compares two JSON or JSONL snapshots produced by `ember --json --once` and shows
 
 Exit code 0 means no regressions detected, 1 means regressions found (>10% degradation on latency, error rate, or CPU; >10% drop on RPS).
 
-A snapshot whose `errors` array is non-empty is refused outright: comparing two captures Ember could not collect would report "no regressions" while it never reached Caddy.
+A snapshot that recorded fetch errors and came back with no metrics is refused: comparing two captures Ember could not collect would report "no regressions" while it never reached Caddy. A capture whose metrics did arrive is still compared, whatever else failed alongside them.
 
 When the cumulative counters (`Requests`, `Avg (cumul.)`, `Errors`) went backwards between the two captures, Caddy restarted in between and those three lines are left out rather than scored as a 100% collapse. The gauges beside them still compare.
 
