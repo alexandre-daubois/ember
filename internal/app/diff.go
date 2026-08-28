@@ -160,6 +160,7 @@ func loadSnapshots(path string) (map[string]jsonOutput, error) {
 type diffResult struct {
 	global         []diffLine
 	hosts          []hostDiff
+	countersReset  bool
 	hasRegressions bool
 }
 
@@ -192,13 +193,16 @@ func computeDiff(before, after jsonOutput) diffResult {
 	}
 
 	// raw cumulative counters (always available, even from --once snapshots)
-	d.global = append(d.global, numericDiff("Requests", before.Metrics.HTTPRequestDurationCount, after.Metrics.HTTPRequestDurationCount, "", false))
-	if before.Metrics.HTTPRequestDurationCount > 0 && after.Metrics.HTTPRequestDurationCount > 0 {
-		beforeAvg := before.Metrics.HTTPRequestDurationSum / before.Metrics.HTTPRequestDurationCount * 1000
-		afterAvg := after.Metrics.HTTPRequestDurationSum / after.Metrics.HTTPRequestDurationCount * 1000
-		d.global = append(d.global, numericDiff("Avg (cumul.)", beforeAvg, afterAvg, "ms", true))
+	d.countersReset = countersWentBackwards(before, after)
+	if !d.countersReset {
+		d.global = append(d.global, numericDiff("Requests", before.Metrics.HTTPRequestDurationCount, after.Metrics.HTTPRequestDurationCount, "", false))
+		if before.Metrics.HTTPRequestDurationCount > 0 && after.Metrics.HTTPRequestDurationCount > 0 {
+			beforeAvg := before.Metrics.HTTPRequestDurationSum / before.Metrics.HTTPRequestDurationCount * 1000
+			afterAvg := after.Metrics.HTTPRequestDurationSum / after.Metrics.HTTPRequestDurationCount * 1000
+			d.global = append(d.global, numericDiff("Avg (cumul.)", beforeAvg, afterAvg, "ms", true))
+		}
+		d.global = append(d.global, numericDiff("Errors", before.Metrics.HTTPRequestErrorsTotal, after.Metrics.HTTPRequestErrorsTotal, "", true))
 	}
-	d.global = append(d.global, numericDiff("Errors", before.Metrics.HTTPRequestErrorsTotal, after.Metrics.HTTPRequestErrorsTotal, "", true))
 	d.global = append(d.global, numericDiff("In-flight", before.Metrics.HTTPRequestsInFlight, after.Metrics.HTTPRequestsInFlight, "", true))
 	d.global = append(d.global, numericDiff("CPU", before.Process.CPUPercent, after.Process.CPUPercent, "%", true))
 	d.global = append(d.global, numericDiff("RSS", float64(before.Process.RSS)/1024/1024, float64(after.Process.RSS)/1024/1024, "MB", true))
@@ -268,6 +272,16 @@ func computeDiff(before, after jsonOutput) diffResult {
 	return d
 }
 
+// countersWentBackwards reports a Caddy restart between the two captures. The
+// cumulative counters go back to zero, so comparing them raw scores a -100%
+// collapse in Requests as a regression while the same drop in Errors hides a
+// genuine post-deploy spike. model.State detects the same thing per poll.
+func countersWentBackwards(before, after jsonOutput) bool {
+	return after.Metrics.HTTPRequestDurationCount < before.Metrics.HTTPRequestDurationCount ||
+		after.Metrics.HTTPRequestsTotal < before.Metrics.HTTPRequestsTotal ||
+		after.Metrics.HTTPRequestErrorsTotal < before.Metrics.HTTPRequestErrorsTotal
+}
+
 func numericDiff(label string, before, after float64, unit string, higherIsBad bool) diffLine {
 	l := diffLine{
 		label:  label,
@@ -323,6 +337,9 @@ func formatDiffBody(d diffResult) string {
 
 	b.WriteString("Global\n")
 	writeDiffLines(&b, d.global)
+	if d.countersReset {
+		b.WriteString("     (cumulative counters restarted, not compared)\n")
+	}
 
 	if len(d.hosts) > 0 {
 		b.WriteString("\nPer-host changes\n")

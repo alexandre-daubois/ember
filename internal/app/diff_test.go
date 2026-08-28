@@ -531,6 +531,59 @@ func TestRunDiff_JSONLMultiInstance_InstanceRemoved(t *testing.T) {
 	assert.NotContains(t, out, "-100.0%", "a missing instance is not a 100% drop in every metric")
 }
 
+func TestRunDiff_CounterResetIsNotAVerdict(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeSnapshot(t, dir, "before.json", jsonOutput{
+		Metrics: metrics.MetricsSnapshot{
+			HTTPRequestDurationCount: 100000,
+			HTTPRequestErrorsTotal:   5000,
+		},
+		Process: fetcher.ProcessMetrics{},
+	})
+	after := writeSnapshot(t, dir, "after.json", jsonOutput{
+		Metrics: metrics.MetricsSnapshot{
+			HTTPRequestDurationCount: 50,
+			HTTPRequestErrorsTotal:   2,
+		},
+		Process: fetcher.ProcessMetrics{},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.NoError(t, err, "a restarted Caddy is not a regression")
+	out := buf.String()
+	assert.Contains(t, out, "cumulative counters restarted")
+	assert.NotContains(t, out, "Requests", "raw counters across a restart say nothing")
+	assert.NotContains(t, out, "Errors")
+}
+
+func TestRunDiff_RisingCountersAreStillCompared(t *testing.T) {
+	dir := t.TempDir()
+
+	before := writeSnapshot(t, dir, "before.json", jsonOutput{
+		Metrics: metrics.MetricsSnapshot{
+			HTTPRequestDurationCount: 100000,
+			HTTPRequestErrorsTotal:   100,
+		},
+		Process: fetcher.ProcessMetrics{},
+	})
+	after := writeSnapshot(t, dir, "after.json", jsonOutput{
+		Metrics: metrics.MetricsSnapshot{
+			HTTPRequestDurationCount: 110000,
+			HTTPRequestErrorsTotal:   5000,
+		},
+		Process: fetcher.ProcessMetrics{},
+	})
+
+	var buf bytes.Buffer
+	err := runDiff(&buf, before, after)
+
+	require.Error(t, err, "an error spike with no restart must still fail the gate")
+	assert.Contains(t, buf.String(), "Errors")
+}
+
 func TestRunDiff_SingleInstanceJSON_NoHeader(t *testing.T) {
 	dir := t.TempDir()
 
