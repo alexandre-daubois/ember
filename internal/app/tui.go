@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -326,7 +327,7 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 				// prior tick but enableAccessLogs may have failed
 				// (e.g. Caddy's server list was not ready yet).
 				if !accessExists || len(enabled) == 0 {
-					enabled = enableAccessLogs(hf)
+					enabled = mergeEnabled(enabled, enableAccessLogs(hf))
 				}
 			}
 		}
@@ -372,6 +373,19 @@ func enableAccessLogs(hf *fetcher.HTTPFetcher) []string {
 		}
 	}
 	return enabled
+}
+
+// mergeEnabled folds a retry's result into the servers already recorded.
+// Replacing the list would let one failed retry, which is all a transient
+// admin API blip takes, erase the record of what Ember modified and leave the
+// injected logs blocks behind at cleanup.
+func mergeEnabled(existing, added []string) []string {
+	for _, name := range added {
+		if !slices.Contains(existing, name) {
+			existing = append(existing, name)
+		}
+	}
+	return existing
 }
 
 func restoreAccessLogs(hf *fetcher.HTTPFetcher, names []string) {
