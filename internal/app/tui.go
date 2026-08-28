@@ -279,18 +279,21 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	uiCfg.LogSource = "net " + advertiseAddr
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go ln.Start(ctx, func(batch []fetcher.LogEntry) {
-		for _, e := range batch {
-			if e.IsAccessLog() {
-				accessBuf.Append(e)
-				// Track in the aggregator too so route counts survive ring-
-				// buffer wraparound: the buffer caps at 10 000 entries, but
-				// the By Route view should reflect the full session.
-				routeAgg.Track(e)
-			} else {
-				runtimeBuf.Append(e)
+	var listenerDone sync.WaitGroup
+	listenerDone.Go(func() {
+		ln.Start(ctx, func(batch []fetcher.LogEntry) {
+			for _, e := range batch {
+				if e.IsAccessLog() {
+					accessBuf.Append(e)
+					// Track in the aggregator too so route counts survive ring-
+					// buffer wraparound: the buffer caps at 10 000 entries, but
+					// the By Route view should reflect the full session.
+					routeAgg.Track(e)
+				} else {
+					runtimeBuf.Append(e)
+				}
 			}
-		}
+		})
 	})
 
 	// Watchdog: re-registers both sinks and access-logs blocks periodically.
@@ -336,6 +339,10 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	return func() {
 		cancel()
 		ln.Close()
+		// Join the listener too, not just the watchdog: Start only returns
+		// once every connection handler has, so without this a handler could
+		// still append into the buffers after teardown.
+		listenerDone.Wait()
 		watchdogDone.Wait()
 		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
 		unregisterSink("__ember_runtime__", hf.UnregisterEmberRuntimeLogSink)
