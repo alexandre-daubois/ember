@@ -253,7 +253,13 @@ func bindEnv(cmd *cobra.Command) error {
 		if name == "addr" {
 			env, val, ok = lookupAddrEnv()
 		} else {
-			val, ok = os.LookupEnv(env)
+			// LookupEnv reports an exported-but-blank variable as present, and
+			// a Compose env_file or a ConfigMap exports those all the time.
+			// Pushing "" through Value.Set aborted the whole command, and for
+			// EMBER_CONFIG it also flipped Changed, so .ember.toml was skipped
+			// in favour of a file named "".
+			val = os.Getenv(env)
+			ok = strings.TrimSpace(val) != ""
 		}
 		if !ok {
 			continue
