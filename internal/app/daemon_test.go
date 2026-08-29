@@ -571,3 +571,23 @@ func TestPollInstance_FailedFetchLeavesHealthzUnhealthy(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, rec.Code,
 		"/healthz must not answer ok while the monitored Caddy is down")
 }
+
+func TestStopMetricsServer_IsNotHeldByAHalfOpenConnection(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := newMetricsServer(ln.Addr().String(), http.NotFoundHandler())
+	go func() { _ = srv.Serve(ln) }()
+
+	// Connect and send nothing: the server sits waiting for headers until
+	// ReadHeaderTimeout, which is exactly what Shutdown would wait out.
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	start := time.Now()
+	stopMetricsServer(srv)
+
+	assert.Less(t, time.Since(start), 2*time.Second,
+		"a client that never sends its headers must not hold the process open")
+}

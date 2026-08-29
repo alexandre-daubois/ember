@@ -90,6 +90,22 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance ma
 // shared-network --expose endpoint and never finishes its headers.
 const metricsReadHeaderTimeout = 10 * time.Second
 
+// metricsShutdownGrace bounds the graceful phase. A read deadline on the
+// server (ReadHeaderTimeout below) leaves an idle keep-alive connection that
+// Shutdown waits on until that deadline expires, so an unbounded graceful
+// phase adds seconds to every stop. Scrapes finish in milliseconds; anything
+// still open past the grace gets closed under it.
+const metricsShutdownGrace = time.Second
+
+// stopMetricsServer drains the server, then forces what the grace period did
+// not finish.
+func stopMetricsServer(srv *http.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), metricsShutdownGrace)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
+	_ = srv.Close()
+}
+
 func newMetricsServer(addr string, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
@@ -142,9 +158,7 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 	for {
 		select {
 		case <-ctx.Done():
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = srv.Shutdown(shutdownCtx)
-			shutdownCancel()
+			stopMetricsServer(srv)
 			wg.Wait()
 			for _, inst := range instances {
 				inst.fetcher.CloseIdleConnections()

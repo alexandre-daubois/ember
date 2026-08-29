@@ -93,9 +93,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 	}
 
 	if srv != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		_ = srv.Shutdown(shutdownCtx)
+		stopMetricsServer(srv)
 	}
 
 	return nil
