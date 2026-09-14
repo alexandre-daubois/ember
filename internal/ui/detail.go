@@ -56,6 +56,20 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 	lines = append(lines, "")
 	lines = append(lines, renderStateBadge(t))
 
+	if t.MemoryUsage > 0 || t.RequestCount > 0 {
+		lines = append(lines, "")
+		lines = append(lines, sectionHeader("Resources", inner))
+		if t.MemoryUsage > 0 {
+			lines = append(lines, detailKV("Memory", formatBytes(t.MemoryUsage)))
+			if spark := renderMemSparkline(memSamples, inner-12); spark != "" {
+				lines = append(lines, detailKV("", spark))
+			}
+		}
+		if t.RequestCount > 0 {
+			lines = append(lines, detailKV("Requests", formatNumber(t.RequestCount)))
+		}
+	}
+
 	if t.IsBusy && (t.CurrentMethod != "" || t.RequestStartedAt > 0) {
 		lines = append(lines, "")
 		lines = append(lines, sectionHeader("Request", inner))
@@ -78,20 +92,6 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 		lines = append(lines, "")
 		d := time.Duration(t.WaitingSinceMilliseconds) * time.Millisecond
 		lines = append(lines, detailKV("Idle for", formatDuration(d)))
-	}
-
-	if t.MemoryUsage > 0 || t.RequestCount > 0 {
-		lines = append(lines, "")
-		lines = append(lines, sectionHeader("Resources", inner))
-		if t.MemoryUsage > 0 {
-			lines = append(lines, detailKV("Memory", formatBytes(t.MemoryUsage)))
-			if spark := renderMemSparkline(memSamples, inner-12); spark != "" {
-				lines = append(lines, detailKV("", spark))
-			}
-		}
-		if t.RequestCount > 0 {
-			lines = append(lines, detailKV("Requests", formatNumber(t.RequestCount)))
-		}
 	}
 
 	lines = append(lines, "")
