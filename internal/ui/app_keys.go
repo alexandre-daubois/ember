@@ -298,6 +298,10 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (a *App) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
+	if a.activeTab == tabLogs {
+		return a.handleLogsListKey(msg)
+	}
+
 	maxIdx := a.listLen() - 1
 	if maxIdx < 0 {
 		maxIdx = 0

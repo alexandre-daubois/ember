@@ -16,8 +16,6 @@ set -u
 WORKERS=${WORKERS:-20}
 DURATION=${DURATION:-0}
 
-base_url="http://localhost:8080"
-
 static_paths=(
   "/"
   "/deep/path"
@@ -69,6 +67,12 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 echo "Starting $WORKERS workers against http://localhost:8080 (Normal) and http://localhost:8081 (Workers)"
+if [[ "$DURATION" -gt 0 ]]; then
+  echo "Running for $DURATION seconds..."
+else
+  echo "Running until Ctrl+C..."
+fi
+
 for ((i=0; i<WORKERS; i++)); do
   worker &
   pids+=("$!")

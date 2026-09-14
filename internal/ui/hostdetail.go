@@ -118,8 +118,7 @@ func renderHostDetailPanel(h model.HostDerived, width, height int) string {
 	lines = append(lines, helpStyle.Render("  "+helpKeyStyle.Render("Esc")+" close"))
 
 	content := fitPanelContent(strings.Join(lines, "\n"), height)
-
-	return boxStyle.Width(width - 2).Render(content)
+	return boxStyle.Width(width - 2).Height(height - 2).Render(content)
 }
 
 func formatDetailRate(v float64) string {

@@ -138,6 +138,25 @@ scrape_configs:
       - targets: ["localhost:9191"]
 ```
 
+## Logs stuck on "Waiting for access logs..."
+
+**Symptom:** The Logs tab shows "Listening on net 127.0.0.1:XXXXX — waiting for access logs..." indefinitely.
+
+**Cause:** When running against Caddy in Docker, Ember auto-binds a listener on `127.0.0.1` of the host. Caddy (inside the container) receives this address via the admin API and tries to connect to its own loopback interface, where nothing is listening.
+
+**Fix:** Tell Ember to bind an address that is reachable from the container.
+
+- **macOS/Windows:** Use `host.docker.internal`:
+  ```bash
+  ember --log-listen host.docker.internal:XXXXX
+  ```
+- **Linux:** Use your host's LAN IP or the Docker bridge IP (usually `172.17.0.1`):
+  ```bash
+  ember --log-listen 172.17.0.1:9210
+  ```
+
+Make sure the port is not blocked by a firewall on the host.
+
 ## Caddy logs `broken pipe` after Ember exits
 
 **Symptom:** After Ember exits uncleanly (`kill -9`, OOM, Caddy busy during quit), Caddy keeps writing `broken pipe` to its stderr every 10 seconds.
