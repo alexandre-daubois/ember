@@ -85,6 +85,16 @@ func TestRenderSinksNeutralizeControlBytes(t *testing.T) {
 			th := fetcher.ThreadDebugState{IsBusy: true, CurrentMethod: evil, CurrentURI: evil}
 			return renderDetailPanel(th, 60, 20, nil, now)
 		}},
+		{"renderWorkerListFromThreads worker script separator", func() string {
+			th := fetcher.ThreadDebugState{Name: workerPrefix + evil}
+			return renderWorkerListFromThreads([]fetcher.ThreadDebugState{th}, 0, 120, 20, model.SortByIndex, renderOpts{})
+		}},
+		{"renderDetailPanel worker script", func() string {
+			return renderDetailPanel(fetcher.ThreadDebugState{Name: workerPrefix + evil}, 60, 20, nil, now)
+		}},
+		{"renderDetailPanel thread name", func() string {
+			return renderDetailPanel(fetcher.ThreadDebugState{Name: evil}, 60, 20, nil, now)
+		}},
 		{"renderSidepanel host label", func() string {
 			items := []sidepanelItem{{kind: logSelAccessHost, label: evil, host: evil, indent: 1}}
 			return renderSidepanel(items, 0, false, sidepanelFixedWidth, 10)
