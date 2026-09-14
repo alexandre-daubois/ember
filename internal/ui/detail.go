@@ -39,14 +39,14 @@ func renderDetailPanel(t fetcher.ThreadDebugState, width, height int, memSamples
 	crumb := greyStyle.Render("FrankenPHP › ")
 	lines = append(lines, crumb+titleStyle.Render(fmt.Sprintf("Thread #%d", t.Index)))
 
-	if script := workerScript(t.Name); script != "" {
+	if script := sanitizeControl(workerScript(t.Name)); script != "" {
 		lines = append(lines, greyStyle.Render("worker"))
 		if len(script) > inner {
 			script = script[:inner-1] + "…"
 		}
 		lines = append(lines, greyStyle.Render(script))
 	} else {
-		name := t.Name
+		name := sanitizeControl(t.Name)
 		if len(name) > inner {
 			name = name[:inner-1] + "…"
 		}

@@ -121,7 +121,7 @@ func renderWorkerListFromThreads(threads []fetcher.ThreadDebugState, cursor, wid
 
 func threadGroup(t fetcher.ThreadDebugState) string {
 	if s := workerScript(t.Name); s != "" {
-		return "(Worker script) " + s
+		return "(Worker script) " + sanitizeControl(s)
 	}
 	return "threads"
 }
