@@ -95,6 +95,10 @@ func TestRenderSinksNeutralizeControlBytes(t *testing.T) {
 		{"renderDetailPanel thread name", func() string {
 			return renderDetailPanel(fetcher.ThreadDebugState{Name: evil}, 60, 20, nil, now)
 		}},
+		{"formatUpstreamRow health URI+LB policy", func() string {
+			cfg := fetcher.ReverseProxyConfig{HealthURI: evil, LBPolicy: evil, Upstreams: []fetcher.ReverseProxyUpstreamConfig{{Address: "127.0.0.1:9000"}}}
+			return formatUpstreamRow(model.UpstreamDerived{Address: "127.0.0.1:9000"}, 120, 40, false, buildUpstreamConfigMap([]fetcher.ReverseProxyConfig{cfg}), upstreamRenderOpts{})
+		}},
 		{"renderSidepanel host label", func() string {
 			items := []sidepanelItem{{kind: logSelAccessHost, label: evil, host: evil, indent: 1}}
 			return renderSidepanel(items, 0, false, sidepanelFixedWidth, 10)

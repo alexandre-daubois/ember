@@ -126,13 +126,13 @@ func formatUpstreamRow(u model.UpstreamDerived, width, addrW int, selected bool,
 	lbStr := "—"
 	if info, ok := configMap[u.Address]; ok {
 		if info.healthURI != "" {
-			checkStr = info.healthURI
+			checkStr = sanitizeControl(info.healthURI)
 			if info.healthInterval != "" {
 				checkStr += " @" + info.healthInterval
 			}
 		}
 		if info.lbPolicy != "" {
-			lbStr = info.lbPolicy
+			lbStr = sanitizeControl(info.lbPolicy)
 		}
 	}
 	if len(checkStr) > colUpstreamCheck-1 {
