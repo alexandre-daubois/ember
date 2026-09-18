@@ -21,6 +21,9 @@ const EmberLogSinkName = "__ember__"
 // API, plugins): anything that is not an access log.
 const emberRuntimeLogSinkName = "__ember_runtime__"
 
+// The hub logs the updates it dispatches at DEBUG only.
+const emberMercureLogSinkName = "__ember_mercure__"
+
 // RegisterEmberLogSink hot-installs a Caddy logging sink that
 // pushes JSON access logs to the given listener address. The sink uses
 // soft_start so Caddy does not fail config load when the listener is briefly
@@ -43,6 +46,52 @@ func (f *HTTPFetcher) RegisterEmberRuntimeLogSink(ctx context.Context, listenerA
 	return f.registerLogSink(ctx, emberRuntimeLogSinkName, logSinkPayload(listenerAddr, map[string]any{
 		"exclude": []string{"http.log.access"},
 	}))
+}
+
+// RegisterEmberMercureLogSink narrows the runtime sink as well: both push to
+// the same listener, and Caddy would otherwise deliver the hub's INFO lines twice.
+func (f *HTTPFetcher) RegisterEmberMercureLogSink(ctx context.Context, listenerAddr string) error {
+	if err := f.setLogSink(ctx, emberRuntimeLogSinkName, logSinkPayload(listenerAddr, map[string]any{
+		"exclude": []string{"http.log.access", MercureLoggerName},
+	})); err != nil {
+		return err
+	}
+	return f.setLogSink(ctx, emberMercureLogSinkName, logSinkPayload(listenerAddr, map[string]any{
+		"include": []string{MercureLoggerName},
+		"level":   "DEBUG",
+	}))
+}
+
+func (f *HTTPFetcher) CheckEmberMercureLogSink(ctx context.Context) bool {
+	return f.checkLogSink(ctx, emberMercureLogSinkName)
+}
+
+// listenerAddr may be empty when the runtime sink is about to go as well.
+func (f *HTTPFetcher) UnregisterEmberMercureLogSink(ctx context.Context, listenerAddr string) error {
+	if err := f.unregisterLogSink(ctx, emberMercureLogSinkName); err != nil {
+		return err
+	}
+	if listenerAddr == "" {
+		return nil
+	}
+	return f.setLogSink(ctx, emberRuntimeLogSinkName, logSinkPayload(listenerAddr, map[string]any{
+		"exclude": []string{"http.log.access"},
+	}))
+}
+
+// POST is set-or-replace in Caddy's admin API, where PUT answers 409 on an existing key.
+func (f *HTTPFetcher) setLogSink(ctx context.Context, name string, payload map[string]any) error {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal %s log sink payload: %w", name, err)
+	}
+	if err := f.postJSON(ctx, f.baseURL+"/config/logging/logs/"+name, body); err != nil {
+		return fmt.Errorf("set %s log sink: %w", name, err)
+	}
+	return nil
 }
 
 // logSinkPayload builds the JSON body for a Caddy sink definition. Using
@@ -134,7 +183,15 @@ func (f *HTTPFetcher) ensureLoggingPath(ctx context.Context) error {
 }
 
 func (f *HTTPFetcher) putJSON(ctx context.Context, endpoint string, body []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(body))
+	return f.writeJSON(ctx, http.MethodPut, endpoint, body)
+}
+
+func (f *HTTPFetcher) postJSON(ctx context.Context, endpoint string, body []byte) error {
+	return f.writeJSON(ctx, http.MethodPost, endpoint, body)
+}
+
+func (f *HTTPFetcher) writeJSON(ctx context.Context, method, endpoint string, body []byte) error {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

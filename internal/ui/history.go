@@ -3,13 +3,15 @@ package ui
 const hostSparklineSize = 8
 
 type historyStore struct {
-	rps     []float64
-	cpu     []float64
-	rss     []float64
-	queue   []float64
-	busy    []float64
-	mem     map[int][]int64
-	hostRPS map[string][]float64
+	rps         []float64
+	cpu         []float64
+	rss         []float64
+	queue       []float64
+	busy        []float64
+	subscribers []float64
+	updates     []float64
+	mem         map[int][]int64
+	hostRPS     map[string][]float64
 }
 
 func newHistoryStore() *historyStore {
@@ -26,6 +28,12 @@ func (h *historyStore) appendQueue(val float64) {
 	h.queue = appendHistory(h.queue, val, graphHistorySize)
 }
 func (h *historyStore) appendBusy(val float64) { h.busy = appendHistory(h.busy, val, graphHistorySize) }
+func (h *historyStore) appendSubscribers(val float64) {
+	h.subscribers = appendHistory(h.subscribers, val, graphHistorySize)
+}
+func (h *historyStore) appendUpdates(val float64) {
+	h.updates = appendHistory(h.updates, val, graphHistorySize)
+}
 
 func (h *historyStore) appendHostRPS(host string, rps float64) {
 	series := h.hostRPS[host]

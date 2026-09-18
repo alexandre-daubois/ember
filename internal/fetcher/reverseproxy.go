@@ -41,6 +41,23 @@ func (d *caddyDuration) UnmarshalJSON(data []byte) error {
 // so reverse_proxy handlers buried inside typical Caddyfile-generated configs
 // are discovered regardless of depth.
 func ParseReverseProxyConfigs(raw json.RawMessage) []ReverseProxyConfig {
+	var configs []ReverseProxyConfig
+	forEachHandler(raw, func(h json.RawMessage) {
+		if rp, ok := parseRPHandler(h); ok {
+			configs = append(configs, rp)
+		}
+	})
+	return configs
+}
+
+type routeNode struct {
+	Handle []json.RawMessage `json:"handle"`
+}
+
+// forEachHandler calls fn on every HTTP handler of the raw Caddy JSON config.
+// Handlers that carry a nested "routes" field (subroute, route groups) are
+// descended into recursively.
+func forEachHandler(raw json.RawMessage, fn func(json.RawMessage)) {
 	var root struct {
 		Apps struct {
 			HTTP struct {
@@ -50,46 +67,26 @@ func ParseReverseProxyConfigs(raw json.RawMessage) []ReverseProxyConfig {
 			} `json:"http"`
 		} `json:"apps"`
 	}
-
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil
+		return
 	}
-
-	var configs []ReverseProxyConfig
 	for _, srv := range root.Apps.HTTP.Servers {
-		configs = appendRPFromRoutes(configs, srv.Routes)
+		walkRoutes(srv.Routes, fn)
 	}
-	return configs
 }
 
-type routeNode struct {
-	Handle []json.RawMessage `json:"handle"`
-}
-
-// appendRPFromRoutes walks routes and their handlers, collecting reverse_proxy
-// configs. Handlers that carry a nested "routes" field (subroute, route groups)
-// are descended into recursively.
-func appendRPFromRoutes(configs []ReverseProxyConfig, routes []routeNode) []ReverseProxyConfig {
+func walkRoutes(routes []routeNode, fn func(json.RawMessage)) {
 	for _, route := range routes {
 		for _, h := range route.Handle {
-			configs = appendRPFromHandler(configs, h)
+			fn(h)
+			var nested struct {
+				Routes []routeNode `json:"routes"`
+			}
+			if err := json.Unmarshal(h, &nested); err == nil && len(nested.Routes) > 0 {
+				walkRoutes(nested.Routes, fn)
+			}
 		}
 	}
-	return configs
-}
-
-func appendRPFromHandler(configs []ReverseProxyConfig, raw json.RawMessage) []ReverseProxyConfig {
-	if rp, ok := parseRPHandler(raw); ok {
-		configs = append(configs, rp)
-	}
-
-	var nested struct {
-		Routes []routeNode `json:"routes"`
-	}
-	if err := json.Unmarshal(raw, &nested); err == nil && len(nested.Routes) > 0 {
-		configs = appendRPFromRoutes(configs, nested.Routes)
-	}
-	return configs
 }
 
 func parseRPHandler(raw json.RawMessage) (ReverseProxyConfig, bool) {

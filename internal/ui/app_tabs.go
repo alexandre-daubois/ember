@@ -3,6 +3,7 @@ package ui
 import (
 	"slices"
 
+	"github.com/alexandre-daubois/ember/internal/fetcher"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -26,19 +27,29 @@ func (a *App) switchTab(target tab) {
 		a.logSel = logSel{kind: logSelRuntime}
 		a.logSidepanelFocused = true
 		a.resumeLogs()
+		a.resumeMercure()
 	}
 }
 
 func (a *App) switchTabCmd() tea.Cmd {
+	var cmd tea.Cmd
 	switch {
 	case a.activeTab == tabConfig && a.configRoot == nil:
-		return a.doFetchConfig()
+		cmd = a.doFetchConfig()
 	case a.activeTab == tabCertificates && a.certificates == nil:
-		return a.doFetchCertificates()
+		cmd = a.doFetchCertificates()
 	case a.activeTab == tabUpstreams && a.rpConfigs == nil:
-		return a.doFetchRPConfig()
+		cmd = a.doFetchRPConfig()
+	case a.activeTab == tabMercure && a.mercureConfigs == nil:
+		cmd = a.doFetchMercureConfig()
 	}
-	return nil
+	if feed := a.mercureFeedCmd(); feed != nil {
+		if cmd == nil {
+			return feed
+		}
+		return tea.Batch(cmd, feed)
+	}
+	return cmd
 }
 
 func (a *App) nextTab() {
@@ -61,32 +72,54 @@ func (a *App) prevTab() {
 
 func (a *App) enableFrankenPHP() {
 	a.hasFrankenPHP = true
-	newTabs := make([]tab, 0, len(a.tabs)+1)
-	for _, t := range a.tabs {
-		newTabs = append(newTabs, t)
-		if t == tabCaddy {
-			newTabs = append(newTabs, tabFrankenPHP)
-		}
-	}
-	a.tabs = newTabs
-	a.tabStates[tabFrankenPHP] = &tabState{}
+	a.insertTab(tabFrankenPHP)
 }
 
 func (a *App) enableUpstreams() {
 	a.hasUpstreams = true
-	after := tabCaddy
-	if a.hasFrankenPHP {
-		after = tabFrankenPHP
+	a.insertTab(tabUpstreams)
+}
+
+func (a *App) enableMercure() {
+	a.hasMercure = true
+	a.insertTab(tabMercure)
+}
+
+// Plugin tabs always trail the built-in ones.
+func (a *App) insertTab(target tab) {
+	if slices.Contains(a.tabs, target) {
+		return
 	}
-	newTabs := make([]tab, 0, len(a.tabs)+1)
-	for _, t := range a.tabs {
-		newTabs = append(newTabs, t)
-		if t == after {
-			newTabs = append(newTabs, tabUpstreams)
+	rank := slices.Index(coreTabOrder, target)
+	at := len(a.tabs)
+	for i, t := range a.tabs {
+		if r := slices.Index(coreTabOrder, t); r < 0 || r > rank {
+			at = i
+			break
 		}
 	}
-	a.tabs = newTabs
-	a.tabStates[tabUpstreams] = &tabState{}
+	a.tabs = slices.Insert(a.tabs, at, target)
+	a.tabStates[target] = &tabState{}
+}
+
+// Without the `metrics` global option the Caddy tab of a hub-only Caddy only
+// ever reads zero.
+func (a *App) syncCaddyTab(snap *fetcher.Snapshot) {
+	if !a.hasMercure {
+		return
+	}
+	want := a.hasFrankenPHP || snap.Metrics.HasHTTPMetrics
+	idx := slices.Index(a.tabs, tabCaddy)
+	switch {
+	case want && idx < 0:
+		a.insertTab(tabCaddy)
+	case !want && idx >= 0:
+		if a.activeTab == tabCaddy {
+			a.switchTab(tabMercure)
+		}
+		a.tabs = slices.Delete(a.tabs, idx, idx+1)
+		delete(a.tabStates, tabCaddy)
+	}
 }
 
 func (a *App) activePluginTab() *pluginTab {

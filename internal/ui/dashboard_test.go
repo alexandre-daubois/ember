@@ -115,7 +115,7 @@ func TestRenderDashboard_ShowsPausedBadge(t *testing.T) {
 	s := &model.State{
 		Current: &fetcher.Snapshot{},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, true, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{paused: true}))
 	assert.Contains(t, out, "PAUSED")
 }
 
@@ -123,7 +123,7 @@ func TestRenderDashboard_NoPausedWhenRunning(t *testing.T) {
 	s := &model.State{
 		Current: &fetcher.Snapshot{},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{}))
 	assert.NotContains(t, out, "PAUSED")
 }
 
@@ -132,7 +132,7 @@ func TestRenderDashboard_ShowsErrorRate(t *testing.T) {
 		Current: &fetcher.Snapshot{},
 		Derived: model.DerivedMetrics{ErrorRate: 12},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{}))
 	assert.Contains(t, out, "Err/s")
 	assert.Contains(t, out, "12")
 }
@@ -142,7 +142,7 @@ func TestRenderDashboard_HidesErrorRateWhenZero(t *testing.T) {
 		Current: &fetcher.Snapshot{},
 		Derived: model.DerivedMetrics{ErrorRate: 0},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{}))
 	assert.NotContains(t, out, "Err/s")
 }
 
@@ -189,7 +189,7 @@ func TestRenderDashboard_ShowsReloadOK(t *testing.T) {
 			},
 		},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{}))
 	assert.Contains(t, out, "config reload")
 	assert.Contains(t, out, "ago")
 	assert.NotContains(t, out, "FAILED")
@@ -205,7 +205,7 @@ func TestRenderDashboard_ShowsReloadFailed(t *testing.T) {
 			},
 		},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{}))
 	assert.Contains(t, out, "config reload FAILED")
 	assert.NotContains(t, out, "ago")
 }
@@ -214,7 +214,7 @@ func TestRenderDashboard_NoReloadWhenNoData(t *testing.T) {
 	s := &model.State{
 		Current: &fetcher.Snapshot{},
 	}
-	out := stripANSI(renderDashboard(s, 120, "v0.1", nil, nil, false, false, false))
+	out := stripANSI(renderDashboard(s, 120, "v0.1", dashboardOpts{}))
 	assert.NotContains(t, out, "config reload")
 }
 
@@ -238,7 +238,7 @@ func TestRenderDashboard_FrankenPHPGauges(t *testing.T) {
 			},
 		},
 	}
-	out1 := stripANSI(renderDashboard(s1, 120, "v0.1", nil, nil, false, false, true))
+	out1 := stripANSI(renderDashboard(s1, 120, "v0.1", dashboardOpts{hasFrankenPHP: true}))
 	assert.Contains(t, out1, "Workers 1/2")
 	assert.NotContains(t, out1, "Threads")
 
@@ -253,7 +253,7 @@ func TestRenderDashboard_FrankenPHPGauges(t *testing.T) {
 			},
 		},
 	}
-	out2 := stripANSI(renderDashboard(s2, 120, "v0.1", nil, nil, false, false, true))
+	out2 := stripANSI(renderDashboard(s2, 120, "v0.1", dashboardOpts{hasFrankenPHP: true}))
 	assert.Contains(t, out2, "Threads 1/2")
 	assert.NotContains(t, out2, "Workers")
 
@@ -268,7 +268,7 @@ func TestRenderDashboard_FrankenPHPGauges(t *testing.T) {
 			},
 		},
 	}
-	out3 := stripANSI(renderDashboard(s3, 120, "v0.1", nil, nil, false, false, true))
+	out3 := stripANSI(renderDashboard(s3, 120, "v0.1", dashboardOpts{hasFrankenPHP: true}))
 	assert.Contains(t, out3, "Workers 1/1")
 	assert.Contains(t, out3, "Threads 0/1")
 }

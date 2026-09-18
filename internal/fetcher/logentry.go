@@ -12,6 +12,13 @@ import (
 // treated as a runtime log.
 const accessLoggerPrefix = "http.log.access"
 
+// MercureLoggerName is the logger the Mercure Caddy module writes under.
+const MercureLoggerName = "http.handlers.mercure"
+
+func (e LogEntry) IsMercureLog() bool {
+	return e.Logger == MercureLoggerName
+}
+
 // IsAccessLog reports whether the entry comes from Caddy's access-log
 // subsystem. Used to route entries between the access and runtime buffers.
 // A line that failed to parse is classified as runtime so it surfaces in the
@@ -41,6 +48,17 @@ type LogEntry struct {
 	RemoteIP   string
 	RawLine    string
 	ParseError bool
+
+	// Mercure is nil on every line but the hub's update lines.
+	Mercure *MercureLogFields
+}
+
+type MercureLogFields struct {
+	UpdateID string
+	Type     string
+	Topics   []string
+	Private  bool
+	Data     string
 }
 
 // caddyLogLine mirrors the JSON shape Caddy emits for access logs.
@@ -54,6 +72,17 @@ type caddyLogLine struct {
 	Status    int          `json:"status"`
 	Duration  float64      `json:"duration"`
 	Size      int64        `json:"size"`
+
+	// Another module may log an "update" of any shape.
+	Update json.RawMessage `json:"update"`
+}
+
+type mercureLogUpdate struct {
+	ID      string   `json:"id"`
+	Type    string   `json:"type"`
+	Topics  []string `json:"topics"`
+	Private bool     `json:"private"`
+	Data    string   `json:"data"`
 }
 
 type caddyLogReq struct {
@@ -119,7 +148,7 @@ func ParseLogLine(line string) LogEntry {
 		ts = time.Now().UTC()
 	}
 
-	return LogEntry{
+	e := LogEntry{
 		Timestamp: ts,
 		Level:     parsed.Level,
 		Logger:    parsed.Logger,
@@ -132,4 +161,11 @@ func ParseLogLine(line string) LogEntry {
 		Size:      parsed.Size,
 		RemoteIP:  parsed.Request.RemoteIP,
 	}
+	if parsed.Logger == MercureLoggerName && len(parsed.Update) > 0 {
+		var u mercureLogUpdate
+		if json.Unmarshal(parsed.Update, &u) == nil {
+			e.Mercure = &MercureLogFields{UpdateID: u.ID, Type: u.Type, Topics: u.Topics, Private: u.Private, Data: u.Data}
+		}
+	}
+	return e
 }

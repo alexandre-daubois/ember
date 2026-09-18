@@ -84,6 +84,7 @@ func ParsePrometheus(r io.Reader) (snap MetricsSnapshot, err error) {
 
 	snap.Hosts = perHostMetrics(families)
 	snap.Upstreams = upstreamMetrics(families)
+	snap.Mercure = mercureMetrics(families)
 
 	// Fallback: if HTTP metrics exist but no host labels, aggregate as a single "*" entry
 	if snap.HasHTTPMetrics && len(snap.Hosts) == 0 {
@@ -130,6 +131,10 @@ var coreMetricNames = map[string]struct{}{
 	"caddy_http_response_size_bytes":        {},
 	"caddy_http_request_size_bytes":         {},
 	"caddy_reverse_proxy_upstreams_healthy": {},
+
+	"mercure_subscribers_connected": {},
+	"mercure_subscribers_total":     {},
+	"mercure_updates_total":         {},
 
 	"process_cpu_seconds_total":     {},
 	"process_resident_memory_bytes": {},
@@ -522,4 +527,17 @@ func upstreamMetrics(families map[string]*dto.MetricFamily) map[string]*Upstream
 		return nil
 	}
 	return upstreams
+}
+
+// The module registers the families at provision time, so their presence
+// alone (even at zero) means a hub is loaded.
+func mercureMetrics(families map[string]*dto.MetricFamily) *MercureMetrics {
+	if _, ok := families["mercure_subscribers_connected"]; !ok {
+		return nil
+	}
+	return &MercureMetrics{
+		SubscribersConnected: scalarValue(families, "mercure_subscribers_connected"),
+		SubscribersTotal:     scalarValue(families, "mercure_subscribers_total"),
+		UpdatesTotal:         scalarValue(families, "mercure_updates_total"),
+	}
 }

@@ -1,6 +1,6 @@
 # Caddy Dashboard
 
-The Caddy tab is always available. It displays per-host HTTP traffic metrics collected from the Caddy Prometheus endpoint.
+The Caddy tab displays per-host HTTP traffic metrics collected from the Caddy Prometheus endpoint. It is always available, except on a standalone Mercure hub without HTTP metrics, where it is removed (see [Mercure Dashboard](mercure-dashboard.md#hub-only-mode)).
 
 ## Host Traffic Table
 
@@ -91,13 +91,15 @@ Press `s`/`S` to sort by address or health status. Press `/` to filter by addres
 Press `g` to toggle full-screen graphs showing:
 
 - **CPU %**: Process CPU usage over time
-- **RPS**: Requests per second over time
+- **RPS**: Requests per second over time (omitted on a hub-only Mercure, see [Mercure Dashboard](mercure-dashboard.md))
 - **RSS**: Resident memory over time
+- **Subscribers** and **Updates**: hub counters, when a Mercure hub is detected
 
 Graphs display the last 300 samples. Press `g` or `Esc` to return to the table view.
 
 ## See Also
 
 - [FrankenPHP Dashboard](frankenphp-dashboard.md)
+- [Mercure Dashboard](mercure-dashboard.md)
 - [Caddy Configuration](caddy-configuration.md)
 - [CLI Reference](cli-reference.md)

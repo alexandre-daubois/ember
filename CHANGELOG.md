@@ -2,6 +2,13 @@
 
 All notable changes to Ember are documented here.
 
+## Unreleased
+
+### Added
+
+- Mercure hub support: a Mercure tab appears when the monitored Caddy loads the `mercure` module, showing connected subscribers, new subscribers/s and updates/s with sparklines and full-screen graphs, plus the hub configuration read from the Caddy config (transport, anonymous mode, subscriptions API, playground, issuers, timeouts). On a standalone hub without HTTP metrics the Caddy tab is dropped and the header shows the hub counters instead of RPS. `ember status`, `--json` and the Prometheus export carry the hub counters and derived rates.
+- Logs › Mercure lists the updates a Mercure hub dispatches (topics, type, private flag, size, recipients, payload) with a JSON-aware detail panel, and its By Topic child aggregates them by topic pattern. Ember captures them through a `__ember_mercure__` DEBUG log sink installed only while one of these rows is selected. `m` on the Mercure tab jumps there.
+
 ## 1.6.1 - 2026-08-31
 
 ### Changed

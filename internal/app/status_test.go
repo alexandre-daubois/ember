@@ -616,3 +616,42 @@ func TestRunStatusMulti_DeterministicOrder(t *testing.T) {
 	assert.Equal(t, "zzz", body1.Instances[1].Name)
 	assert.Equal(t, body1.Instances[0].Name, body2.Instances[0].Name, "ordering must be the same regardless of input order")
 }
+
+func TestFormatStatusLine_WithMercure(t *testing.T) {
+	s := testState(func(snap *fetcher.Snapshot) {
+		snap.Metrics.Mercure = &fetcher.MercureMetrics{SubscribersConnected: 42}
+	})
+	s.Derived.MercureUpdatesPerSec = 12.34
+
+	line := formatStatusLine(&s, false)
+
+	assert.Contains(t, line, "Mercure 42 subscribers | 12.3 updates/s")
+}
+
+func TestFormatStatusLine_NoMercure(t *testing.T) {
+	line := formatStatusLine(ptr(testState()), false)
+	assert.NotContains(t, line, "Mercure")
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestBuildStatusJSON_WithMercure(t *testing.T) {
+	s := testState(func(snap *fetcher.Snapshot) {
+		snap.Metrics.Mercure = &fetcher.MercureMetrics{SubscribersConnected: 7}
+	})
+	s.Derived.MercureUpdatesPerSec = 2.5
+
+	result := buildStatusJSON(&s, false)
+
+	require.NotNil(t, result.Mercure)
+	assert.Equal(t, 7, result.Mercure.Subscribers)
+	assert.Equal(t, 2.5, result.Mercure.UpdatesPerSec)
+	assert.Nil(t, buildStatusJSON(ptr(testState()), false).Mercure)
+}
+
+// A hub without the `metrics` global option answers with mercure_* families
+// only, which is enough to count as reachable.
+func TestIsReachable_MercureOnly(t *testing.T) {
+	assert.True(t, isReachable(&fetcher.Snapshot{Metrics: fetcher.MetricsSnapshot{Mercure: &fetcher.MercureMetrics{}}}))
+	assert.False(t, isReachable(&fetcher.Snapshot{}))
+}

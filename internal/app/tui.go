@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -151,9 +152,11 @@ func startStdinListener(uiCfg *ui.Config) {
 	accessBuf := model.NewLogBuffer(0)
 	runtimeBuf := model.NewLogBuffer(0)
 	routeAgg := model.NewRouteAggregator()
+	feed := model.NewMercureFeed(0)
 	uiCfg.LogBuffer = accessBuf
 	uiCfg.RuntimeLogBuffer = runtimeBuf
 	uiCfg.RouteAggregator = routeAgg
+	uiCfg.MercureFeed = feed
 	uiCfg.LogSource = "stdin"
 
 	go func() {
@@ -176,13 +179,7 @@ func startStdinListener(uiCfg *ui.Config) {
 				continue
 			}
 
-			e := fetcher.ParseLogLine(trimmed)
-			if e.IsAccessLog() {
-				accessBuf.Append(e)
-				routeAgg.Track(e)
-			} else {
-				runtimeBuf.Append(e)
-			}
+			routeLogEntry(fetcher.ParseLogLine(trimmed), accessBuf, runtimeBuf, routeAgg, feed)
 		}
 
 		// Scan stops for good on the first over-long line or read error, so
@@ -199,6 +196,22 @@ func startStdinListener(uiCfg *ui.Config) {
 			Message:   msg,
 		})
 	}()
+}
+
+// Access logs also feed the route aggregator so route counts survive ring-
+// buffer wraparound: the buffer caps at 10 000 entries, but the By Route view
+// should reflect the full session. The hub's DEBUG lines would drown the
+// runtime view.
+func routeLogEntry(e fetcher.LogEntry, accessBuf, runtimeBuf *model.LogBuffer, routeAgg *model.RouteAggregator, feed *model.MercureFeed) {
+	switch {
+	case e.IsAccessLog():
+		accessBuf.Append(e)
+		routeAgg.Track(e)
+	case e.IsMercureLog() && e.Level == "debug":
+		feed.Track(e)
+	default:
+		runtimeBuf.Append(e)
+	}
 }
 
 // stdinMaxLineBytes caps a single log line. Caddy access logs stay well under
@@ -282,9 +295,13 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	accessBuf := model.NewLogBuffer(0)
 	runtimeBuf := model.NewLogBuffer(0)
 	routeAgg := model.NewRouteAggregator()
+	feed := model.NewMercureFeed(0)
+	feedCtl := &mercureFeedController{hf: hf, addr: advertiseAddr}
 	uiCfg.LogBuffer = accessBuf
 	uiCfg.RuntimeLogBuffer = runtimeBuf
 	uiCfg.RouteAggregator = routeAgg
+	uiCfg.MercureFeed = feed
+	uiCfg.MercureFeedControl = feedCtl
 	uiCfg.LogSource = "net " + advertiseAddr
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -292,15 +309,7 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	listenerDone.Go(func() {
 		ln.Start(ctx, func(batch []fetcher.LogEntry) {
 			for _, e := range batch {
-				if e.IsAccessLog() {
-					accessBuf.Append(e)
-					// Track in the aggregator too so route counts survive ring-
-					// buffer wraparound: the buffer caps at 10 000 entries, but
-					// the By Route view should reflect the full session.
-					routeAgg.Track(e)
-				} else {
-					runtimeBuf.Append(e)
-				}
+				routeLogEntry(e, accessBuf, runtimeBuf, routeAgg, feed)
 			}
 		})
 	})
@@ -334,6 +343,18 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 					_ = hf.RegisterEmberRuntimeLogSink(reregCtx, advertiseAddr)
 					reregCancel()
 				}
+				// Re-registering the Mercure sink also re-narrows the runtime
+				// sink, so it must come after the runtime re-registration.
+				if feedCtl.active.Load() {
+					checkCtx, checkCancel = context.WithTimeout(ctx, 3*time.Second)
+					mercureExists := hf.CheckEmberMercureLogSink(checkCtx)
+					checkCancel()
+					if !mercureExists || !runtimeExists {
+						reregCtx, reregCancel := context.WithTimeout(ctx, 3*time.Second)
+						_ = hf.RegisterEmberMercureLogSink(reregCtx, advertiseAddr)
+						reregCancel()
+					}
+				}
 				// Always retry enableAccessLogs when the enabled list
 				// is empty: the sink may have been registered on a
 				// prior tick but enableAccessLogs may have failed
@@ -352,9 +373,33 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 		listenerDone.Wait()
 		watchdogDone.Wait()
 		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
+		unregisterSink("__ember_mercure__", func(ctx context.Context) error {
+			return hf.UnregisterEmberMercureLogSink(ctx, "")
+		})
 		unregisterSink("__ember_runtime__", hf.UnregisterEmberRuntimeLogSink)
 		restoreAccessLogs(hf, enabled)
 	}, true
+}
+
+// active is read by the sink watchdog, which re-registers the sink after a
+// Caddy reload for as long as the feed is wanted.
+type mercureFeedController struct {
+	hf     *fetcher.HTTPFetcher
+	addr   string
+	active atomic.Bool
+}
+
+func (c *mercureFeedController) Start(ctx context.Context) error {
+	if err := c.hf.RegisterEmberMercureLogSink(ctx, c.addr); err != nil {
+		return err
+	}
+	c.active.Store(true)
+	return nil
+}
+
+func (c *mercureFeedController) Stop(ctx context.Context) error {
+	c.active.Store(false)
+	return c.hf.UnregisterEmberMercureLogSink(ctx, c.addr)
 }
 
 // unregisterSink calls fn with a fresh 3s timeout and logs any error. Each

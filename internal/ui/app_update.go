@@ -29,6 +29,10 @@ type rpConfigFetchMsg struct {
 	configs []fetcher.ReverseProxyConfig
 	err     error
 }
+type mercureConfigFetchMsg struct {
+	configs []fetcher.MercureConfig
+	err     error
+}
 
 // logRefreshMsg drives the Logs tab redraw cadence; the tailer writes into
 // the shared LogBuffer asynchronously and the UI re-snapshots on each tick.
@@ -117,19 +121,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.history == nil {
 			a.history = newHistoryStore()
 		}
-		var rpCmd tea.Cmd
+		var cmds []tea.Cmd
 		if msg.snap != nil {
 			if msg.snap.HasFrankenPHP && !a.hasFrankenPHP {
 				a.enableFrankenPHP()
 			}
 			if len(msg.snap.Metrics.Upstreams) > 0 && !a.hasUpstreams {
 				a.enableUpstreams()
-				rpCmd = a.doFetchRPConfig()
+				cmds = append(cmds, a.doFetchRPConfig())
+			}
+			if msg.snap.Metrics.Mercure != nil && !a.hasMercure {
+				a.enableMercure()
+				cmds = append(cmds, a.doFetchMercureConfig())
+			}
+			// A failed scrape carries no Mercure block and no HTTP metrics.
+			if !msg.snap.MetricsFailed {
+				a.syncCaddyTab(msg.snap)
+			}
+			if feed := a.mercureFeedCmd(); feed != nil {
+				cmds = append(cmds, feed)
 			}
 
 			wasStale := a.stale
-			hasData := len(msg.snap.Threads.ThreadDebugStates) > 0 || msg.snap.Metrics.HasHTTPMetrics || len(msg.snap.Metrics.Upstreams) > 0
-			hadData := a.state.Current != nil && (len(a.state.Current.Threads.ThreadDebugStates) > 0 || a.state.Current.Metrics.HasHTTPMetrics || len(a.state.Current.Metrics.Upstreams) > 0)
+			hasData := snapshotHasData(msg.snap)
+			hadData := a.state.Current != nil && snapshotHasData(a.state.Current)
 
 			if !hasData && hadData {
 				a.stale = true
@@ -166,6 +181,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.history.appendRSS(float64(msg.snap.Process.RSS) / 1024 / 1024)
 			a.history.appendQueue(msg.snap.Metrics.QueueDepth)
 			a.history.appendBusy(float64(a.state.Derived.TotalBusy))
+			if m := msg.snap.Metrics.Mercure; m != nil {
+				a.history.appendSubscribers(m.SubscribersConnected)
+				a.history.appendUpdates(a.state.Derived.MercureUpdatesPerSec)
+			}
 
 			activeHosts := make(map[string]struct{}, len(a.state.HostDerived))
 			for _, hd := range a.state.HostDerived {
@@ -196,7 +215,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.config.OnStateUpdate(a.state, a.pluginExports())
 			}
 		}
-		return a, rpCmd
+		return a, tea.Batch(cmds...)
 	case restartResultMsg:
 		if msg.err != nil {
 			a.status = "restart failed: " + msg.err.Error()
@@ -240,6 +259,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.rpConfigs = msg.configs
+		return a, nil
+	case mercureFeedMsg:
+		a.handleMercureFeedMsg(msg)
+		return a, nil
+	case mercureConfigFetchMsg:
+		if msg.err != nil {
+			a.status = "mercure config fetch failed: " + msg.err.Error()
+			return a, nil
+		}
+		a.mercureConfigs = msg.configs
 		return a, nil
 	case logRefreshMsg:
 		return a, a.scheduleLogRefresh()

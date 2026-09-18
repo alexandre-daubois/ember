@@ -4,7 +4,9 @@ The Logs tab streams Caddy's logs into the Ember TUI in real time. A left
 sidepanel lets you switch between **Runtime** logs (startup, reloads, TLS,
 admin API, modules), **Access** logs (HTTP requests), drill into a specific
 host within the access view, or pivot to **By Route**: an aggregated table
-that groups requests by their normalized URI pattern.
+that groups requests by their normalized URI pattern. When a Mercure hub is
+detected, a **Mercure** entry adds the updates the hub dispatches, with a
+**By Topic** aggregation (see [Mercure Dashboard](mercure-dashboard.md#following-the-updates)).
 
 Each line is parsed on the fly and kept in an in-memory ring buffer of the
 last 10 000 entries per stream (access and runtime are held in separate
@@ -111,6 +113,14 @@ Notes:
   routing symmetric: every log line reaches exactly one Ember buffer.
 - The `net` writer reconnects on its own when Ember restarts.
 
+A third sink, `__ember_mercure__`, exists only while the Logs tab shows a
+Mercure row. It includes the `http.handlers.mercure` logger at `DEBUG` level,
+where the hub logs each update it dispatches, and the runtime sink is narrowed
+to exclude that logger for as long as it lives, so the hub's INFO lines are
+not delivered twice. Both writes use `POST` (set or replace): the runtime sink
+already exists, and a Mercure sink left behind by a crash must not block the
+next capture.
+
 ## Sidepanel
 
 The left column is a tree:
@@ -122,6 +132,8 @@ Access
   static.example.com
   ...
 By Route
+Mercure
+  By Topic
 ```
 
 - **Runtime** shows everything Caddy logs that is not an HTTP access entry:
@@ -134,6 +146,10 @@ By Route
   `(host, method, normalized URI pattern)` bucket. See the dedicated section
   below. Like Access, "By Route" has per-host children so you can drill
   into a single virtual host.
+- **Mercure** and its **By Topic** child appear when a Mercure hub is
+  detected. They show the updates the hub dispatches and their per-topic
+  aggregation; selecting either one turns the hub's DEBUG capture on, leaving
+  them turns it off. See [Mercure Dashboard](mercure-dashboard.md#following-the-updates).
 
 Selecting an entry resumes live-follow mode so you always see fresh data when
 you drill in. The filter (typed with `/`) composes with the sidepanel: type
@@ -300,7 +316,7 @@ Focus is on the sidepanel by default when entering the tab.
 | `f`             | Resume live follow (table focus)                         |
 | `/`             | Filter: matches case-insensitively across all visible columns |
 | `p`             | Toggle pause: freezes or resumes the table               |
-| `s` / `S`       | Cycle sort field (By Route view only)                    |
+| `s` / `S`       | Cycle sort field (By Route and By Topic views)           |
 | `c`             | Clear the current buffer (also resumes live follow)      |
 | `Tab`           | Switch tab                                               |
 | `?`             | Help overlay                                             |
@@ -326,6 +342,9 @@ Best-effort against unexpected exits:
 | Caddy starts after Ember         | Watchdog activates streaming within 30 s ✓              |
 | `SIGKILL`, OOM kill, power loss  | Sinks and auto-enabled access-logs blocks remain: see below |
 
+The Mercure sink is removed on every path that leaves the Mercure rows, and
+again at exit with the other two.
+
 If a `SIGKILL`-class event leaves state behind, Caddy keeps the registrations
 but the writers use `soft_start: true`, so they do not block reloads or spam
 errors. To clean up:
@@ -337,6 +356,7 @@ errors. To clean up:
   ```bash
   curl -X DELETE http://localhost:2019/config/logging/logs/__ember__
   curl -X DELETE http://localhost:2019/config/logging/logs/__ember_runtime__
+  curl -X DELETE http://localhost:2019/config/logging/logs/__ember_mercure__
   # plus, for each server Ember may have touched:
   curl -X DELETE http://localhost:2019/config/apps/http/servers/<srv>/logs
   ```

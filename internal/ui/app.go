@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,6 +47,16 @@ type Config struct {
 	RuntimeLogBuffer *model.LogBuffer
 	RouteAggregator  *model.RouteAggregator
 	LogSource        string // path or description; empty when no source is known
+
+	// Either may be nil: no feed at all, or a feed fed from stdin that
+	// nothing can control.
+	MercureFeed        *model.MercureFeed
+	MercureFeedControl MercureFeedControl
+}
+
+type MercureFeedControl interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 }
 
 type tab int
@@ -57,7 +68,11 @@ const (
 	tabUpstreams
 	tabLogs
 	tabFrankenPHP
+	tabMercure
 )
+
+// coreTabOrder is the display order of the built-in tabs; plugin tabs follow.
+var coreTabOrder = []tab{tabCaddy, tabFrankenPHP, tabMercure, tabUpstreams, tabLogs, tabConfig, tabCertificates}
 
 type tabState struct {
 	cursor int
@@ -102,6 +117,7 @@ type App struct {
 	tabStates      map[tab]*tabState
 	hasFrankenPHP  bool
 	hasUpstreams   bool
+	hasMercure     bool
 	hostSortBy     model.HostSortField
 	upstreamSortBy model.UpstreamSortField
 
@@ -115,6 +131,15 @@ type App struct {
 
 	rpConfigs []fetcher.ReverseProxyConfig
 	downSince map[string]time.Time
+
+	mercureConfigs []fetcher.MercureConfig
+	// mercureFeedFailed stops the retries until the Mercure row is selected again.
+	mercureFeedOn     bool
+	mercureFeedFailed bool
+	mercureFrozen     bool
+	mercureSnapshot   []model.MercureUpdate
+	mercureFrozenAt   int64
+	topicSortBy       model.TopicSortField
 
 	logBuffer        *model.LogBuffer
 	runtimeLogBuffer *model.LogBuffer
@@ -237,11 +262,7 @@ func (a *App) View() string {
 		return "Loading..."
 	}
 
-	if a.state.Current != nil &&
-		len(a.state.Current.Threads.ThreadDebugStates) == 0 &&
-		!a.state.Current.Metrics.HasHTTPMetrics &&
-		len(a.state.Current.Metrics.Upstreams) == 0 &&
-		len(a.state.Current.Errors) > 0 {
+	if a.state.Current != nil && !snapshotHasData(a.state.Current) && len(a.state.Current.Errors) > 0 {
 		return renderConnectionError(a.state.Current.Errors[0], a.width, a.height)
 	}
 
@@ -255,7 +276,15 @@ func (a *App) View() string {
 	}
 	listWidth := a.width - panelWidth
 
-	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, lastN(a.history.rps, sparklineSize), lastN(a.history.cpu, sparklineSize), a.stale, a.paused, a.hasFrankenPHP)
+	dashboard := renderDashboard(&a.state, listWidth, a.config.Version, dashboardOpts{
+		rpsHistory:    lastN(a.history.rps, sparklineSize),
+		cpuHistory:    lastN(a.history.cpu, sparklineSize),
+		subsHistory:   lastN(a.history.subscribers, sparklineSize),
+		stale:         a.stale,
+		paused:        a.paused,
+		hasFrankenPHP: a.hasFrankenPHP,
+		mercureOnly:   a.mercureOnly(),
+	})
 	counts := make(map[tab]string)
 	if a.state.Current != nil {
 		if hostCount := len(a.state.HostDerived); hostCount > 0 {
@@ -273,6 +302,9 @@ func (a *App) View() string {
 	}
 	if a.hasUpstreams {
 		counts[tabUpstreams] = fmt.Sprintf("%d upstreams", len(a.state.UpstreamDerived))
+	}
+	if a.hasMercure && a.state.Current != nil && a.state.Current.Metrics.Mercure != nil {
+		counts[tabMercure] = fmt.Sprintf("%d subs", int64(a.state.Current.Metrics.Mercure.SubscribersConnected))
 	}
 	accessLen, accessFull := logBufferStats(a.logBuffer)
 	runtimeLen, runtimeFull := logBufferStats(a.runtimeLogBuffer)
@@ -375,6 +407,8 @@ func (a *App) View() string {
 		}
 	case tabLogs:
 		contentList = a.renderLogsTab(listWidth, contentAreaHeight)
+	case tabMercure:
+		contentList = renderMercureView(&a.state, a.mercureConfigs, lastN(a.history.subscribers, sparklineSize), lastN(a.history.updates, sparklineSize), listWidth, contentAreaHeight, a.config.MercureFeed != nil)
 	default:
 		if pt := a.activePluginTab(); pt != nil && pt.renderer != nil {
 			contentList = safePluginView(pt.renderer, listWidth, a.height-10)
@@ -389,6 +423,14 @@ func (a *App) View() string {
 	// sort that table actually applied rather than the memory key it holds in
 	// reserve while the columns are off screen.
 	help := renderHelp(a.sortBy, a.hostSortBy, a.certSortBy, a.upstreamSortBy, a.effectiveRouteSort(), a.paused, listWidth, a.activeTab, a.logFrozen, a.isRoutesView(), a.pendingTabSelect, a.activePluginTab())
+	if !a.pendingTabSelect {
+		switch {
+		case a.activeTab == tabMercure:
+			help = renderBindings(a.mercureTabHelpBindings(), listWidth)
+		case a.activeTab == tabLogs && a.isMercureView():
+			help = renderBindings(a.mercureLogsHelpBindings(), listWidth)
+		}
+	}
 
 	var statusLine string
 	if a.status != "" {
@@ -412,7 +454,18 @@ func (a *App) View() string {
 		if graphAreaHeight < 5 {
 			graphAreaHeight = 5
 		}
-		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, a.history.cpu, a.history.rps, a.history.rss, a.history.queue, a.history.busy, a.hasFrankenPHP))
+		parts = append(parts, renderGraphPanels(listWidth, graphAreaHeight, graphSeries{
+			cpu:           a.history.cpu,
+			rps:           a.history.rps,
+			rss:           a.history.rss,
+			queue:         a.history.queue,
+			busy:          a.history.busy,
+			subscribers:   a.history.subscribers,
+			updates:       a.history.updates,
+			hasFrankenPHP: a.hasFrankenPHP,
+			hasMercure:    a.hasMercure,
+			mercureOnly:   a.mercureOnly(),
+		}))
 		parts = append(parts, helpStyle.Width(listWidth).Render(" "+helpKeyStyle.Render("g/Esc")+" back  "+helpKeyStyle.Render("q")+" quit"))
 	default:
 		if filterLine != "" && a.activeTab != tabConfig {
@@ -428,7 +481,15 @@ func (a *App) View() string {
 	base := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	if a.mode == viewDetail {
-		if a.activeTab == tabCaddy {
+		if a.activeTab == tabLogs && a.logSel.kind == logSelMercure {
+			if updates := a.mercureUpdates(); a.cursor >= 0 && a.cursor < len(updates) {
+				u := updates[a.cursor]
+				if sidePanel {
+					return lipgloss.JoinHorizontal(lipgloss.Top, base, renderMercureUpdatePanel(u, panelWidth, a.height))
+				}
+				return clampHeight(lipgloss.JoinVertical(lipgloss.Left, base, renderMercureUpdatePanel(u, a.width, bottomDetailHeight)), a.height)
+			}
+		} else if a.activeTab == tabCaddy {
 			if a.cursor >= 0 && a.cursor < len(hosts) {
 				h := hosts[a.cursor]
 				if sidePanel {
@@ -455,7 +516,7 @@ func (a *App) View() string {
 	}
 
 	if a.mode == viewHelp {
-		return renderHelpOverlay(a.width, a.height, a.hasFrankenPHP, a.pluginTabs, a.tabs)
+		return renderHelpOverlay(a.width, a.height, a.hasFrankenPHP, a.hasMercure && a.config.MercureFeed != nil, a.pluginTabs, a.tabs)
 	}
 
 	return base
@@ -481,4 +542,16 @@ func renderConfirmOverlay(base string, width, height int) string {
 			"  Press [y] to confirm, any other key to cancel",
 	)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, popup)
+}
+
+func snapshotHasData(snap *fetcher.Snapshot) bool {
+	return len(snap.Threads.ThreadDebugStates) > 0 ||
+		snap.Metrics.HasHTTPMetrics ||
+		len(snap.Metrics.Upstreams) > 0 ||
+		snap.Metrics.Mercure != nil
+}
+
+// mercureOnly reports that the Caddy tab was dropped for lack of HTTP metrics.
+func (a *App) mercureOnly() bool {
+	return a.hasMercure && !slices.Contains(a.tabs, tabCaddy)
 }

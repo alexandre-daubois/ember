@@ -32,6 +32,8 @@ func tabLabel(t tab, pluginTabs []*pluginTab) string {
 		return "Logs"
 	case tabFrankenPHP:
 		return "FrankenPHP"
+	case tabMercure:
+		return "Mercure"
 	default:
 		for _, pt := range pluginTabs {
 			if pt.tabID == t {

@@ -260,6 +260,12 @@ With FrankenPHP:
 Caddy OK | 5 hosts | 450 rps | P99 12ms | CPU 3.2% | RSS 48MB | up 3d 2h | FrankenPHP 8/20 busy | 2 workers
 ```
 
+With a Mercure hub:
+
+```
+Caddy OK | 1 hosts | 0 rps | CPU 1.1% | RSS 32MB | up 3d 2h | Mercure 42 subscribers | 12.3 updates/s
+```
+
 If Caddy is unreachable:
 
 ```
@@ -313,9 +319,12 @@ With `--json` (single-instance mode), the output is a JSON object:
   "cpuPercent": 3.2,
   "rssBytes": 50331648,
   "uptime": "3d 2h",
-  "frankenphp": { "busy": 8, "total": 20, "workers": 2 }
+  "frankenphp": { "busy": 8, "total": 20, "workers": 2 },
+  "mercure": { "subscribers": 42, "updatesPerSec": 12.3 }
 }
 ```
+
+The `frankenphp` and `mercure` objects are only present when the corresponding component is detected.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

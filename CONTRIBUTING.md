@@ -44,14 +44,16 @@ internal/
 local/
   caddy/             Exhaustive Caddy setup (TLS, upstreams, multiple hosts)
   frankenphp/        Minimal FrankenPHP setup
+  mercure/           Standalone Mercure hub (hub-only mode)
 ```
 
 > [!NOTE]
-> You can start a local instance for fast testing. Two setups are available:
+> You can start a local instance for fast testing. Three setups are available:
 >
 > ```bash
-> cd local/frankenphp && make up   # minimal FrankenPHP (worker, metrics)
+> cd local/frankenphp && make up   # minimal FrankenPHP (worker, metrics, Mercure hub)
 > cd local/caddy && make up        # exhaustive Caddy (TLS, upstreams, hosts)
+> cd local/mercure && make up      # standalone Mercure hub (hub-only mode, admin on :2020)
 > ```
 
 ## Running Tests

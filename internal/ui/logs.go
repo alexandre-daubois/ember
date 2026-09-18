@@ -32,9 +32,14 @@ func (a *App) renderLogsTab(width, height int) string {
 	rightStatus := a.buildLogsHeaderStatus()
 
 	var table string
-	if a.isRoutesView() {
+	switch {
+	case a.logSel.kind == logSelMercure:
+		table = a.renderMercureMessages(tableW, height)
+	case a.logSel.kind == logSelMercureTopics:
+		table = a.renderMercureTopics(tableW, height)
+	case a.isRoutesView():
 		table = a.renderRoutesView(tableW, height, rightStatus)
-	} else {
+	default:
 		all := a.filteredLogEntries()
 		bodyHeight := height - logHeaderHeight
 		if bodyHeight < 1 {
@@ -117,6 +122,10 @@ func (a *App) effectiveRouteSort() model.RouteSortField {
 
 func (a *App) isRoutesView() bool {
 	return a.logSel.kind == logSelRoutes || a.logSel.kind == logSelRoutesHost
+}
+
+func (a *App) isMercureView() bool {
+	return a.logSel.kind == logSelMercure || a.logSel.kind == logSelMercureTopics
 }
 
 // cycleRouteSort walks the sort cycle, skipping the memory fields when their
@@ -505,16 +514,16 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case "up", "k":
 			a.moveSidepanel(-1)
-			return a, nil
+			return a, a.mercureFeedCmd()
 		case "down", "j":
 			a.moveSidepanel(+1)
-			return a, nil
+			return a, a.mercureFeedCmd()
 		case "home":
 			a.moveSidepanel(-len(a.sidepanelItems()))
-			return a, nil
+			return a, a.mercureFeedCmd()
 		case "end":
 			a.moveSidepanel(len(a.sidepanelItems()))
-			return a, nil
+			return a, a.mercureFeedCmd()
 		case "right", "l", "enter":
 			// Refuse to hand focus to an empty table: there's nothing to
 			// navigate over there, and the visible state (focused sidepanel,
@@ -531,6 +540,10 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		return a, nil
+	}
+
+	if a.isMercureView() {
+		return a, a.handleMercureLogsKey(key)
 	}
 
 	switch key {
@@ -614,10 +627,14 @@ func (a *App) handleLogsListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) currentLogsListLen() int {
-	if a.isRoutesView() {
+	switch {
+	case a.isMercureView():
+		return a.mercureListLen()
+	case a.isRoutesView():
 		return len(a.routeStatsInScope())
+	default:
+		return len(a.filteredLogEntries())
 	}
-	return len(a.filteredLogEntries())
 }
 
 // logsHelpBindings returns the bindings shown at the bottom of the Logs tab.

@@ -2265,3 +2265,62 @@ func TestUpstreamSortField_String(t *testing.T) {
 	assert.Equal(t, "address", SortByUpstreamAddress.String())
 	assert.Equal(t, "health", SortByUpstreamHealth.String())
 }
+
+func mercureSnap(at time.Time, connected, subsTotal, updatesTotal float64) *fetcher.Snapshot {
+	return &fetcher.Snapshot{
+		FetchedAt: at,
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Mercure: &fetcher.MercureMetrics{SubscribersConnected: connected, SubscribersTotal: subsTotal, UpdatesTotal: updatesTotal},
+		},
+	}
+}
+
+func TestState_Update_MercureRates(t *testing.T) {
+	now := time.Now()
+	var s State
+	s.Update(mercureSnap(now.Add(-2*time.Second), 10, 100, 1000))
+	s.Update(mercureSnap(now, 12, 104, 1050))
+
+	assert.InDelta(t, 2.0, s.Derived.MercureSubscribersPerSec, 0.001)
+	assert.InDelta(t, 25.0, s.Derived.MercureUpdatesPerSec, 0.001)
+}
+
+func TestState_Update_MercureRates_FirstPollIsZero(t *testing.T) {
+	var s State
+	s.Update(mercureSnap(time.Now(), 10, 100, 1000))
+
+	assert.Equal(t, 0.0, s.Derived.MercureSubscribersPerSec)
+	assert.Equal(t, 0.0, s.Derived.MercureUpdatesPerSec)
+}
+
+func TestState_Update_MercureRates_NoHubOnOneSide(t *testing.T) {
+	now := time.Now()
+	var s State
+	s.Update(&fetcher.Snapshot{FetchedAt: now.Add(-time.Second), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}})
+	s.Update(mercureSnap(now, 10, 100, 1000))
+
+	assert.Equal(t, 0.0, s.Derived.MercureUpdatesPerSec)
+}
+
+// A hub restart zeroes its counters; that must read as a reset rather than a
+// negative rate.
+func TestState_Update_MercureCounterResetDetected(t *testing.T) {
+	now := time.Now()
+	var s State
+	s.Update(mercureSnap(now.Add(-2*time.Second), 10, 100, 1000))
+	s.Update(mercureSnap(now, 1, 1, 5))
+
+	assert.Nil(t, s.Previous, "a backwards mercure counter must discard the previous snapshot")
+	assert.Equal(t, 0.0, s.Derived.MercureUpdatesPerSec)
+}
+
+func TestState_CopyForExport_ClonesMercure(t *testing.T) {
+	var s State
+	s.Update(mercureSnap(time.Now(), 10, 100, 1000))
+
+	cp := s.CopyForExport()
+	cp.Current.Metrics.Mercure.SubscribersConnected = 99
+
+	assert.Equal(t, float64(10), s.Current.Metrics.Mercure.SubscribersConnected)
+}

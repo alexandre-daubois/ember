@@ -72,13 +72,19 @@ type jsonHost struct {
 }
 
 type jsonDerived struct {
-	RPS       float64  `json:"rps"`
-	AvgTime   float64  `json:"avgTime"`
-	ErrorRate float64  `json:"errorRate,omitempty"`
-	P50       *float64 `json:"p50,omitempty"`
-	P90       *float64 `json:"p90,omitempty"`
-	P95       *float64 `json:"p95,omitempty"`
-	P99       *float64 `json:"p99,omitempty"`
+	RPS       float64             `json:"rps"`
+	AvgTime   float64             `json:"avgTime"`
+	ErrorRate float64             `json:"errorRate,omitempty"`
+	P50       *float64            `json:"p50,omitempty"`
+	P90       *float64            `json:"p90,omitempty"`
+	P95       *float64            `json:"p95,omitempty"`
+	P99       *float64            `json:"p99,omitempty"`
+	Mercure   *jsonMercureDerived `json:"mercure,omitempty"`
+}
+
+type jsonMercureDerived struct {
+	SubscribersPerSec float64 `json:"subscribersPerSec"`
+	UpdatesPerSec     float64 `json:"updatesPerSec"`
 }
 
 func runJSON(ctx context.Context, instances []*instance, cfg *config) error {
@@ -197,6 +203,12 @@ func buildJSONOutput(snap *fetcher.Snapshot, state *model.State) jsonOutput {
 		out.Derived.P90 = &state.Derived.P90
 		out.Derived.P95 = &state.Derived.P95
 		out.Derived.P99 = &state.Derived.P99
+	}
+	if snap.Metrics.Mercure != nil {
+		out.Derived.Mercure = &jsonMercureDerived{
+			SubscribersPerSec: state.Derived.MercureSubscribersPerSec,
+			UpdatesPerSec:     state.Derived.MercureUpdatesPerSec,
+		}
 	}
 	for _, hd := range state.HostDerived {
 		jh := jsonHost{

@@ -123,23 +123,29 @@ func runStatus(ctx context.Context, timeout time.Duration, w io.Writer, f *fetch
 }
 
 type statusJSON struct {
-	Name        string   `json:"name,omitempty"`
-	Status      string   `json:"status"`
-	Addr        string   `json:"addr,omitempty"`
-	Error       string   `json:"error,omitempty"`
-	Hosts       int      `json:"hosts,omitempty"`
-	RPS         float64  `json:"rps"`
-	P99         *float64 `json:"p99,omitempty"`
-	CPUPercent  float64  `json:"cpuPercent"`
-	RSSBytes    uint64   `json:"rssBytes"`
-	UptimeHuman string   `json:"uptime,omitempty"`
-	FrankenPHP  *fpJSON  `json:"frankenphp,omitempty"`
+	Name        string       `json:"name,omitempty"`
+	Status      string       `json:"status"`
+	Addr        string       `json:"addr,omitempty"`
+	Error       string       `json:"error,omitempty"`
+	Hosts       int          `json:"hosts,omitempty"`
+	RPS         float64      `json:"rps"`
+	P99         *float64     `json:"p99,omitempty"`
+	CPUPercent  float64      `json:"cpuPercent"`
+	RSSBytes    uint64       `json:"rssBytes"`
+	UptimeHuman string       `json:"uptime,omitempty"`
+	FrankenPHP  *fpJSON      `json:"frankenphp,omitempty"`
+	Mercure     *mercureJSON `json:"mercure,omitempty"`
 }
 
 type fpJSON struct {
 	Busy    int `json:"busy"`
 	Total   int `json:"total"`
 	Workers int `json:"workers"`
+}
+
+type mercureJSON struct {
+	Subscribers   int     `json:"subscribers"`
+	UpdatesPerSec float64 `json:"updatesPerSec"`
 }
 
 type statusMultiJSON struct {
@@ -173,6 +179,12 @@ func buildStatusJSON(state *model.State, hasFrankenPHP bool) statusJSON {
 			Workers: len(snap.Metrics.Workers),
 		}
 	}
+	if m := snap.Metrics.Mercure; m != nil {
+		s.Mercure = &mercureJSON{
+			Subscribers:   int(m.SubscribersConnected),
+			UpdatesPerSec: d.MercureUpdatesPerSec,
+		}
+	}
 
 	return s
 }
@@ -183,6 +195,7 @@ func isReachable(snap *fetcher.Snapshot) bool {
 	}
 	return snap.Metrics.HasHTTPMetrics ||
 		len(snap.Threads.ThreadDebugStates) > 0 ||
+		snap.Metrics.Mercure != nil ||
 		snap.Process.RSS > 0 ||
 		snap.Metrics.ProcessRSSBytes > 0
 }
@@ -227,6 +240,10 @@ func formatStatusLine(state *model.State, hasFrankenPHP bool) string {
 			fpPart += fmt.Sprintf(" | %d workers", workerCount)
 		}
 		parts = append(parts, fpPart)
+	}
+
+	if m := snap.Metrics.Mercure; m != nil {
+		parts = append(parts, fmt.Sprintf("Mercure %.0f subscribers | %.1f updates/s", m.SubscribersConnected, d.MercureUpdatesPerSec))
 	}
 
 	return strings.Join(parts, " | ")

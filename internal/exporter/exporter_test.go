@@ -1162,3 +1162,56 @@ func TestInstanceHealthHandler_PerInstanceStaleness(t *testing.T) {
 	InstanceHealthHandler(holder, time.Second, map[string]time.Duration{"slow": 10 * time.Second})(rec, httptest.NewRequest(http.MethodGet, "/healthz/slow", nil))
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func stateWithMercure(connected, subsTotal, updatesTotal float64) model.State {
+	s := stateWithThreads(nil, nil)
+	s.Current.Metrics.Mercure = &fetcher.MercureMetrics{SubscribersConnected: connected, SubscribersTotal: subsTotal, UpdatesTotal: updatesTotal}
+	s.Derived.MercureSubscribersPerSec = 1.5
+	s.Derived.MercureUpdatesPerSec = 12.25
+	return s
+}
+
+func TestHandler_MercureMetrics(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithMercure(42, 1234, 98765), nil)
+
+	body := get(holder).Body.String()
+
+	assert.Contains(t, body, "# TYPE mercure_subscribers_connected gauge")
+	assert.Contains(t, body, "mercure_subscribers_connected 42.00")
+	assert.Contains(t, body, "# TYPE mercure_subscribers_total counter")
+	assert.Contains(t, body, "mercure_subscribers_total 1234.00")
+	assert.Contains(t, body, "# TYPE mercure_updates_total counter")
+	assert.Contains(t, body, "mercure_updates_total 98765.00")
+	assert.Contains(t, body, "ember_mercure_subscribers_per_second 1.50")
+	assert.Contains(t, body, "ember_mercure_updates_per_second 12.25")
+}
+
+func TestHandler_MercureMetrics_SkippedWithoutHub(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithThreads(nil, nil), nil)
+
+	body := get(holder).Body.String()
+	assert.NotContains(t, body, "mercure_")
+}
+
+func TestHandler_MercureMetrics_Prefixed(t *testing.T) {
+	holder := &StateHolder{}
+	holder.StoreAll(stateWithMercure(1, 2, 3), nil)
+
+	body := getWithPrefix(holder, "site").Body.String()
+	assert.Contains(t, body, "site_mercure_subscribers_connected 1.00")
+	assert.Contains(t, body, "site_ember_mercure_updates_per_second 12.25")
+}
+
+func TestHandler_MercureMetrics_MultiInstanceLabel(t *testing.T) {
+	holder := &StateHolder{}
+	holder.SetMulti(true)
+	holder.StoreInstance("hub1", "http://a", stateWithMercure(1, 2, 3), nil, nil)
+	holder.StoreInstance("plain", "http://b", stateWithThreads(nil, nil), nil, nil)
+
+	body := get(holder).Body.String()
+	assert.Contains(t, body, `mercure_subscribers_connected{ember_instance="hub1"} 1.00`)
+	assert.NotContains(t, body, `ember_instance="plain"} 0.00`+"\n# TYPE mercure", "an instance without a hub emits no mercure series")
+	assert.Equal(t, 1, strings.Count(body, "# TYPE mercure_subscribers_connected gauge"))
+}

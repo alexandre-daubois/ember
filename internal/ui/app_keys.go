@@ -131,6 +131,9 @@ func (a *App) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if a.activeTab == tabLogs {
 		return a.handleLogsListKey(msg)
 	}
+	if a.activeTab == tabMercure {
+		return a.handleMercureListKey(msg)
+	}
 
 	switch msg.String() {
 	case "q", "ctrl+c":

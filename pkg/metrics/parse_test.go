@@ -991,3 +991,48 @@ custom_plugin_metric{instance="a"} 42
 	assert.Len(t, snap.Extra, 1)
 	assert.Contains(t, snap.Extra, "custom_plugin_metric")
 }
+
+const sampleMercureMetrics = `# HELP mercure_subscribers_connected The current number of running subscribers
+# TYPE mercure_subscribers_connected gauge
+mercure_subscribers_connected 42
+# HELP mercure_subscribers_total Total number of handled subscribers
+# TYPE mercure_subscribers_total counter
+mercure_subscribers_total 1234
+# HELP mercure_updates_total Total number of handled updates
+# TYPE mercure_updates_total counter
+mercure_updates_total 98765
+`
+
+func TestParsePrometheus_Mercure(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMercureMetrics))
+	require.NoError(t, err)
+	require.NotNil(t, snap.Mercure)
+	assert.Equal(t, float64(42), snap.Mercure.SubscribersConnected)
+	assert.Equal(t, float64(1234), snap.Mercure.SubscribersTotal)
+	assert.Equal(t, float64(98765), snap.Mercure.UpdatesTotal)
+	assert.NotContains(t, snap.Extra, "mercure_subscribers_connected")
+	assert.NotContains(t, snap.Extra, "mercure_subscribers_total")
+	assert.NotContains(t, snap.Extra, "mercure_updates_total")
+}
+
+// A hub that has not seen any traffic still registers the families at zero,
+// which is what detection relies on.
+func TestParsePrometheus_MercureIdleHubIsDetected(t *testing.T) {
+	input := `# TYPE mercure_subscribers_connected gauge
+mercure_subscribers_connected 0
+# TYPE mercure_subscribers_total counter
+mercure_subscribers_total 0
+# TYPE mercure_updates_total counter
+mercure_updates_total 0
+`
+	snap, err := metrics.ParsePrometheus(strings.NewReader(input))
+	require.NoError(t, err)
+	require.NotNil(t, snap.Mercure)
+	assert.Equal(t, float64(0), snap.Mercure.SubscribersConnected)
+}
+
+func TestParsePrometheus_NoMercure(t *testing.T) {
+	snap, err := metrics.ParsePrometheus(strings.NewReader(sampleMetrics))
+	require.NoError(t, err)
+	assert.Nil(t, snap.Mercure)
+}

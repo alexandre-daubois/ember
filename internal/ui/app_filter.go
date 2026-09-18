@@ -79,6 +79,8 @@ func (a *App) listLen() int {
 		return len(a.filteredUpstreams())
 	case tabFrankenPHP:
 		return len(a.filteredThreads())
+	case tabLogs:
+		return a.mercureListLen()
 	default:
 		return 0
 	}

@@ -90,6 +90,18 @@ This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies
 | `ember_host_status_rate` | gauge | `host`, `class` (`2xx`, `3xx`, `4xx`, `5xx`) | Request rate by status class |
 | `ember_host_error_rate` | gauge | `host` | Middleware error rate (handler-level errors, distinct from HTTP status codes) |
 
+### Mercure Hub Metrics
+
+Emitted only when the monitored Caddy loads the `mercure` module.
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `mercure_subscribers_connected` | gauge | Subscribers currently connected to the hub |
+| `mercure_subscribers_total` | counter | Total subscribers handled by the hub |
+| `mercure_updates_total` | counter | Total updates dispatched by the hub |
+| `ember_mercure_subscribers_per_second` | gauge | New subscribers per second, derived between two polls |
+| `ember_mercure_updates_per_second` | gauge | Updates dispatched per second, derived between two polls |
+
 ### Process Metrics
 
 | Metric | Type | Description |

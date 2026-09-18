@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/guptarohit/asciigraph"
@@ -26,16 +27,32 @@ const graphPanelChrome = 3
 // graphPanelMinHeight keeps a chart readable even on very short terminals.
 const graphPanelMinHeight = 3
 
-func renderGraphPanels(width, height int, cpu, rps, rss, queue, busy []float64, hasFrankenPHP bool) string {
+type graphSeries struct {
+	cpu, rps, rss, queue, busy []float64
+	subscribers, updates       []float64
+	hasFrankenPHP, hasMercure  bool
+	mercureOnly                bool
+}
+
+func renderGraphPanels(width, height int, s graphSeries) string {
 	panels := []graphPanel{
-		{title: "CPU", unit: "%", values: cpu, color: asciigraph.Red},
-		{title: "RPS", unit: "req/s", values: rps, color: asciigraph.Yellow},
-		{title: "RSS", unit: "MB", values: rss, color: asciigraph.DarkGoldenrod},
+		{title: "CPU", unit: "%", values: s.cpu, color: asciigraph.Red},
+		{title: "RPS", unit: "req/s", values: s.rps, color: asciigraph.Yellow},
+		{title: "RSS", unit: "MB", values: s.rss, color: asciigraph.DarkGoldenrod},
 	}
-	if hasFrankenPHP {
+	if s.mercureOnly {
+		panels = slices.Delete(panels, 1, 2)
+	}
+	if s.hasFrankenPHP {
 		panels = append(panels,
-			graphPanel{title: "Queue", unit: "", values: queue, color: asciigraph.Red},
-			graphPanel{title: "Busy Threads", unit: "", values: busy, color: asciigraph.Coral},
+			graphPanel{title: "Queue", unit: "", values: s.queue, color: asciigraph.Red},
+			graphPanel{title: "Busy Threads", unit: "", values: s.busy, color: asciigraph.Coral},
+		)
+	}
+	if s.hasMercure {
+		panels = append(panels,
+			graphPanel{title: "Subscribers", unit: "", values: s.subscribers, color: asciigraph.Blue},
+			graphPanel{title: "Updates", unit: "upd/s", values: s.updates, color: asciigraph.Green},
 		)
 	}
 

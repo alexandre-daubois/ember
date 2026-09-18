@@ -7,7 +7,14 @@
 
 :8080 {
 	root * /app/public
-	rewrite * /index.php
+	mercure {
+		publisher_jwt !ChangeThisMercureHubJWTSecretKey!
+		subscriber_jwt !ChangeThisMercureHubJWTSecretKey!
+		anonymous
+		subscriptions
+	}
+	@app not path /.well-known/mercure*
+	rewrite @app /index.php
 	php
 }
 

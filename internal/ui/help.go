@@ -102,16 +102,18 @@ func renderHelp(sortBy model.SortField, hostSortBy model.HostSortField, certSort
 		)
 	}
 
-	var parts []string
+	return renderBindings(bindings, width)
+}
+
+func renderBindings(bindings []binding, width int) string {
+	parts := make([]string, 0, len(bindings))
 	for _, b := range bindings {
 		parts = append(parts, helpKeyStyle.Render(b.key)+helpStyle.Render(" "+b.desc))
 	}
-	content := " " + strings.Join(parts, helpStyle.Render("  ·  "))
-
-	return helpStyle.Width(width).Render(content)
+	return helpStyle.Width(width).Render(" " + strings.Join(parts, helpStyle.Render("  ·  ")))
 }
 
-func renderHelpOverlay(width, height int, hasFrankenPHP bool, pluginTabs []*pluginTab, visibleTabs []tab) string {
+func renderHelpOverlay(width, height int, hasFrankenPHP, hasMercureFeed bool, pluginTabs []*pluginTab, visibleTabs []tab) string {
 	// Number keys 1-9 jump to visibleTabs[n-1], so the hint must count every
 	// visible tab (core and plugin), capped at the 9 available number keys.
 	tabCount := min(len(visibleTabs), 9)
@@ -143,6 +145,9 @@ func renderHelpOverlay(width, height int, hasFrankenPHP bool, pluginTabs []*plug
 		{"←/→", "Focus sidepanel / table (Logs tab)"},
 		{"l", "Jump to Logs for selected host (Caddy tab)"},
 		{"g", "Toggle graphs"},
+	}
+	if hasMercureFeed {
+		actions = append(actions, binding{"m", "Jump to Logs › Mercure, the hub's updates (Mercure tab)"})
 	}
 	if hasFrankenPHP {
 		actions = append(actions, binding{"r", "Refresh config/certs / restart workers"})

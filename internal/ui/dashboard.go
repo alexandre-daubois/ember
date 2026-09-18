@@ -11,7 +11,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuHistory []float64, stale bool, paused bool, hasFrankenPHP bool) string {
+type dashboardOpts struct {
+	rpsHistory, cpuHistory, subsHistory []float64
+	stale, paused, hasFrankenPHP        bool
+	mercureOnly                         bool
+}
+
+func renderDashboard(s *model.State, width int, version string, o dashboardOpts) string {
+	rpsHistory, cpuHistory, stale, paused, hasFrankenPHP := o.rpsHistory, o.cpuHistory, o.stale, o.paused, o.hasFrankenPHP
 	if width < 10 {
 		return "…"
 	}
@@ -110,38 +117,15 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 	uptimeStr := fmt.Sprintf("%-10s", uptime)
 	line1 := fmt.Sprintf(" CPU %s %s  RSS %s  Uptime %s", cpuRaw, cpuSpark, rssStr, uptimeStr)
 
-	// line 2: RPS (colored), sparkline, Avg (colored), In-flight, Queue
-	rpsFmt := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS))
-	if d.RPS > 0 {
-		rpsFmt = idleStyle.Render(rpsFmt)
-	}
-	avgRaw := fmt.Sprintf("%-10s", formatMs(d.AvgTime))
-	switch {
-	case d.AvgTime >= 1000:
-		avgRaw = dangerStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
-	case d.AvgTime >= 500:
-		avgRaw = warnStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
-	}
-	inflightStr := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.HTTPRequestsInFlight))
-	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
-	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s",
-		rpsFmt, rpsSpark, avgRaw, inflightStr)
-	if d.ErrorRate > 0 {
-		errStr := fmt.Sprintf("%.0f", d.ErrorRate)
-		line2 += fmt.Sprintf("  Err/s %s", dangerStyle.Render(errStr))
-	}
-	if hasFrankenPHP {
-		queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
-		if snap.Metrics.QueueDepth > 0 {
-			queueRaw = warnStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)))
-		}
-		line2 += fmt.Sprintf("  Queue %s", queueRaw)
+	var lines []string
+	lines = append(lines, titleLine, line1)
+	if o.mercureOnly {
+		lines = append(lines, renderMercureLine(snap.Metrics.Mercure, d, o.subsHistory))
+	} else {
+		lines = append(lines, renderTrafficLine(snap, d, rpsHistory, hasFrankenPHP))
 	}
 
 	separator := separatorStyle.Render(strings.Repeat("─", width))
-
-	var lines []string
-	lines = append(lines, titleLine, line1, line2)
 
 	if hasFrankenPHP {
 		if workerTotal > 0 {
@@ -173,13 +157,60 @@ func renderDashboard(s *model.State, width int, version string, rpsHistory, cpuH
 		}
 	}
 
-	if !snap.Metrics.HasHTTPMetrics && len(snap.Threads.ThreadDebugStates) == 0 {
+	if !snap.Metrics.HasHTTPMetrics && len(snap.Threads.ThreadDebugStates) == 0 && !o.mercureOnly {
 		lines = append(lines, warnStyle.Render(" ⚠ No metrics — add `metrics` to Caddyfile global block"))
 	}
 
 	lines = append(lines, separator)
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// line 2: RPS (colored), sparkline, Avg (colored), In-flight, Queue
+func renderTrafficLine(snap *fetcher.Snapshot, d model.DerivedMetrics, rpsHistory []float64, hasFrankenPHP bool) string {
+	rpsFmt := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", d.RPS))
+	if d.RPS > 0 {
+		rpsFmt = idleStyle.Render(rpsFmt)
+	}
+	avgRaw := fmt.Sprintf("%-10s", formatMs(d.AvgTime))
+	switch {
+	case d.AvgTime >= 1000:
+		avgRaw = dangerStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
+	case d.AvgTime >= 500:
+		avgRaw = warnStyle.Render(fmt.Sprintf("%-10s", formatMs(d.AvgTime)))
+	}
+	inflightStr := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.HTTPRequestsInFlight))
+	rpsSpark := renderSparkline(rpsHistory, sparklineSize)
+	line2 := fmt.Sprintf(" RPS %s %s  Avg %s  In-flight %s",
+		rpsFmt, rpsSpark, avgRaw, inflightStr)
+	if d.ErrorRate > 0 {
+		errStr := fmt.Sprintf("%.0f", d.ErrorRate)
+		line2 += fmt.Sprintf("  Err/s %s", dangerStyle.Render(errStr))
+	}
+	if hasFrankenPHP {
+		queueRaw := fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth))
+		if snap.Metrics.QueueDepth > 0 {
+			queueRaw = warnStyle.Render(fmt.Sprintf("%-4s", fmt.Sprintf("%.0f", snap.Metrics.QueueDepth)))
+		}
+		line2 += fmt.Sprintf("  Queue %s", queueRaw)
+	}
+
+	return line2
+}
+
+func renderMercureLine(m *fetcher.MercureMetrics, d model.DerivedMetrics, subsHistory []float64) string {
+	if m == nil {
+		return greyStyle.Render(" Waiting for Mercure metrics...")
+	}
+	subs := fmt.Sprintf("%-7s", fmt.Sprintf("%.0f", m.SubscribersConnected))
+	if m.SubscribersConnected > 0 {
+		subs = idleStyle.Render(subs)
+	}
+	return fmt.Sprintf(" Subscribers %s %s  New/s %-7s  Updates/s %-7s  Total subs %s",
+		subs, renderSparkline(subsHistory, sparklineSize),
+		fmt.Sprintf("%.1f", d.MercureSubscribersPerSec),
+		fmt.Sprintf("%.1f", d.MercureUpdatesPerSec),
+		formatNumber(int64(m.SubscribersTotal)))
 }
 
 func renderThreadBar(busy, idle, total, maxWidth int) string {

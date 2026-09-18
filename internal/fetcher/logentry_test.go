@@ -151,3 +151,45 @@ func BenchmarkParseLogLine(b *testing.B) {
 		_ = ParseLogLine(line)
 	}
 }
+
+func TestParseLogLine_MercureUpdatePublished(t *testing.T) {
+	line := `{"level":"debug","ts":1789738112.998179,"logger":"http.handlers.mercure","msg":"Update published","update":{"id":"urn:uuid:01a0","type":"book","retry":0,"topics":["demo","https://example.com/books/1"],"private":true,"data":"{\"title\":\"Dune\"}"}}`
+	e := ParseLogLine(line)
+
+	assert.True(t, e.IsMercureLog())
+	assert.False(t, e.IsAccessLog())
+	require.NotNil(t, e.Mercure)
+	assert.Equal(t, "urn:uuid:01a0", e.Mercure.UpdateID)
+	assert.Equal(t, "book", e.Mercure.Type)
+	assert.Equal(t, []string{"demo", "https://example.com/books/1"}, e.Mercure.Topics)
+	assert.True(t, e.Mercure.Private)
+	assert.JSONEq(t, `{"title":"Dune"}`, e.Mercure.Data)
+}
+
+func TestParseLogLine_MercureUpdateSent(t *testing.T) {
+	line := `{"level":"debug","ts":1.0,"logger":"http.handlers.mercure","msg":"Update sent","update":{"id":"u1","topics":["demo"]},"subscriber":{"id":"urn:uuid:e026","last_event_id":"","topics":["demo"]}}`
+	e := ParseLogLine(line)
+
+	require.NotNil(t, e.Mercure)
+	assert.Equal(t, "u1", e.Mercure.UpdateID)
+	assert.Equal(t, []string{"demo"}, e.Mercure.Topics)
+}
+
+func TestParseLogLine_MercureFieldsOnlyForTheHubLogger(t *testing.T) {
+	plain := ParseLogLine(`{"level":"info","ts":1.0,"logger":"http.handlers.mercure","msg":"New subscriber"}`)
+	assert.Nil(t, plain.Mercure, "no update group, nothing to carry")
+
+	other := ParseLogLine(`{"level":"info","ts":1.0,"logger":"admin","msg":"x","update":{"id":"u1"}}`)
+	assert.Nil(t, other.Mercure, "another module's 'update' field is not a Mercure update")
+	assert.False(t, other.IsMercureLog())
+
+	// Another module's "update" may be any JSON shape: the line must still parse.
+	scalar := ParseLogLine(`{"level":"info","ts":1.0,"logger":"tls","msg":"renewed","update":true}`)
+	assert.False(t, scalar.ParseError)
+	assert.Equal(t, "renewed", scalar.Message)
+	assert.Nil(t, scalar.Mercure)
+
+	malformed := ParseLogLine(`{"level":"debug","ts":1.0,"logger":"http.handlers.mercure","msg":"Update published","update":"oops"}`)
+	assert.False(t, malformed.ParseError)
+	assert.Nil(t, malformed.Mercure, "an undecodable update group is dropped, not fatal")
+}

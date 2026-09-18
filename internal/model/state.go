@@ -243,6 +243,10 @@ type DerivedMetrics struct {
 	P95            float64
 	P99            float64
 	HasPercentiles bool
+
+	// Mercure rates, zero when no hub is loaded or on the first poll.
+	MercureSubscribersPerSec float64
+	MercureUpdatesPerSec     float64
 }
 
 func (s *State) ResetPercentiles() {
@@ -294,6 +298,10 @@ func (s *State) CopyForExport() State {
 				upstreams[k] = &uc
 			}
 			snap.Metrics.Upstreams = upstreams
+		}
+		if snap.Metrics.Mercure != nil {
+			mc := *snap.Metrics.Mercure
+			snap.Metrics.Mercure = &mc
 		}
 		// The families are read-only once parsed, so the map is all that needs
 		// its own copy.
@@ -361,6 +369,10 @@ func (s *State) detectCounterReset(snap *fetcher.Snapshot) bool {
 		return true
 	}
 	if s.Current.Metrics.HTTPRequestsTotal > 0 && snap.Metrics.HTTPRequestsTotal < s.Current.Metrics.HTTPRequestsTotal {
+		return true
+	}
+	if prev, curr := s.Current.Metrics.Mercure, snap.Metrics.Mercure; prev != nil && curr != nil &&
+		(curr.SubscribersTotal < prev.SubscribersTotal || curr.UpdatesTotal < prev.UpdatesTotal) {
 		return true
 	}
 	for name, prev := range s.Current.Metrics.Workers {
@@ -460,6 +472,11 @@ func (s *State) computeDerived() DerivedMetrics {
 	dt := s.Current.FetchedAt.Sub(s.Previous.FetchedAt).Seconds()
 	if dt < 0.1 {
 		return d
+	}
+
+	if prev, curr := s.Previous.Metrics.Mercure, s.Current.Metrics.Mercure; prev != nil && curr != nil {
+		d.MercureSubscribersPerSec = max(0, (curr.SubscribersTotal-prev.SubscribersTotal)/dt)
+		d.MercureUpdatesPerSec = max(0, (curr.UpdatesTotal-prev.UpdatesTotal)/dt)
 	}
 
 	// try FrankenPHP worker metrics first

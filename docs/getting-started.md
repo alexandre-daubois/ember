@@ -69,7 +69,7 @@ Start Ember:
 ember
 ```
 
-Ember connects to the Caddy admin API at `http://localhost:2019` and begins polling every second. If FrankenPHP is detected, a second tab appears automatically.
+Ember connects to the Caddy admin API at `http://localhost:2019` and begins polling every second. If FrankenPHP is detected, a second tab appears automatically. Pointed at a [Mercure](https://mercure.rocks) hub, Ember shows a Mercure tab instead of the Caddy traffic table (see [Mercure Dashboard](mercure-dashboard.md)).
 
 > **Tip:** To connect to a remote Caddy instance, use `ember --addr http://your-host:2019`.
 
@@ -89,4 +89,5 @@ For the full keybinding reference, see [CLI Reference](cli-reference.md).
 
 - [Caddy Dashboard](caddy-dashboard.md): Understand the Caddy tab
 - [FrankenPHP Dashboard](frankenphp-dashboard.md): Explore thread-level introspection
+- [Mercure Dashboard](mercure-dashboard.md): Monitor a Mercure hub
 - [CLI Reference](cli-reference.md): All available flags and options

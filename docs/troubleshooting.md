@@ -69,6 +69,18 @@ Instead of:
 
 Caddy only adds the `host` label to metrics when the route uses a host matcher.
 
+## Mercure tab does not appear
+
+**Symptom:** Ember shows the Caddy tabs but no Mercure tab even though the hub is running.
+
+**Cause:** Ember detects the hub from the `mercure_*` families on the admin API `/metrics` endpoint. Check them directly:
+
+```bash
+curl -s localhost:2019/metrics | grep mercure_
+```
+
+If nothing comes back, `--addr` points at a Caddy that does not load the `mercure` module, or the admin API is not the hub's. The `metrics` global option is not required for detection.
+
 ## FrankenPHP tab does not appear
 
 **Symptom:** Ember starts in Caddy-only mode even though FrankenPHP is running.

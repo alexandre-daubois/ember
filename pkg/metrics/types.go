@@ -68,6 +68,14 @@ type UpstreamMetrics struct {
 	Healthy float64 `json:"healthy"`
 }
 
+// MercureMetrics mirrors the mercure_* families. SubscribersConnected is a
+// current count; SubscribersTotal and UpdatesTotal are cumulative counters.
+type MercureMetrics struct {
+	SubscribersConnected float64 `json:"subscribersConnected"`
+	SubscribersTotal     float64 `json:"subscribersTotal"`
+	UpdatesTotal         float64 `json:"updatesTotal"`
+}
+
 // HostMetrics holds Caddy HTTP metrics aggregated for one host. The paired
 // *Sum/*Count fields are Prometheus histogram/summary components: durations are
 // in seconds, sizes in bytes. DurationBuckets and TTFBBuckets are cumulative
@@ -117,6 +125,9 @@ type MetricsSnapshot struct {
 
 	// Caddy reverse proxy upstream health
 	Upstreams map[string]*UpstreamMetrics `json:"upstreams,omitempty"`
+
+	// Mercure hub metrics, nil when the mercure module is not loaded
+	Mercure *MercureMetrics `json:"mercure,omitempty"`
 
 	// Go runtime process metrics (from standard Prometheus collector)
 	ProcessCPUSecondsTotal  float64 `json:"processCpuSecondsTotal,omitempty"`

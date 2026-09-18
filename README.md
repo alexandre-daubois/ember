@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexandre-daubois/ember)](https://goreportcard.com/report/github.com/alexandre-daubois/ember)
 [![Go Reference](https://pkg.go.dev/badge/github.com/alexandre-daubois/ember.svg)](https://pkg.go.dev/github.com/alexandre-daubois/ember)
 
-Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking. It is officially recommended by [FrankenPHP](https://frankenphp.dev/).
+Monitor your Caddy server in real time: per-host traffic, latency percentiles, status codes, and more. When FrankenPHP is detected, unlock per-thread introspection, worker management, and memory tracking. When a [Mercure](https://mercure.rocks) hub is detected, follow its subscribers and updates live. It is officially recommended by [FrankenPHP](https://frankenphp.dev/).
 
 ![ember banner](https://github.com/alexandre-daubois/ember/blob/main/assets/banner.webp?raw=true)
 
@@ -35,6 +35,13 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - Worker management with queue depth and crash monitoring
 - Graphs for queue depth and busy threads
 - Automatic detection and recovery when FrankenPHP starts or stops
+
+**Mercure Hub**
+
+- Mercure tab: connected subscribers, new subscribers/s and updates/s with sparklines and full-screen graphs, plus the hub configuration read from the Caddy config (transport, anonymous mode, subscriptions API, playground, issuers, timeouts). Auto-detected from the `mercure_*` metrics
+- Hub-only mode: on a standalone Mercure.rocks hub (a Caddy build without the `metrics` option), the Caddy tab is dropped and the header shows the hub counters instead of RPS, while Config, Certificates and Logs stay available
+- Live updates: Logs › Mercure lists every update the hub dispatches (topics, type, private flag, size, recipients, payload with a JSON-aware detail panel) and By Topic aggregates them by topic pattern. Ember captures them through a DEBUG log sink it installs only while you look, no JWT needed
+- `ember status`, `--json`, and the Prometheus export carry the hub counters and rates
 
 **Integration & Operations**
 
@@ -142,6 +149,7 @@ Full documentation is available in the [docs/](docs/index.md) directory:
 - [Caddy Configuration](docs/caddy-configuration.md): Caddyfile requirements
 - [Caddy Dashboard](docs/caddy-dashboard.md): Per-host traffic and latency
 - [FrankenPHP Dashboard](docs/frankenphp-dashboard.md): Thread introspection and workers
+- [Mercure Dashboard](docs/mercure-dashboard.md): Hub subscribers, updates, and configuration
 - [Logs](docs/logs.md): Live tailing of access and runtime logs, per-host drill-down, and a By Route view that aggregates traffic by normalized URI pattern, with per-route latency and FrankenPHP memory stats
 - [CLI Reference](docs/cli-reference.md): Flags, keybindings, shell completions
 - [JSON Output](docs/json-output.md): Streaming JSONL for scripting

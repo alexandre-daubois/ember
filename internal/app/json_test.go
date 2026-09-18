@@ -424,3 +424,43 @@ func TestRunJSON_Multi_Once(t *testing.T) {
 	assert.Equal(t, "web1", first.Instance, "ordering must be stable by name")
 	assert.Equal(t, "web2", second.Instance)
 }
+
+func TestBuildJSONOutput_Mercure(t *testing.T) {
+	snap := &fetcher.Snapshot{
+		FetchedAt: time.Now(),
+		Metrics: fetcher.MetricsSnapshot{
+			Workers: map[string]*fetcher.WorkerMetrics{},
+			Mercure: &fetcher.MercureMetrics{SubscribersConnected: 3, SubscribersTotal: 10, UpdatesTotal: 100},
+		},
+	}
+	var state model.State
+	state.Update(snap)
+	state.Derived.MercureSubscribersPerSec = 0.5
+	state.Derived.MercureUpdatesPerSec = 4
+
+	out := buildJSONOutput(snap, &state)
+
+	require.NotNil(t, out.Metrics.Mercure)
+	assert.Equal(t, float64(3), out.Metrics.Mercure.SubscribersConnected)
+	require.NotNil(t, out.Derived.Mercure)
+	assert.Equal(t, 0.5, out.Derived.Mercure.SubscribersPerSec)
+	assert.Equal(t, float64(4), out.Derived.Mercure.UpdatesPerSec)
+
+	raw, err := json.Marshal(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"mercure":{"subscribersConnected":3,"subscribersTotal":10,"updatesTotal":100}`)
+	assert.Contains(t, string(raw), `"mercure":{"subscribersPerSec":0.5,"updatesPerSec":4}`)
+}
+
+func TestBuildJSONOutput_NoMercure(t *testing.T) {
+	snap := &fetcher.Snapshot{FetchedAt: time.Now(), Metrics: fetcher.MetricsSnapshot{Workers: map[string]*fetcher.WorkerMetrics{}}}
+	var state model.State
+	state.Update(snap)
+
+	out := buildJSONOutput(snap, &state)
+	assert.Nil(t, out.Derived.Mercure)
+
+	raw, err := json.Marshal(out)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "mercure")
+}

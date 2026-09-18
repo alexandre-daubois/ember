@@ -17,6 +17,8 @@ type HostMetrics = metrics.HostMetrics
 
 type UpstreamMetrics = metrics.UpstreamMetrics
 
+type MercureMetrics = metrics.MercureMetrics
+
 type MetricsSnapshot = metrics.MetricsSnapshot
 
 type HistogramBucket = metrics.HistogramBucket

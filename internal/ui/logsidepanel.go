@@ -18,6 +18,8 @@ const (
 	logSelRuntime
 	logSelRoutes
 	logSelRoutesHost
+	logSelMercure
+	logSelMercureTopics
 )
 
 // logSel is the persistent sidepanel selection. We persist kind+host rather
@@ -83,6 +85,12 @@ func (a *App) sidepanelItems() []sidepanelItem {
 		for _, h := range a.routeAggregator.Hosts() {
 			items = append(items, sidepanelItem{kind: logSelRoutesHost, label: h, host: h, indent: 1})
 		}
+	}
+	if a.hasMercure && a.config.MercureFeed != nil {
+		items = append(items,
+			sidepanelItem{kind: logSelMercure, label: "Mercure"},
+			sidepanelItem{kind: logSelMercureTopics, label: "By Topic", indent: 1},
+		)
 	}
 	return items
 }
@@ -157,6 +165,7 @@ func (a *App) moveSidepanel(delta int) {
 	item := items[idx]
 	a.logSel = logSel{kind: item.kind, host: item.host}
 	a.resumeLogs()
+	a.resumeMercure()
 }
 
 // selectHost moves the sidepanel selection onto the given host, or to the

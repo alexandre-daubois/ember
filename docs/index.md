@@ -1,6 +1,6 @@
 # Ember Documentation
 
-Ember is a real-time monitoring tool for [Caddy](https://caddyserver.com/) and [FrankenPHP](https://frankenphp.dev/), officially recommended for and by FrankenPHP. It connects to the Caddy admin API and gives you live visibility into per-host traffic, latency percentiles, status codes, thread-level introspection, worker management, and more: through an interactive terminal dashboard, streaming JSON, a headless daemon, or a quick status command.
+Ember is a real-time monitoring tool for [Caddy](https://caddyserver.com/), [FrankenPHP](https://frankenphp.dev/) and [Mercure](https://mercure.rocks) hubs, officially recommended for and by FrankenPHP. It connects to the Caddy admin API and gives you live visibility into per-host traffic, latency percentiles, status codes, thread-level introspection, worker management, and more: through an interactive terminal dashboard, streaming JSON, a headless daemon, or a quick status command.
 
 ## Table of Contents
 
@@ -8,6 +8,7 @@ Ember is a real-time monitoring tool for [Caddy](https://caddyserver.com/) and [
 - [Caddy Configuration](caddy-configuration.md): What Ember needs from your Caddyfile
 - [Caddy Dashboard](caddy-dashboard.md): Per-host traffic, latency percentiles, status codes
 - [FrankenPHP Dashboard](frankenphp-dashboard.md): Thread introspection, worker management, memory tracking
+- [Mercure Dashboard](mercure-dashboard.md): Hub subscribers, update rates, and configuration, with a trimmed interface on a standalone hub
 - [CLI Reference](cli-reference.md): Flags, subcommands, keybindings, and shell completions
 - [Logs](logs.md): Live tailing of Caddy access and runtime logs, with a sidepanel to drill into a host
 - [JSON Output](json-output.md): Streaming JSONL mode for scripting

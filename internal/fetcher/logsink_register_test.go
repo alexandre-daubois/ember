@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -322,4 +323,82 @@ func TestCheckEmberLogSink_ServerErrorReturnsFalse(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	assert.False(t, f.CheckEmberLogSink(context.Background()))
+}
+
+func TestRegisterEmberMercureLogSink_NarrowsRuntimeAndAddsDebugSink(t *testing.T) {
+	bodies := make(map[string]string)
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// PUT answers 409 on an existing key in Caddy; the runtime sink is
+		// always there, so both writes must be set-or-replace POSTs.
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies[r.URL.Path] = string(body)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.RegisterEmberMercureLogSink(context.Background(), "127.0.0.1:9210"))
+
+	var runtime, mercure map[string]any
+	require.NoError(t, json.Unmarshal([]byte(bodies["/config/logging/logs/"+emberRuntimeLogSinkName]), &runtime))
+	require.NoError(t, json.Unmarshal([]byte(bodies["/config/logging/logs/"+emberMercureLogSinkName]), &mercure))
+
+	assert.Equal(t, []any{"http.log.access", MercureLoggerName}, runtime["exclude"], "the hub's INFO lines must come from one sink only")
+	assert.Equal(t, []any{MercureLoggerName}, mercure["include"])
+	assert.Equal(t, "DEBUG", mercure["level"])
+	_, hasExclude := mercure["exclude"]
+	assert.False(t, hasExclude)
+	writer := mercure["writer"].(map[string]any)
+	assert.Equal(t, "tcp/127.0.0.1:9210", writer["address"])
+}
+
+func TestUnregisterEmberMercureLogSink_RestoresRuntimeSink(t *testing.T) {
+	var deleted []string
+	var puts []string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodDelete:
+			deleted = append(deleted, r.URL.Path)
+		case http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			puts = append(puts, r.URL.Path+" "+string(body))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.UnregisterEmberMercureLogSink(context.Background(), "127.0.0.1:9210"))
+
+	require.Len(t, deleted, 1)
+	assert.Contains(t, deleted[0], emberMercureLogSinkName)
+	require.Len(t, puts, 1)
+	assert.Contains(t, puts[0], emberRuntimeLogSinkName)
+	assert.Contains(t, puts[0], `"exclude":["http.log.access"]`)
+	assert.NotContains(t, puts[0], MercureLoggerName)
+}
+
+func TestUnregisterEmberMercureLogSink_NoRestoreWithoutAddr(t *testing.T) {
+	var puts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			puts.Add(1)
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.UnregisterEmberMercureLogSink(context.Background(), ""), "a 404 on the delete is not a failure")
+	assert.Equal(t, int32(0), puts.Load())
 }

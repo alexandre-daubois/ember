@@ -15,7 +15,7 @@ func TestRenderGraphPanels_NoColorEmitsNoANSI(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	data := []float64{1, 5, 3, 8, 2, 6, 4}
-	out := renderGraphPanels(120, 50, data, data, data, data, data, true)
+	out := renderGraphPanels(120, 50, graphSeries{cpu: data, rps: data, rss: data, queue: data, busy: data, hasFrankenPHP: true})
 
 	assert.NotContains(t, out, "\x1b[",
 		"NO_COLOR must emit no ANSI escapes, including asciigraph's own series colours")
@@ -34,7 +34,7 @@ func TestRenderGraphPanels_FitsWithinHeight(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := renderGraphPanels(80, tc.height, data, data, data, data, data, tc.hasFrankenPHP)
+			out := renderGraphPanels(80, tc.height, graphSeries{cpu: data, rps: data, rss: data, queue: data, busy: data, hasFrankenPHP: tc.hasFrankenPHP})
 			lines := strings.Count(out, "\n") + 1
 			assert.LessOrEqual(t, lines, tc.height,
 				"graph panels must fit within the requested height, not overflow and get truncated")
@@ -43,13 +43,13 @@ func TestRenderGraphPanels_FitsWithinHeight(t *testing.T) {
 }
 
 func TestRenderGraphPanels_AllEmpty(t *testing.T) {
-	out := renderGraphPanels(80, 40, nil, nil, nil, nil, nil, true)
+	out := renderGraphPanels(80, 40, graphSeries{hasFrankenPHP: true})
 	assert.Contains(t, out, "no data")
 }
 
 func TestRenderGraphPanels_ContainsAllPanelTitles(t *testing.T) {
 	data := []float64{1, 2, 3, 4, 5}
-	out := renderGraphPanels(120, 50, data, data, data, data, data, true)
+	out := renderGraphPanels(120, 50, graphSeries{cpu: data, rps: data, rss: data, queue: data, busy: data, hasFrankenPHP: true})
 	for _, title := range []string{"CPU", "RPS", "RSS", "Queue", "Busy Threads"} {
 		assert.Contains(t, out, title, "should contain panel %q", title)
 	}
@@ -57,7 +57,7 @@ func TestRenderGraphPanels_ContainsAllPanelTitles(t *testing.T) {
 
 func TestRenderGraphPanels_WithoutFrankenPHP(t *testing.T) {
 	data := []float64{1, 2, 3, 4, 5}
-	out := renderGraphPanels(120, 50, data, data, data, data, data, false)
+	out := renderGraphPanels(120, 50, graphSeries{cpu: data, rps: data, rss: data, queue: data, busy: data, hasFrankenPHP: false})
 	assert.Contains(t, out, "CPU")
 	assert.Contains(t, out, "RPS")
 	assert.Contains(t, out, "RSS")
@@ -67,14 +67,14 @@ func TestRenderGraphPanels_WithoutFrankenPHP(t *testing.T) {
 
 func TestRenderGraphPanels_NarrowTerminal(t *testing.T) {
 	data := []float64{1, 2, 3}
-	out := renderGraphPanels(30, 20, data, data, data, data, data, true)
+	out := renderGraphPanels(30, 20, graphSeries{cpu: data, rps: data, rss: data, queue: data, busy: data, hasFrankenPHP: true})
 	assert.NotEmpty(t, out)
 	assert.Contains(t, out, "CPU")
 }
 
 func TestRenderGraphPanels_ShortTerminal(t *testing.T) {
 	data := []float64{1, 2, 3}
-	out := renderGraphPanels(80, 10, data, data, data, data, data, true)
+	out := renderGraphPanels(80, 10, graphSeries{cpu: data, rps: data, rss: data, queue: data, busy: data, hasFrankenPHP: true})
 	assert.NotEmpty(t, out)
 	assert.Contains(t, out, "CPU")
 }

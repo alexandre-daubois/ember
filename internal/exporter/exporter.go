@@ -142,6 +142,7 @@ func Handler(holder *StateHolder, prefix string, fallbackRecorder *instrumentati
 		writeWorkerMetrics(ctx, render)
 		writeHostMetrics(ctx, render)
 		writeErrorMetrics(ctx, render)
+		writeMercureMetrics(ctx, render)
 		writePercentiles(ctx, render)
 		writeProcessMetrics(ctx, render)
 
@@ -467,6 +468,36 @@ func writeErrorMetrics(ctx *metricCtx, entries []renderEntry) {
 			if hd.ErrorRate > 0 {
 				fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(hostKV(hd.Host), inst), hd.ErrorRate)
 			}
+		}
+	}
+}
+
+func writeMercureMetrics(ctx *metricCtx, entries []renderEntry) {
+	hubs := make([]renderEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.state.Current.Metrics.Mercure != nil {
+			hubs = append(hubs, e)
+		}
+	}
+	if len(hubs) == 0 {
+		return
+	}
+
+	families := []struct {
+		name, help, typ string
+		value           func(e renderEntry) float64
+	}{
+		{"mercure_subscribers_connected", "Subscribers currently connected to the Mercure hub", "gauge", func(e renderEntry) float64 { return e.state.Current.Metrics.Mercure.SubscribersConnected }},
+		{"mercure_subscribers_total", "Total subscribers handled by the Mercure hub", "counter", func(e renderEntry) float64 { return e.state.Current.Metrics.Mercure.SubscribersTotal }},
+		{"mercure_updates_total", "Total updates dispatched by the Mercure hub", "counter", func(e renderEntry) float64 { return e.state.Current.Metrics.Mercure.UpdatesTotal }},
+		{"ember_mercure_subscribers_per_second", "New Mercure subscribers per second", "gauge", func(e renderEntry) float64 { return e.state.Derived.MercureSubscribersPerSec }},
+		{"ember_mercure_updates_per_second", "Mercure updates dispatched per second", "gauge", func(e renderEntry) float64 { return e.state.Derived.MercureUpdatesPerSec }},
+	}
+	for _, f := range families {
+		name := prefixed(ctx.prefix, f.name)
+		ctx.help(name, f.help, f.typ)
+		for _, e := range hubs {
+			fmt.Fprintf(ctx.out, "%s%s %.2f\n", name, labels(instLabelKV(e.instance)), f.value(e))
 		}
 	}
 }

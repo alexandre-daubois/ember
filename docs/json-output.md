@@ -86,6 +86,8 @@ Each line is a JSON object with the following fields:
 | `upstreams[].handler` | Reverse proxy handler name (omitted when Caddy doesn't expose the label) |
 | `upstreams[].healthy` | Whether the upstream is healthy |
 | `upstreams[].healthChanged` | Whether health status changed since last poll (omitted when false) |
+| `metrics.mercure` | Raw Mercure hub counters: `subscribersConnected`, `subscribersTotal`, `updatesTotal` (omitted when no hub is loaded) |
+| `derived.mercure` | Hub rates between two polls: `subscribersPerSec`, `updatesPerSec` (omitted when no hub is loaded) |
 
 ## Single Snapshot
 

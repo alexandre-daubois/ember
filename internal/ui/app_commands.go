@@ -85,6 +85,26 @@ func (a *App) doFetchRPConfig() tea.Cmd {
 	}
 }
 
+func (a *App) doFetchMercureConfig() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), globalFetchTimeout)
+		defer cancel()
+		cf, ok := a.fetcher.(configFetcher)
+		if !ok {
+			return mercureConfigFetchMsg{err: fmt.Errorf("config inspection not supported")}
+		}
+		raw, err := cf.FetchConfig(ctx)
+		if err != nil {
+			return mercureConfigFetchMsg{err: err}
+		}
+		configs := fetcher.ParseMercureConfigs(raw)
+		if configs == nil {
+			configs = []fetcher.MercureConfig{}
+		}
+		return mercureConfigFetchMsg{configs: configs}
+	}
+}
+
 func (a *App) doPluginFetches() []tea.Cmd {
 	var cmds []tea.Cmd
 	for i, g := range a.pluginGroups {
