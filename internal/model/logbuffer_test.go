@@ -265,6 +265,59 @@ func TestLogBuffer_Clear(t *testing.T) {
 	assert.Equal(t, "/path/100", snap[0].URI)
 }
 
+func sinceURIs(t *testing.T, b *LogBuffer, after int64, limit int, wantNext int64) []string {
+	t.Helper()
+	entries, next := b.Since(after, limit)
+	assert.Equal(t, wantNext, next)
+	uris := make([]string, 0, len(entries))
+	for _, e := range entries {
+		uris = append(uris, e.URI)
+	}
+	return uris
+}
+
+func TestLogBuffer_Since(t *testing.T) {
+	b := NewLogBuffer(5)
+	assert.Empty(t, sinceURIs(t, b, 0, 0, 0))
+	for i := 1; i <= 3; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+
+	assert.Equal(t, []string{"/path/2", "/path/3"}, sinceURIs(t, b, 1, 0, 3), "oldest first")
+	assert.Equal(t, []string{"/path/1", "/path/2", "/path/3"}, sinceURIs(t, b, -1, 0, 3))
+	assert.Empty(t, sinceURIs(t, b, 3, 0, 3))
+	assert.Equal(t, []string{"/path/1", "/path/2"}, sinceURIs(t, b, 0, 2, 2))
+}
+
+func TestLogBuffer_Since_Overflow(t *testing.T) {
+	b := NewLogBuffer(3)
+	for i := 1; i <= 7; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+
+	assert.Equal(t, []string{"/path/5", "/path/6", "/path/7"}, sinceURIs(t, b, 2, 0, 7), "evicted entries are skipped")
+	assert.Equal(t, []string{"/path/6", "/path/7"}, sinceURIs(t, b, 5, 0, 7))
+}
+
+func TestLogBuffer_Since_CursorFromBeforeRestart(t *testing.T) {
+	b := NewLogBuffer(5)
+	b.Append(makeEntry(1, "a", "GET", 200))
+	b.Append(makeEntry(2, "a", "GET", 200))
+
+	assert.Equal(t, []string{"/path/1", "/path/2"}, sinceURIs(t, b, 100, 0, 2))
+}
+
+func TestLogBuffer_Since_AfterClear(t *testing.T) {
+	b := NewLogBuffer(3)
+	for i := 1; i <= 4; i++ {
+		b.Append(makeEntry(i, "a", "GET", 200))
+	}
+	b.Clear()
+	b.Append(makeEntry(5, "a", "GET", 200))
+
+	assert.Equal(t, []string{"/path/5"}, sinceURIs(t, b, 2, 0, 5))
+}
+
 func TestLogBuffer_ClearReleasesEntries(t *testing.T) {
 	b := NewLogBuffer(3)
 	for i := 1; i <= 3; i++ {

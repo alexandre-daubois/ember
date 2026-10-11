@@ -21,6 +21,7 @@ Ember is a monitoring TUI that connects to the Caddy admin API. Security concern
 - Exposure of sensitive data through the Prometheus `/metrics` or `/healthz` endpoints
 - Command injection or unexpected behavior from user-supplied flags
 - Denial of service through crafted Prometheus metric responses
+- Bypass of the read-only relay or of authentication on the routes `--serve-remote` adds (`/caddy/`, `/logs`, `/certificates`)
 
 ## Supported Versions
 

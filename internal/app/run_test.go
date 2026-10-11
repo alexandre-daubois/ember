@@ -3,8 +3,10 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -130,14 +132,16 @@ func TestRun_VersionFlag(t *testing.T) {
 func TestMetricsURL(t *testing.T) {
 	tests := []struct {
 		addr string
+		tls  *tls.Config
 		want string
 	}{
-		{":9191", "http://localhost:9191/metrics"},
-		{"0.0.0.0:9191", "http://0.0.0.0:9191/metrics"},
-		{"127.0.0.1:9191", "http://127.0.0.1:9191/metrics"},
+		{":9191", nil, "http://localhost:9191/metrics"},
+		{"0.0.0.0:9191", nil, "http://0.0.0.0:9191/metrics"},
+		{"127.0.0.1:9191", nil, "http://127.0.0.1:9191/metrics"},
+		{":9191", &tls.Config{}, "https://localhost:9191/metrics"},
 	}
 	for _, tt := range tests {
-		assert.Equal(t, tt.want, metricsURL(tt.addr), "metricsURL(%q)", tt.addr)
+		assert.Equal(t, tt.want, metricsURL(&http.Server{Addr: tt.addr, TLSConfig: tt.tls}), "metricsURL(%q)", tt.addr)
 	}
 }
 

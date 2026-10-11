@@ -42,6 +42,7 @@ Caddy exposes rich metrics through its admin API and Prometheus endpoint, but re
 - [Multi-instance scraping](docs/multi-instance.md) in `--daemon`, `--json`, `status`, `wait`, `init`, and `diff` modes: a single Ember process aggregates several Caddy instances behind one Prometheus endpoint with an `ember_instance` label, per-instance TLS material, and per-instance polling cadence
 - Self-observability: `ember_*` metrics (build info, per-stage scrape totals, errors, durations, last success) so you can monitor the monitor
 - Daemon mode for headless operation, with error throttling and TLS certificate reload via SIGHUP
+- [Remote TUI](docs/remote.md): the TUI on your machine against a `--serve-remote` daemon in production, without SSH or access to Caddy's admin API
 - JSON output mode for scripting, with `--once` for single snapshots
 - Quick health check: `ember status` (text or `--json`) for a one-line Caddy summary
 - Readiness gate: `ember wait` blocks until Caddy is up (`-q` for silent scripting; supports repeated `--addr` with `--any` for first-ready semantics)

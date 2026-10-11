@@ -64,11 +64,16 @@ func reloadTLS(f fetcher.Fetcher, opts fetcher.TLSOptions, log *slog.Logger) {
 	log.Info("TLS certificates reloaded (SIGHUP)")
 }
 
-func metricsURL(addr string) string {
+func metricsURL(srv *http.Server) string {
+	addr := srv.Addr
 	if len(addr) > 0 && addr[0] == ':' {
 		addr = "localhost" + addr
 	}
-	return "http://" + addr + "/metrics"
+	scheme := "http"
+	if srv.TLSConfig != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + addr + "/metrics"
 }
 
 func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance map[string]time.Duration) http.Handler {
@@ -76,6 +81,11 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance ma
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix, cfg.recorder))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval, perInstance))
 	mux.HandleFunc("/healthz/", exporter.InstanceHealthHandler(holder, cfg.interval, perInstance))
+	if cfg.serveRemote {
+		mux.HandleFunc("GET /logs", exporter.LogsHandler(cfg.logSource))
+		mux.HandleFunc("GET /certificates", exporter.CertificatesHandler(holder, cfg.relayed.DialTLSCertificates))
+		mux.Handle("/caddy/", http.StripPrefix("/caddy", cfg.relayed.Relay()))
+	}
 
 	var handler http.Handler = mux
 	if cfg.metricsAuth != "" {
@@ -123,16 +133,27 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 
 	dPlugins := newDaemonPlugins(plugins)
 
+	if cfg.serveRemote {
+		logs := newRemoteLogs(cfg, instances[0].fetcher)
+		defer logs.Close()
+		cfg.logSource = logs
+		cfg.relayed = instances[0].fetcher
+	}
 	srv := newMetricsServer(cfg.expose, newMetricsHandler(holder, cfg, perInstanceIntervals(instances)))
+	if err := configureExposeServer(srv, cfg); err != nil {
+		return err
+	}
+	// Read before Serve, which gives a plain server a TLSConfig for HTTP/2.
+	url := metricsURL(srv)
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := listenMetrics(srv); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			cancel(err)
 		}
 	}()
 
 	log := cfg.logger
-	log.Info("daemon started", "metrics_url", metricsURL(cfg.expose), "instances", len(instances))
+	log.Info("daemon started", "metrics_url", url, "instances", len(instances))
 
 	// Arm before pollAll: it blocks on a full fetch of every instance, and
 	// until Notify runs both signals still terminate the process.
