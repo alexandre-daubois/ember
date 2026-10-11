@@ -13,6 +13,7 @@ Ember is a real-time monitoring tool for [Caddy](https://caddyserver.com/) and [
 - [JSON Output](json-output.md): Streaming JSONL mode for scripting
 - [Prometheus Export](prometheus-export.md): Metrics endpoint, health checks, and daemon mode
 - [Multi-instance](multi-instance.md): Aggregate several Caddy instances behind one Ember
+- [Remote TUI](remote.md): Run the TUI against a daemon in production, without SSH or admin API access
 - [Plugins](plugins.md): Building custom plugins for Ember
 - [Docker](docker.md): Running Ember in a container
 - [AI Agent Skills](skills.md): Skills for AI coding agents (Claude Code, Cursor, Copilot, etc.)
