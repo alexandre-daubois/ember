@@ -55,6 +55,8 @@ kill -HUP $(pgrep ember)
 
 This re-reads `--ca-cert`, `--client-cert`, and `--client-key` files and applies the new configuration. Useful for certificate rotation in long-running deployments. Not available on Windows.
 
+`--expose-cert`, `--expose-key` and `--expose-client-ca` are read once at startup: restart the daemon to change them.
+
 ## Exported Metrics
 
 ### FrankenPHP Thread Metrics
@@ -227,6 +229,8 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9191"]
 ```
+
+Behind `--expose-cert`, set `scheme: https` and a `tls_config` whose `ca_file` trusts the daemon's certificate; behind `--expose-client-ca`, give that `tls_config` a client certificate too, with `cert_file` and `key_file`.
 
 ## See Also
 

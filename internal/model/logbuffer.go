@@ -59,6 +59,30 @@ func (b *LogBuffer) WriteCount() int64 {
 	return b.writeCount
 }
 
+func (b *LogBuffer) Since(after int64, limit int) ([]fetcher.LogEntry, int64) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	oldest := b.writeCount - int64(b.head)
+	if b.full {
+		oldest = b.writeCount - int64(b.capacity)
+	}
+	start := after
+	// Evicted, or from before a daemon restart: resume from the oldest entry.
+	if start < oldest || start > b.writeCount {
+		start = oldest
+	}
+	n := b.writeCount - start
+	if limit > 0 {
+		n = min(n, int64(limit))
+	}
+	out := make([]fetcher.LogEntry, n)
+	for i := range out {
+		out[i] = b.entries[(b.head-int(b.writeCount-start)+i+b.capacity)%b.capacity]
+	}
+	return out, start + n
+}
+
 // Len returns the number of entries currently stored.
 func (b *LogBuffer) Len() int {
 	b.mu.RLock()
