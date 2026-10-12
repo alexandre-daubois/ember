@@ -311,26 +311,27 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	// `enabled` is only read/written by this single goroutine; the cleanup
 	// closure reads it after watchdogDone.Wait(), which provides the
 	// happens-before guarantee — no mutex needed.
+	watchdogCtx, stopWatchdog := context.WithCancel(ctx)
 	var watchdogDone sync.WaitGroup
 	watchdogDone.Go(func() {
 		ticker := time.NewTicker(sinkWatchdogInterval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-watchdogCtx.Done():
 				return
 			case <-ticker.C:
-				checkCtx, checkCancel := context.WithTimeout(ctx, 3*time.Second)
+				checkCtx, checkCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
 				accessExists := hf.CheckEmberLogSink(checkCtx)
 				runtimeExists := hf.CheckEmberRuntimeLogSink(checkCtx)
 				checkCancel()
 				if !accessExists {
-					reregCtx, reregCancel := context.WithTimeout(ctx, 3*time.Second)
+					reregCtx, reregCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
 					_ = hf.RegisterEmberLogSink(reregCtx, advertiseAddr)
 					reregCancel()
 				}
 				if !runtimeExists {
-					reregCtx, reregCancel := context.WithTimeout(ctx, 3*time.Second)
+					reregCtx, reregCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
 					_ = hf.RegisterEmberRuntimeLogSink(reregCtx, advertiseAddr)
 					reregCancel()
 				}
@@ -346,14 +347,18 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	})
 
 	return func() {
+		stopWatchdog()
+		watchdogDone.Wait()
+		// Each DELETE reloads Caddy's config, and the reload logs to the sinks
+		// still registered while holding the config lock: a write to a peer
+		// that stopped reading blocks it, and the admin API with it.
+		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
+		unregisterSink("__ember_runtime__", hf.UnregisterEmberRuntimeLogSink)
+		restoreAccessLogs(hf, enabled)
 		cancel()
 		ln.Close()
 		// Start only returns once every connection handler has.
 		listenerDone.Wait()
-		watchdogDone.Wait()
-		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
-		unregisterSink("__ember_runtime__", hf.UnregisterEmberRuntimeLogSink)
-		restoreAccessLogs(hf, enabled)
 	}, true
 }
 

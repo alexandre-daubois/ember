@@ -38,6 +38,8 @@ type fakeCaddyLogAPI struct {
 	sinkGone atomic.Bool
 	// unavailable simulates Caddy not being reachable at all.
 	unavailable atomic.Bool
+	// onSinkDelete runs inside the DELETE of a sink, before it answers.
+	onSinkDelete atomic.Pointer[func()]
 	// serverPostsFail simulates the admin API rejecting only the per-server
 	// access-log writes, so a retry can fail while cleanup still works.
 	serverPostsFail atomic.Bool
@@ -89,6 +91,9 @@ func newFakeCaddyLogAPI(t *testing.T) *fakeCaddyLogAPI {
 			api.callOrderMu.Unlock()
 			w.WriteHeader(http.StatusOK)
 		case strings.HasPrefix(r.URL.Path, "/config/logging/logs/") && r.Method == http.MethodDelete:
+			if hook := api.onSinkDelete.Load(); hook != nil {
+				(*hook)()
+			}
 			api.unregistered.Store(true)
 			api.callOrderMu.Lock()
 			api.callOrder = append(api.callOrder, "DELETE")
@@ -235,6 +240,56 @@ func TestSetupLogSource_AutoRegistersAndReceivesPushedLogs(t *testing.T) {
 	require.GreaterOrEqual(t, len(api.callOrder), 4)
 	assert.Equal(t, "PUT", api.callOrder[0], "register must be the first admin API write")
 	assert.Equal(t, "PUT", api.callOrder[1], "both sinks register before any cleanup happens")
+}
+
+// Pins that the listener still reads while the sinks are being removed.
+func TestSetupLogSource_ListenerDrainsWhileSinksAreRemoved(t *testing.T) {
+	api := newFakeCaddyLogAPI(t)
+	defer api.srv.Close()
+
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
+	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
+
+	uiCfg := ui.Config{}
+	cleanup := setupLogSource(cfg, f, &uiCfg)
+
+	conn, err := net.Dial("tcp", api.registeredAddr(t))
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	var drained atomic.Bool
+	hook := func() {
+		if drained.Load() {
+			return
+		}
+		_, _ = io.WriteString(conn, `{"level":"warn","ts":1742472000.0,"logger":"http","msg":"reloading"}`+"\n")
+		deadline := time.Now().Add(time.Second)
+		for uiCfg.RuntimeLogBuffer.Len() == 0 && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		drained.Store(uiCfg.RuntimeLogBuffer.Len() > 0)
+	}
+	api.onSinkDelete.Store(&hook)
+
+	cleanup()
+
+	assert.True(t, drained.Load(), "a line written during the sink DELETE should reach the UI buffer")
+}
+
+// Pins that the listener stops accepting connections once cleanup returns.
+func TestSetupLogSource_ListenerClosedAfterCleanup(t *testing.T) {
+	api := newFakeCaddyLogAPI(t)
+	defer api.srv.Close()
+
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
+	f := fetcher.NewHTTPFetcher(api.srv.URL, 0)
+
+	cleanup := setupLogSource(cfg, f, &ui.Config{})
+	listenAddr := api.registeredAddr(t)
+	cleanup()
+
+	_, err := net.DialTimeout("tcp", listenAddr, time.Second)
+	assert.Error(t, err, "the listener should be closed after cleanup")
 }
 
 func TestSetupLogSource_NoLogSourceForRemoteCaddyWithoutFlag(t *testing.T) {
