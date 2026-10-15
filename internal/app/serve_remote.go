@@ -121,7 +121,7 @@ type remoteLogs struct {
 	mu          sync.Mutex
 	unavailable error
 	buf         *model.LogBuffer
-	stop        func()
+	stop        func() error
 	last        time.Time
 }
 
@@ -156,7 +156,7 @@ func (l *remoteLogs) Since(after int64, limit int) ([]fetcher.LogEntry, int64, e
 			for _, e := range batch {
 				l.buf.Append(e)
 			}
-		}, func(string) {})
+		}, func(string) {}, l.log)
 		if !ok {
 			return nil, 0, fmt.Errorf("logs are not available: cannot listen on %s", l.addr)
 		}
@@ -185,9 +185,13 @@ func (l *remoteLogs) expire() {
 }
 
 func (l *remoteLogs) end() {
-	l.stop()
+	err := l.stop()
 	l.stop = nil
 	l.buf.Clear()
+	if err != nil {
+		l.log.Warn("remote logs stopped: Caddy not fully restored", "err", err)
+		return
+	}
 	l.log.Info("remote logs stopped: Caddy restored")
 }
 

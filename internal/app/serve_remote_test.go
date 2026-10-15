@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"log"
 	"log/slog"
 	"maps"
 	"math/big"
@@ -484,6 +485,78 @@ func TestRemoteLogs_WarnsOnceThroughTheLogger(t *testing.T) {
 
 	assert.Empty(t, stderr, "nothing outside the daemon's logger, lease after lease")
 	assert.Equal(t, 1, strings.Count(logs.String(), "log listener is not on loopback"))
+}
+
+// captureDefaultLogger sends the default slog logger to a buffer until the test
+// ends. SetDefault also redirects the log package, which restoring the previous
+// logger does not undo.
+func captureDefaultLogger(t *testing.T) *syncBuffer {
+	t.Helper()
+	buf := &syncBuffer{}
+	prev, w, flags := slog.Default(), log.Writer(), log.Flags()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(prev)
+		log.SetOutput(w)
+		log.SetFlags(flags)
+	})
+	return buf
+}
+
+func TestRemoteLogs_LogsWhetherCaddyWasRestored(t *testing.T) {
+	sinkFailure := func(name string) string { return "unregister " + name + " log sink: HTTP 503" }
+	sinks := []string{fetcher.DaemonLogSinks.Access, fetcher.DaemonLogSinks.Runtime}
+	failures := []string{sinkFailure(sinks[0]), sinkFailure(sinks[1]), "server srv0: get server logs: HTTP 503"}
+	for _, tc := range []struct {
+		name            string
+		caddyFails      bool
+		level, msg, err string
+	}{
+		{"Caddy answers", false, "INFO", "remote logs stopped: Caddy restored", ""},
+		{"Caddy fails", true, "WARN", "remote logs stopped: Caddy not fully restored", strings.Join(failures, "\n")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newFakeCaddyLogAPI(t)
+			t.Cleanup(api.srv.Close)
+			api.addServer("srv0", "")
+			logs := &syncBuffer{}
+			cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}, logger: slog.New(slog.NewJSONHandler(logs, nil))}
+			defaultLogs := captureDefaultLogger(t)
+
+			l := newRemoteLogs(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+			_, _, err := l.Since(-1, 0)
+			require.NoError(t, err)
+			api.unavailable.Store(tc.caddyFails)
+			l.Close()
+
+			assert.Empty(t, defaultLogs.String(), "nothing through the default logger")
+			unregistered := map[string]string{}
+			var last map[string]any
+			for line := range strings.Lines(logs.String()) {
+				var entry map[string]any
+				require.NoError(t, json.Unmarshal([]byte(line), &entry), line)
+				if entry["msg"] == "failed to unregister log sink" {
+					assert.Equal(t, "WARN", entry["level"])
+					sink, _ := entry["sink"].(string)
+					unregistered[sink], _ = entry["err"].(string)
+				}
+				last = entry
+			}
+			want := map[string]string{}
+			if tc.caddyFails {
+				for _, name := range sinks {
+					want[name] = sinkFailure(name)
+				}
+			}
+			assert.Equal(t, want, unregistered, "a line for each sink left in Caddy")
+			out := logs.String()
+			assert.Equal(t, 1, strings.Count(out, "remote logs stopped"))
+			assert.Equal(t, tc.msg, last["msg"], "the stop line comes last")
+			assert.Equal(t, tc.level, last["level"])
+			lastErr, _ := last["err"].(string)
+			assert.Equal(t, tc.err, lastErr)
+		})
+	}
 }
 
 func TestRemoteLogs_UnavailableWithoutLogListen(t *testing.T) {
