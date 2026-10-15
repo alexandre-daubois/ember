@@ -116,6 +116,29 @@ func TestPrepareRemote_ExportedAddrNeverBlocks(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestPrepareRemote_TypedLocalFlagBeatsExportedRemote(t *testing.T) {
+	t.Setenv("EMBER_REMOTE", "https://prod:9191")
+
+	for _, args := range [][]string{
+		{"--addr", "http://localhost:2019"},
+		{"--daemon", "--expose", ":9191"},
+	} {
+		cmd := newRootCmd("test")
+		require.NoError(t, cmd.ParseFlags(args))
+		err := cmd.PersistentPreRunE(cmd, nil)
+
+		require.NoError(t, err, args)
+		assert.Empty(t, cmd.Flag("remote").Value.String(), args)
+	}
+}
+
+func TestPrepareRemote_ExportedLocalFlagStillConflicts(t *testing.T) {
+	t.Setenv("EMBER_EXPOSE", ":9191")
+	t.Setenv("EMBER_REMOTE", "https://prod:9191")
+	err := remotePreRun(t)
+	require.EqualError(t, err, "--remote is incompatible with --expose")
+}
+
 func TestRemote_EndToEndOverTLS(t *testing.T) {
 	var mu sync.Mutex
 	methods := map[string]int{}
