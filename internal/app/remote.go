@@ -26,12 +26,11 @@ func prepareRemote(cmd *cobra.Command, cfg *config) error {
 		}
 	}
 	u, err := url.Parse(cfg.remote)
-	// First, so that no message below quotes a password.
 	if err == nil && u.User != nil {
 		return errors.New("--remote must not carry credentials: present a client certificate with --client-cert and --client-key")
 	}
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" {
-		return fmt.Errorf("--remote must be an https:// URL without a query (got %q)", cfg.remote)
+		return errors.New("--remote must be an https:// URL without a query")
 	}
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)
