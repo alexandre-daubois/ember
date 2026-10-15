@@ -94,6 +94,19 @@ func (f *HTTPFetcher) RestoreServerAccessLogs(ctx context.Context, serverName st
 	return nil
 }
 
+// HasServerLogs reports whether the server has a logs block, empty or not.
+func (f *HTTPFetcher) HasServerLogs(ctx context.Context, serverName string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	existing, err := f.getServerLogs(ctx, f.serverLogsEndpoint(serverName))
+	if err != nil {
+		return false, err
+	}
+	trimmed := bytes.TrimSpace(existing)
+	return len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")), nil
+}
+
 // serverLogsEndpoint returns the admin API URL for a server's logs config,
 // URL-escaping the server name so unusual but valid names (containing
 // spaces, slashes or other special characters) cannot break the path.

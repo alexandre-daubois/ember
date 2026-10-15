@@ -408,6 +408,26 @@ func TestSetupLogSource_WatchdogReregistersAfterCaddyReload(t *testing.T) {
 	assert.GreaterOrEqual(t, api.serverPostCount("srv0"), 2, "watchdog should re-enable access logs")
 }
 
+func TestSetupLogSource_WatchdogReenablesAccessLogsAnotherEmberRemoved(t *testing.T) {
+	orig := sinkWatchdogInterval
+	sinkWatchdogInterval = 100 * time.Millisecond
+	defer func() { sinkWatchdogInterval = orig }()
+
+	api := newFakeCaddyLogAPI(t)
+	defer api.srv.Close()
+	api.addServer("srv0", "")
+
+	cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
+	cleanup := setupLogSource(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0), &ui.Config{})
+	defer cleanup()
+	time.Sleep(3 * sinkWatchdogInterval)
+	require.Equal(t, 1, api.serverPostCount("srv0"), "no write while the logs block is there")
+
+	api.addServer("srv0", "") // another Ember removes the block on its way out
+
+	require.Eventually(t, func() bool { return api.serverPostCount("srv0") == 2 }, 2*time.Second, 20*time.Millisecond)
+}
+
 func TestSetupLogSource_UnresolvableHostFallsBackToPort(t *testing.T) {
 	api := newFakeCaddyLogAPI(t)
 	defer api.srv.Close()

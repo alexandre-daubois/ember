@@ -27,8 +27,8 @@ Pass with `--client-cert` and `--client-key` a certificate signed by the daemon'
 
 The Logs tab works in a remote session, with the same effect on Caddy as a local TUI, limited to the session:
 
-- As soon as a remote TUI connects, whatever tab it shows, the daemon registers the `__ember__` and `__ember_runtime__` sinks in Caddy and turns on access logs on every server that has no `logs` block. Caddy then also writes these access logs to its own output, as it does for a local TUI. See [Logs](logs.md).
-- 30 seconds after the last remote TUI stopped asking, or when the daemon shuts down cleanly, it removes the sinks and the `logs` blocks it added. An empty `logging.logs` section it had to create stays, as it does after a local TUI. Several remote TUIs share one installation.
+- As soon as a remote TUI connects, whatever tab it shows, the daemon registers the `__ember_remote__` and `__ember_remote_runtime__` sinks in Caddy, distinct from a local TUI's, and turns on access logs on every server that has no `logs` block. Caddy then also writes these access logs to its own output, as it does for a local TUI. See [Logs](logs.md).
+- 30 seconds after the last remote TUI stopped asking, or when the daemon shuts down cleanly, it removes the sinks and the `logs` blocks it added. A killed daemon leaves them until its next remote session, which takes them over. An empty `logging.logs` section it had to create stays, as it does after a local TUI. Several remote TUIs share one installation.
 - Without a remote session, the daemon changes nothing in Caddy.
 
 When the daemon refuses the logs with a 4xx answer, such as a 409 at startup, an `ember.remote` error line in the runtime logs says why, and the Logs tab stops until the TUI restarts. When the daemon stops or cannot be reached, the TUI retries silently: the Logs tab stops updating, and resumes when the daemon is back. If Caddy cannot reach the daemon's listening address, the Logs tab stays empty without an error line, as for a local TUI.

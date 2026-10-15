@@ -152,11 +152,16 @@ ember --log-listen 127.0.0.1:9210
 
 Or set `EMBER_LOG_LISTEN=127.0.0.1:9210` in the environment.
 
+A daemon started with `--serve-remote` registers `__ember_remote__` and `__ember_remote_runtime__` instead, and removes them itself when its next remote session opens.
+
 **Manual cleanup:** Remove the sinks via Caddy's admin API:
 
 ```bash
 curl -X DELETE http://127.0.0.1:2019/config/logging/logs/__ember__
 curl -X DELETE http://127.0.0.1:2019/config/logging/logs/__ember_runtime__
+# left by a daemon started with --serve-remote:
+curl -X DELETE http://127.0.0.1:2019/config/logging/logs/__ember_remote__
+curl -X DELETE http://127.0.0.1:2019/config/logging/logs/__ember_remote_runtime__
 ```
 
 ## High memory usage in Ember
