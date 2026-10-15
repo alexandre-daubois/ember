@@ -244,7 +244,7 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	}
 
 	accessBuf, runtimeBuf, routeAgg, store := newLogBuffers()
-	advertiseAddr, cleanup, ok := receiveCaddyLogs(addr, hf, store, warnIfPublicListener)
+	advertiseAddr, cleanup, ok := receiveCaddyLogs(addr, hf, fetcher.TUILogSinks, store, warnIfPublicListener)
 	if !ok {
 		return cleanup, false
 	}
@@ -320,7 +320,7 @@ func remoteLogsStopped(err error) fetcher.LogEntry {
 	}
 }
 
-func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, onBatch func([]fetcher.LogEntry), warn func(string)) (string, func(), bool) {
+func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSinks, onBatch func([]fetcher.LogEntry), warn func(string)) (string, func(), bool) {
 	noop := func() {}
 
 	// Try to bind directly on the requested address. When the host part
@@ -356,8 +356,8 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, onBatch func([]fetch
 	// opens one connection per sink; the listener handles both transparently
 	// and onBatch routes entries by logger name.
 	regCtx, regCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	_ = hf.RegisterEmberLogSink(regCtx, advertiseAddr)
-	_ = hf.RegisterEmberRuntimeLogSink(regCtx, advertiseAddr)
+	_ = hf.RegisterAccessLogSink(regCtx, sinks.Access, advertiseAddr)
+	_ = hf.RegisterRuntimeLogSink(regCtx, sinks.Runtime, advertiseAddr)
 	regCancel()
 
 	// Caddy only emits access logs when a server has a `logs` block. Without
@@ -390,24 +390,24 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, onBatch func([]fetch
 				return
 			case <-ticker.C:
 				checkCtx, checkCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
-				accessExists := hf.CheckEmberLogSink(checkCtx)
-				runtimeExists := hf.CheckEmberRuntimeLogSink(checkCtx)
+				accessExists := hf.CheckLogSink(checkCtx, sinks.Access)
+				runtimeExists := hf.CheckLogSink(checkCtx, sinks.Runtime)
 				checkCancel()
 				if !accessExists {
 					reregCtx, reregCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
-					_ = hf.RegisterEmberLogSink(reregCtx, advertiseAddr)
+					_ = hf.RegisterAccessLogSink(reregCtx, sinks.Access, advertiseAddr)
 					reregCancel()
 				}
 				if !runtimeExists {
 					reregCtx, reregCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
-					_ = hf.RegisterEmberRuntimeLogSink(reregCtx, advertiseAddr)
+					_ = hf.RegisterRuntimeLogSink(reregCtx, sinks.Runtime, advertiseAddr)
 					reregCancel()
 				}
 				// Always retry enableAccessLogs when the enabled list
 				// is empty: the sink may have been registered on a
 				// prior tick but enableAccessLogs may have failed
 				// (e.g. Caddy's server list was not ready yet).
-				if !accessExists || len(enabled) == 0 {
+				if !accessExists || len(enabled) == 0 || accessLogsRemoved(hf, enabled) {
 					enabled = mergeEnabled(enabled, enableAccessLogs(hf))
 				}
 			}
@@ -420,8 +420,9 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, onBatch func([]fetch
 		// Each DELETE reloads Caddy's config, and the reload logs to the sinks
 		// still registered while holding the config lock: a write to a peer
 		// that stopped reading blocks it, and the admin API with it.
-		unregisterSink("__ember__", hf.UnregisterEmberLogSink)
-		unregisterSink("__ember_runtime__", hf.UnregisterEmberRuntimeLogSink)
+		for _, name := range []string{sinks.Access, sinks.Runtime} {
+			unregisterSink(name, func(ctx context.Context) error { return hf.UnregisterLogSink(ctx, name) })
+		}
 		restoreAccessLogs(hf, enabled)
 		cancel()
 		ln.Close()
@@ -460,6 +461,20 @@ func enableAccessLogs(hf *fetcher.HTTPFetcher) []string {
 		}
 	}
 	return enabled
+}
+
+// accessLogsRemoved reports whether a server we turned access logs on for has
+// lost its logs block since, as when another Ember restores it on its way out.
+func accessLogsRemoved(hf *fetcher.HTTPFetcher, names []string) bool {
+	for _, name := range names {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		has, err := hf.HasServerLogs(ctx, name)
+		cancel()
+		if err == nil && !has {
+			return true
+		}
+	}
+	return false
 }
 
 // mergeEnabled folds a retry's result into the servers already recorded.

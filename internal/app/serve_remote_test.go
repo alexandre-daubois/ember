@@ -9,10 +9,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -26,6 +28,7 @@ import (
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
+	"github.com/alexandre-daubois/ember/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -426,6 +429,7 @@ func TestRemoteLogs_LeaseInstallsThenRestoresCaddy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, api.putCount())
 	assert.JSONEq(t, "{}", api.serverLogs("srv0"))
+	api.unregistered.Store(false) // set by the DELETEs that open the session
 
 	conn, err := net.Dial("tcp", api.registeredAddr(t))
 	require.NoError(t, err)
@@ -528,6 +532,7 @@ func TestRunDaemon_ServesLogsAndRestoresCaddyOnShutdown(t *testing.T) {
 		return resp.StatusCode == http.StatusOK
 	}, 5*time.Second, 50*time.Millisecond)
 	assert.Equal(t, 2, api.putCount())
+	api.unregistered.Store(false) // set by the DELETEs that open the session
 
 	cancel()
 	require.NoError(t, <-done)
@@ -537,4 +542,95 @@ func TestRunDaemon_ServesLogsAndRestoresCaddyOnShutdown(t *testing.T) {
 	_, _, err = cfg.logSource.Since(0, 0)
 	require.ErrorContains(t, err, "stopping")
 	assert.Equal(t, 2, api.putCount(), "nothing is installed after the stop")
+}
+
+// fakeCaddySinks keeps sinks by name, and answers a PUT over an existing one
+// with a 409, as Caddy does.
+type fakeCaddySinks struct {
+	srv   *httptest.Server
+	mu    sync.Mutex
+	sinks map[string]string
+}
+
+func newFakeCaddySinks(t *testing.T) *fakeCaddySinks {
+	t.Helper()
+	api := &fakeCaddySinks{sinks: map[string]string{}}
+	api.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		api.mu.Lock()
+		defer api.mu.Unlock()
+		name, isSink := strings.CutPrefix(r.URL.Path, "/config/logging/logs/")
+		_, exists := api.sinks[name]
+		switch {
+		case !isSink:
+			http.NotFound(w, r)
+		case r.Method == http.MethodPut && exists:
+			w.WriteHeader(http.StatusConflict)
+		case r.Method == http.MethodPut:
+			var sink struct{ Writer struct{ Address string } }
+			_ = json.NewDecoder(r.Body).Decode(&sink)
+			api.sinks[name] = strings.TrimPrefix(sink.Writer.Address, "tcp/")
+		case r.Method == http.MethodDelete && !exists:
+			http.NotFound(w, r)
+		case r.Method == http.MethodDelete:
+			delete(api.sinks, name)
+		}
+	}))
+	t.Cleanup(api.srv.Close)
+	return api
+}
+
+func (a *fakeCaddySinks) snapshot() map[string]string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return maps.Clone(a.sinks)
+}
+
+func TestRemoteLogs_SinksApartFromALocalTUI(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}}
+	quitTUI := setupLogSource(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0), &ui.Config{})
+	tui := api.snapshot()
+	require.Len(t, tui, 2)
+	l := newTestRemoteLogs(t, &config{addrs: cfg.addrs}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	l.lease = time.Minute
+	open := func() map[string]string {
+		_, _, err := l.Since(-1, 0)
+		require.NoError(t, err)
+		return api.snapshot()
+	}
+
+	require.Len(t, open(), 4, "the daemon registers its own sinks next to the TUI's")
+	l.mu.Lock()
+	l.end()
+	l.mu.Unlock()
+	assert.Equal(t, tui, api.snapshot(), "a session ending keeps the TUI's sinks")
+
+	daemon := open()
+	quitTUI()
+	maps.DeleteFunc(daemon, func(name, _ string) bool { _, ok := tui[name]; return ok })
+	assert.Equal(t, daemon, api.snapshot(), "a TUI quitting keeps the daemon's sinks")
+}
+
+func TestRemoteLogs_ReplacesTheSinksOfAKilledDaemon(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}}
+	killed := newTestRemoteLogs(t, cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	_, _, err := killed.Since(-1, 0)
+	require.NoError(t, err)
+	orphans := api.snapshot()
+	killed.Close()
+	api.mu.Lock()
+	for name := range orphans {
+		api.sinks[name] = "127.0.0.1:1"
+	}
+	api.mu.Unlock()
+
+	_, _, err = newTestRemoteLogs(t, cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0)).Since(-1, 0)
+
+	require.NoError(t, err)
+	sinks := api.snapshot()
+	require.Len(t, sinks, len(orphans))
+	for name, addr := range sinks {
+		assert.NotEqual(t, "127.0.0.1:1", addr, name)
+	}
 }
