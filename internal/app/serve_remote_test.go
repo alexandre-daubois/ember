@@ -276,6 +276,32 @@ func TestServeRemote_RequiresAClientCertificate(t *testing.T) {
 	assert.NotContains(t, out, `msg="remote request refused"`)
 }
 
+func TestExposeTLSConfig_ErrorsNameTheFlag(t *testing.T) {
+	pki := writeTestPKI(t)
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.pem")
+	notPEM := filepath.Join(dir, "not.pem")
+	require.NoError(t, os.WriteFile(notPEM, []byte("not a certificate"), 0o600))
+	tests := []struct {
+		name          string
+		cert, key, ca string
+		wantPrefix    string
+	}{
+		{"missing cert", missing, pki.serverKey, pki.caFile, "--expose-cert: open " + missing},
+		{"missing key", pki.serverCert, missing, pki.caFile, "--expose-key: open " + missing},
+		{"missing client CA", pki.serverCert, pki.serverKey, missing, "--expose-client-ca: open " + missing},
+		{"client CA without PEM", pki.serverCert, pki.serverKey, notPEM, "--expose-client-ca: no valid PEM certificate in " + notPEM},
+		{"key of another certificate", pki.serverCert, pki.clientKey, pki.caFile, "--expose-cert and --expose-key: tls: private key does not match public key"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := exposeTLSConfig(&config{exposeCert: tt.cert, exposeKey: tt.key, exposeCA: tt.ca})
+			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), tt.wantPrefix), err.Error())
+		})
+	}
+}
+
 func TestServeRemote_TracesTheRelayRefusals(t *testing.T) {
 	pki := writeTestPKI(t)
 	admin, hf := newCountingAdmin(t)
