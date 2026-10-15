@@ -276,6 +276,22 @@ func TestServeRemote_RequiresAClientCertificate(t *testing.T) {
 	assert.NotContains(t, out, `msg="remote request refused"`)
 }
 
+func TestExposeTLS_WithoutClientCARequiresNoClientCertificate(t *testing.T) {
+	pki := writeTestPKI(t)
+	// Without --serve-remote: validate refuses it without --expose-client-ca.
+	cfg := &config{interval: time.Second, exposeCert: pki.serverCert, exposeKey: pki.serverKey, logger: slog.New(slog.DiscardHandler)}
+	srv := newMetricsServer("127.0.0.1:0", newMetricsHandler(freshHolder(), cfg, nil))
+	require.NoError(t, configureExposeServer(srv, cfg))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = srv.ServeTLS(ln, "", "") }()
+	t.Cleanup(func() { stopMetricsServer(srv) })
+
+	client := tlsClient(pki.pool)
+	t.Cleanup(client.CloseIdleConnections)
+	assert.Equal(t, http.StatusOK, getStatus(t, client, "https://"+ln.Addr().String()+"/metrics"))
+}
+
 func TestExposeTLSConfig_ErrorsNameTheFlag(t *testing.T) {
 	pki := writeTestPKI(t)
 	dir := t.TempDir()
@@ -292,6 +308,8 @@ func TestExposeTLSConfig_ErrorsNameTheFlag(t *testing.T) {
 		{"missing client CA", pki.serverCert, pki.serverKey, missing, "--expose-client-ca: open " + missing},
 		{"client CA without PEM", pki.serverCert, pki.serverKey, notPEM, "--expose-client-ca: no valid PEM certificate in " + notPEM},
 		{"key of another certificate", pki.serverCert, pki.clientKey, pki.caFile, "--expose-cert and --expose-key: tls: private key does not match public key"},
+		{"cert without PEM", notPEM, pki.serverKey, pki.caFile, "--expose-cert and --expose-key: tls: failed to find any PEM data in certificate input"},
+		{"key without PEM", pki.serverCert, notPEM, pki.caFile, "--expose-cert and --expose-key: tls: failed to find any PEM data in key input"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -300,6 +318,18 @@ func TestExposeTLSConfig_ErrorsNameTheFlag(t *testing.T) {
 			assert.True(t, strings.HasPrefix(err.Error(), tt.wantPrefix), err.Error())
 		})
 	}
+}
+
+func TestConfigureExposeServer_ReturnsTheTLSError(t *testing.T) {
+	pki := writeTestPKI(t)
+	cfg := &config{exposeCert: filepath.Join(t.TempDir(), "missing.pem"), exposeKey: pki.serverKey, exposeCA: pki.caFile}
+	_, want := exposeTLSConfig(cfg)
+	require.Error(t, want)
+	srv := newMetricsServer("127.0.0.1:0", http.NotFoundHandler())
+
+	err := configureExposeServer(srv, cfg)
+
+	require.EqualError(t, err, want.Error())
 }
 
 func TestServeRemote_TracesTheRelayRefusals(t *testing.T) {
