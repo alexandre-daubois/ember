@@ -108,8 +108,12 @@ Keybindings:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			localMode := cfg.remote == "" && (cmd.Flag("addr").Changed || remoteIncompatibleFlag(&cfg) != "")
 			if err := bindEnv(cmd); err != nil {
 				return err
+			}
+			if localMode {
+				cfg.remote = ""
 			}
 			if _, ok := os.LookupEnv("NO_COLOR"); ok {
 				cfg.noColor = true

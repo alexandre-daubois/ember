@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func prepareRemote(cmd *cobra.Command, cfg *config) error {
+func remoteIncompatibleFlag(cfg *config) string {
 	for _, c := range []struct {
 		flag string
 		on   bool
@@ -22,8 +22,15 @@ func prepareRemote(cmd *cobra.Command, cfg *config) error {
 		{"--expose-key", cfg.exposeKey != ""}, {"--expose-client-ca", cfg.exposeCA != ""},
 	} {
 		if c.on {
-			return fmt.Errorf("--remote is incompatible with %s", c.flag)
+			return c.flag
 		}
+	}
+	return ""
+}
+
+func prepareRemote(cmd *cobra.Command, cfg *config) error {
+	if flag := remoteIncompatibleFlag(cfg); flag != "" {
+		return fmt.Errorf("--remote is incompatible with %s", flag)
 	}
 	u, err := url.Parse(cfg.remote)
 	if err == nil && u.User != nil {
