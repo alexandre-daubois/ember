@@ -244,15 +244,15 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	}
 
 	accessBuf, runtimeBuf, routeAgg, store := newLogBuffers()
-	advertiseAddr, cleanup, ok := receiveCaddyLogs(addr, hf, fetcher.TUILogSinks, store, warnIfPublicListener)
+	advertiseAddr, cleanup, ok := receiveCaddyLogs(addr, hf, fetcher.TUILogSinks, store, warnIfPublicListener, slog.Default())
 	if !ok {
-		return cleanup, false
+		return noop, false
 	}
 	uiCfg.LogBuffer = accessBuf
 	uiCfg.RuntimeLogBuffer = runtimeBuf
 	uiCfg.RouteAggregator = routeAgg
 	uiCfg.LogSource = "net " + advertiseAddr
-	return cleanup, true
+	return func() { _ = cleanup() }, true
 }
 
 func newLogBuffers() (*model.LogBuffer, *model.LogBuffer, *model.RouteAggregator, func([]fetcher.LogEntry)) {
@@ -320,8 +320,8 @@ func remoteLogsStopped(err error) fetcher.LogEntry {
 	}
 }
 
-func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSinks, onBatch func([]fetcher.LogEntry), warn func(string)) (string, func(), bool) {
-	noop := func() {}
+func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSinks, onBatch func([]fetcher.LogEntry), warn func(string), log *slog.Logger) (string, func() error, bool) {
+	noop := func() error { return nil }
 
 	// Try to bind directly on the requested address. When the host part
 	// cannot be resolved locally (e.g. "host.docker.internal:9210"), fall
@@ -414,31 +414,35 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 		}
 	})
 
-	return advertiseAddr, func() {
+	return advertiseAddr, func() error {
 		stopWatchdog()
 		watchdogDone.Wait()
+		var errs []error
 		// Each DELETE reloads Caddy's config, and the reload logs to the sinks
 		// still registered while holding the config lock: a write to a peer
 		// that stopped reading blocks it, and the admin API with it.
 		for _, name := range []string{sinks.Access, sinks.Runtime} {
-			unregisterSink(name, func(ctx context.Context) error { return hf.UnregisterLogSink(ctx, name) })
+			errs = append(errs, unregisterSink(log, name, func(ctx context.Context) error { return hf.UnregisterLogSink(ctx, name) }))
 		}
-		restoreAccessLogs(hf, enabled)
+		errs = append(errs, restoreAccessLogs(hf, enabled))
 		cancel()
 		ln.Close()
 		// Start only returns once every connection handler has.
 		listenerDone.Wait()
+		return errors.Join(errs...)
 	}, true
 }
 
 // unregisterSink calls fn with a fresh 3s timeout and logs any error. Each
 // sink gets its own budget so a slow first call cannot starve the second.
-func unregisterSink(name string, fn func(context.Context) error) {
+func unregisterSink(log *slog.Logger, name string, fn func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := fn(ctx); err != nil {
-		slog.Warn("failed to unregister log sink", "sink", name, "err", err)
+		log.Warn("failed to unregister log sink", "sink", name, "err", err)
+		return err
 	}
+	return nil
 }
 
 // enableAccessLogs walks every HTTP server known to Caddy and turns on access
@@ -488,12 +492,16 @@ func mergeEnabled(existing, added []string) []string {
 	return existing
 }
 
-func restoreAccessLogs(hf *fetcher.HTTPFetcher, names []string) {
+func restoreAccessLogs(hf *fetcher.HTTPFetcher, names []string) error {
+	var errs []error
 	for _, name := range names {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = hf.RestoreServerAccessLogs(ctx, name)
+		if err := hf.RestoreServerAccessLogs(ctx, name); err != nil {
+			errs = append(errs, fmt.Errorf("server %s: %w", name, err))
+		}
 		cancel()
 	}
+	return errors.Join(errs...)
 }
 
 // warnIfPublicListener prints a stderr warning when the log listener ends up
