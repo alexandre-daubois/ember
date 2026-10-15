@@ -54,7 +54,12 @@ func TestPrepareRemote_Incompatibilities(t *testing.T) {
 
 func TestPrepareRemote_RejectsBadURL(t *testing.T) {
 	err := remotePreRun(t, "--remote", "prod:9191")
-	require.EqualError(t, err, `--remote must be an https:// URL without a query (got "prod:9191")`)
+	require.EqualError(t, err, "--remote must be an https:// URL without a query")
+
+	for _, remote := range []string{"https://alice:pa^ss@prod:9191", "https://prod:9191?token=s3cret"} {
+		err = remotePreRun(t, "--remote", remote)
+		require.EqualError(t, err, "--remote must be an https:// URL without a query", remote)
+	}
 
 	for _, remote := range []string{"https://alice@prod:9191", "https://alice:s3cret@prod:9191?instance=web1"} {
 		err = remotePreRun(t, "--remote", remote)
@@ -83,7 +88,7 @@ func TestPrepareRemote_RequiresHTTPSEvenOnLocalhost(t *testing.T) {
 		cfg := &config{remote: remote, interval: time.Second, logger: slog.New(slog.DiscardHandler)}
 		err := prepareRemote(cmd, cfg)
 		if refused {
-			require.EqualError(t, err, `--remote must be an https:// URL without a query (got "`+remote+`")`)
+			require.EqualError(t, err, "--remote must be an https:// URL without a query", remote)
 		} else {
 			require.NoError(t, err, remote)
 		}
