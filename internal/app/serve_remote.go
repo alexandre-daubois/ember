@@ -2,11 +2,13 @@ package app
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,14 +22,31 @@ func exposeTLSConfig(cfg *config) (*tls.Config, error) {
 	if cfg.exposeCert == "" {
 		return nil, nil
 	}
-	tc, err := fetcher.BuildTLSConfig(fetcher.TLSOptions{CACert: cfg.exposeCA, ClientCert: cfg.exposeCert, ClientKey: cfg.exposeKey})
+	certPEM, err := os.ReadFile(cfg.exposeCert)
 	if err != nil {
-		return nil, fmt.Errorf("--expose TLS: %w", err)
+		return nil, fmt.Errorf("--expose-cert: %w", err)
 	}
-	if tc.RootCAs != nil {
-		tc.ClientCAs, tc.RootCAs = tc.RootCAs, nil
-		tc.ClientAuth = tls.RequireAndVerifyClientCert
+	keyPEM, err := os.ReadFile(cfg.exposeKey)
+	if err != nil {
+		return nil, fmt.Errorf("--expose-key: %w", err)
 	}
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("--expose-cert and --expose-key: %w", err)
+	}
+	tc := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
+	if cfg.exposeCA == "" {
+		return tc, nil
+	}
+	caPEM, err := os.ReadFile(cfg.exposeCA)
+	if err != nil {
+		return nil, fmt.Errorf("--expose-client-ca: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("--expose-client-ca: no valid PEM certificate in %s", cfg.exposeCA)
+	}
+	tc.ClientCAs, tc.ClientAuth = pool, tls.RequireAndVerifyClientCert
 	return tc, nil
 }
 
