@@ -288,11 +288,12 @@ func startRemoteLogs(rf *fetcher.RemoteFetcher, page *fetcher.RemoteLogs, refusa
 	done.Go(func() {
 		defer ticker.Stop()
 		var err error
+		var epoch int64
 		next := int64(-1)
 		for !errors.As(err, new(fetcher.RefusedError)) {
 			if err == nil {
 				store(page.Entries)
-				next = page.Next
+				epoch, next = page.Epoch, page.Next
 			}
 			if err != nil || len(page.Entries) < fetcher.MaxRemoteLogs {
 				select {
@@ -301,7 +302,7 @@ func startRemoteLogs(rf *fetcher.RemoteFetcher, page *fetcher.RemoteLogs, refusa
 				case <-ticker.C:
 				}
 			}
-			page, err = rf.FetchLogs(ctx, next)
+			page, err = rf.FetchLogs(ctx, epoch, next)
 		}
 		runtimeBuf.Append(remoteLogsStopped(err))
 	})

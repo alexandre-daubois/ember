@@ -210,11 +210,16 @@ caddy_http_request_duration_seconds_count{server="srv0"} %d
 }
 
 type recordingLogSource struct {
-	buf *model.LogBuffer
-	err error
+	buf   *model.LogBuffer
+	err   error
+	epoch int64
 
 	mu      sync.Mutex
 	cursors []int64
+}
+
+func (s *recordingLogSource) Epoch() int64 {
+	return s.epoch
 }
 
 func (s *recordingLogSource) Since(after int64, limit int) ([]fetcher.LogEntry, int64, error) {
@@ -243,7 +248,7 @@ func remoteLogsAgainst(t *testing.T, h http.Handler, interval time.Duration) *ui
 	f := fetcher.NewRemoteFetcher(u)
 	t.Cleanup(f.CloseIdleConnections)
 	cfg := &config{remoteURL: u}
-	cfg.remotePage, cfg.logsRefusal = f.FetchLogs(context.Background(), -1)
+	cfg.remotePage, cfg.logsRefusal = f.FetchLogs(context.Background(), 0, -1)
 	uiCfg := &ui.Config{Interval: interval}
 	t.Cleanup(setupLogSource(cfg, f, uiCfg))
 	return uiCfg
@@ -304,6 +309,43 @@ func TestRemoteLogs_ClientRetriesAfterAServerError(t *testing.T) {
 	assert.Equal(t, []string{"before the outage", "after the outage"}, logMessages(uiCfg.RuntimeLogBuffer))
 	assert.Equal(t, int64(-1), src.seen()[0])
 	assert.NotContains(t, src.seen()[1:], int64(-1), "only the first request opens the session")
+}
+
+func TestRemoteLogs_ClientFollowsADaemonRestart(t *testing.T) {
+	before := &recordingLogSource{buf: model.NewLogBuffer(0), epoch: 1}
+	after := &recordingLogSource{buf: model.NewLogBuffer(0), epoch: 2}
+	var want []string
+	for i := range 3 {
+		before.buf.Append(fetcher.LogEntry{Logger: "admin.api", Message: "before " + strconv.Itoa(i)})
+		want = append(want, "before "+strconv.Itoa(i))
+	}
+	for i := range 5 {
+		after.buf.Append(fetcher.LogEntry{Logger: "admin.api", Message: "after " + strconv.Itoa(i)})
+		want = append(want, "after "+strconv.Itoa(i))
+	}
+	var mu sync.Mutex
+	var queries []string
+	sent := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(queries)
+	}
+
+	uiCfg := remoteLogsAgainst(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		queries = append(queries, r.URL.RawQuery)
+		first := len(queries) == 1
+		mu.Unlock()
+		if first {
+			exporter.LogsHandler(before).ServeHTTP(w, r)
+			return
+		}
+		exporter.LogsHandler(after).ServeHTTP(w, r)
+	}), 100*time.Millisecond)
+
+	require.Eventually(t, func() bool { return len(sent()) >= 4 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"after=-1", "after=3&epoch=1", "after=5&epoch=2"}, sent()[:3])
+	assert.Equal(t, want, logMessages(uiCfg.RuntimeLogBuffer), "no line of the restarted daemon is skipped or repeated")
 }
 
 func TestRemoteLogs_ClientMarksTheEndOfTheStream(t *testing.T) {

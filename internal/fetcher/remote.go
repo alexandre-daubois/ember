@@ -14,6 +14,7 @@ import (
 )
 
 type RemoteLogs struct {
+	Epoch   int64      `json:"epoch"`
 	Next    int64      `json:"next"`
 	Entries []LogEntry `json:"entries"`
 }
@@ -46,11 +47,15 @@ func (f *RemoteFetcher) RestartWorkers(context.Context) error {
 	return errors.New("worker restart is not available in a remote session")
 }
 
-func (f *RemoteFetcher) FetchLogs(ctx context.Context, after int64) (*RemoteLogs, error) {
+func (f *RemoteFetcher) FetchLogs(ctx context.Context, epoch, after int64) (*RemoteLogs, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	params := url.Values{"after": {strconv.FormatInt(after, 10)}}
+	if after >= 0 {
+		params.Set("epoch", strconv.FormatInt(epoch, 10))
+	}
 	var page RemoteLogs
-	if err := f.do(ctx, "/logs", url.Values{"after": {strconv.FormatInt(after, 10)}}, &page); err != nil {
+	if err := f.do(ctx, "/logs", params, &page); err != nil {
 		return nil, err
 	}
 	return &page, nil
