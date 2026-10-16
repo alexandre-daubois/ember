@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -125,6 +126,7 @@ const (
 type remoteLogs struct {
 	hf    *fetcher.HTTPFetcher
 	addr  string
+	epoch int64
 	lease time.Duration
 	log   *slog.Logger
 
@@ -139,7 +141,7 @@ type remoteLogs struct {
 }
 
 func newRemoteLogs(cfg *config, hf *fetcher.HTTPFetcher) *remoteLogs {
-	l := &remoteLogs{lease: remoteLogsLease, log: cfg.logger}
+	l := &remoteLogs{epoch: rand.Int64(), lease: remoteLogsLease, log: cfg.logger}
 	if addr, ok := logListenAddr(cfg); ok {
 		l.hf, l.addr, l.buf = hf, addr, model.NewLogBuffer(0)
 		// As warnIfPublicListener, before any bind: a host name is not loopback.
@@ -150,6 +152,10 @@ func newRemoteLogs(cfg *config, hf *fetcher.HTTPFetcher) *remoteLogs {
 		l.unavailable = errors.New("logs are not available: Caddy is on another host and the daemon has no --log-listen")
 	}
 	return l
+}
+
+func (l *remoteLogs) Epoch() int64 {
+	return l.epoch
 }
 
 func (l *remoteLogs) Since(after int64, limit int) ([]fetcher.LogEntry, int64, error) {

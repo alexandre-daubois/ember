@@ -55,7 +55,7 @@ func runRemote(ctx context.Context, cfg *config, version string) error {
 		return err
 	}
 	defer f.CloseIdleConnections()
-	cfg.remotePage, cfg.logsRefusal = f.FetchLogs(ctx, -1)
+	cfg.remotePage, cfg.logsRefusal = f.FetchLogs(ctx, 0, -1)
 	if remoteFatal(cfg.logsRefusal) {
 		return fmt.Errorf("remote daemon %s: %w", cfg.remoteURL.Host, cfg.logsRefusal)
 	}

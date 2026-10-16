@@ -22,12 +22,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 	"github.com/alexandre-daubois/ember/internal/ui"
@@ -754,6 +756,54 @@ func TestRemoteLogs_ReplacesTheSinksOfAKilledDaemon(t *testing.T) {
 	for name, addr := range sinks {
 		assert.NotEqual(t, "127.0.0.1:1", addr, name)
 	}
+}
+
+func TestRemoteLogs_ACursorFromBeforeARestartSkipsNoLine(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}}
+	get := func(l *remoteLogs, query string) fetcher.RemoteLogs {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		exporter.LogsHandler(l).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/logs?"+query, nil))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var page fetcher.RemoteLogs
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+		return page
+	}
+	cursor := func(page fetcher.RemoteLogs) string {
+		return "after=" + strconv.FormatInt(page.Next, 10) + "&epoch=" + strconv.FormatInt(page.Epoch, 10)
+	}
+	appendLines := func(l *remoteLogs, prefix string, n int) []string {
+		var lines []string
+		for i := range n {
+			lines = append(lines, prefix+strconv.Itoa(i))
+			l.buf.Append(fetcher.LogEntry{Logger: "admin.api", Message: lines[i]})
+		}
+		return lines
+	}
+	messages := func(entries []fetcher.LogEntry) []string {
+		var out []string
+		for _, e := range entries {
+			out = append(out, e.Message)
+		}
+		return out
+	}
+
+	stopped := newTestRemoteLogs(t, cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	held := get(stopped, "after=-1")
+	appendLines(stopped, "stopped ", 10)
+	held = get(stopped, cursor(held))
+	require.Equal(t, int64(10), held.Next)
+	stopped.Close()
+
+	restarted := newTestRemoteLogs(t, cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	get(restarted, "after=-1") // another TUI reopens the session
+	lines := appendLines(restarted, "restarted ", 12)
+
+	resumed := get(restarted, cursor(held))
+	assert.Equal(t, lines, messages(resumed.Entries), "a cursor of the stopped process resumes from the oldest line")
+	current := get(restarted, "after=10&epoch="+strconv.FormatInt(resumed.Epoch, 10))
+	assert.Equal(t, lines[10:], messages(current.Entries))
 }
 
 func TestRemoteLogs_AnswersWhileASessionOpens(t *testing.T) {

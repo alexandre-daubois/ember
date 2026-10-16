@@ -35,7 +35,7 @@ func TestRemoteFetcher_OnlyA4xxIsARefusal(t *testing.T) {
 				w.WriteHeader(status)
 			}))
 
-			_, err := f.FetchLogs(context.Background(), -1)
+			_, err := f.FetchLogs(context.Background(), 0, -1)
 
 			require.Error(t, err)
 			if refused {
