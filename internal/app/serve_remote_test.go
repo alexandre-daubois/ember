@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -455,10 +456,9 @@ func TestRemoteLogs_LeaseInstallsThenRestoresCaddy(t *testing.T) {
 	assert.False(t, api.unregistered.Load(), "every request extends the lease")
 
 	require.Eventually(t, func() bool {
-		return api.unregistered.Load() && api.serverDeleteCount("srv0") == 1
-	}, 2*time.Second, 10*time.Millisecond, "Caddy is restored once the lease expires")
+		return api.unregistered.Load() && api.serverDeleteCount("srv0") == 1 && l.buf.Len() == 0
+	}, 2*time.Second, 10*time.Millisecond, "Caddy is restored, and the lines dropped, once the lease expires")
 	assert.Empty(t, api.serverLogs("srv0"))
-	assert.Zero(t, l.buf.Len(), "the lines do not outlive the session")
 
 	_, _, err = l.Since(next, 0)
 	require.NoError(t, err)
@@ -623,14 +623,23 @@ type fakeCaddySinks struct {
 	srv   *httptest.Server
 	mu    sync.Mutex
 	sinks map[string]string
+	puts  int
+	// onSinkDelete runs at the start of a DELETE, outside mu.
+	onSinkDelete atomic.Pointer[func()]
 }
 
 func newFakeCaddySinks(t *testing.T) *fakeCaddySinks {
 	t.Helper()
 	api := &fakeCaddySinks{sinks: map[string]string{}}
 	api.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hook := api.onSinkDelete.Load(); hook != nil && r.Method == http.MethodDelete {
+			(*hook)()
+		}
 		api.mu.Lock()
 		defer api.mu.Unlock()
+		if r.Method == http.MethodPut {
+			api.puts++
+		}
 		name, isSink := strings.CutPrefix(r.URL.Path, "/config/logging/logs/")
 		_, exists := api.sinks[name]
 		switch {
@@ -656,6 +665,45 @@ func (a *fakeCaddySinks) snapshot() map[string]string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return maps.Clone(a.sinks)
+}
+
+func (a *fakeCaddySinks) putCount() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.puts
+}
+
+// holdDeletes makes every DELETE wait for release, and fills held once one
+// does. Called after newTestRemoteLogs, its cleanup runs first and frees the
+// DELETEs that l.Close needs.
+func (a *fakeCaddySinks) holdDeletes(t *testing.T) (held <-chan struct{}, release func()) {
+	t.Helper()
+	entered, gate := make(chan struct{}, 1), make(chan struct{})
+	hook := func() {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-gate
+	}
+	a.onSinkDelete.Store(&hook)
+	release = sync.OnceFunc(func() { close(gate) })
+	t.Cleanup(release)
+	return entered, release
+}
+
+func returnsWithin(t *testing.T, d time.Duration, f func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f()
+	}()
+	select {
+	case <-done:
+	case <-time.After(d):
+		t.Fatalf("still waiting after %s", d)
+	}
 }
 
 func TestRemoteLogs_SinksApartFromALocalTUI(t *testing.T) {
@@ -705,5 +753,91 @@ func TestRemoteLogs_ReplacesTheSinksOfAKilledDaemon(t *testing.T) {
 	require.Len(t, sinks, len(orphans))
 	for name, addr := range sinks {
 		assert.NotEqual(t, "127.0.0.1:1", addr, name)
+	}
+}
+
+func TestRemoteLogs_AnswersWhileASessionOpens(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	l := newTestRemoteLogs(t, &config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	l.lease = time.Minute
+	held, release := api.holdDeletes(t)
+	opened := make(chan error, 1)
+	go func() {
+		_, _, err := l.Since(-1, 0)
+		opened <- err
+	}()
+	require.Eventually(t, func() bool { return len(held) == 1 }, 2*time.Second, 10*time.Millisecond, "the opening reaches Caddy")
+
+	var err error
+	returnsWithin(t, time.Second, func() { _, _, err = l.Since(-1, 0) })
+
+	require.NoError(t, err)
+	release()
+	returnsWithin(t, 5*time.Second, func() { err = <-opened })
+	require.NoError(t, err)
+}
+
+func TestRemoteLogs_AnswersWhileASessionCloses(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	l := newTestRemoteLogs(t, &config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	l.lease = time.Minute
+	_, _, err := l.Since(-1, 0)
+	require.NoError(t, err)
+	held, release := api.holdDeletes(t)
+	ended := make(chan struct{})
+	go func() {
+		defer close(ended)
+		l.mu.Lock()
+		l.end()
+		l.mu.Unlock()
+	}()
+	require.Eventually(t, func() bool { return len(held) == 1 }, 2*time.Second, 10*time.Millisecond, "the cleanup reaches Caddy")
+
+	returnsWithin(t, time.Second, func() { _, _, err = l.Since(-1, 0) })
+
+	require.NoError(t, err)
+	release()
+	returnsWithin(t, 5*time.Second, func() { <-ended })
+}
+
+func TestRemoteLogs_CloseWaitsForAnOpeningThenRestoresCaddy(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	l := newTestRemoteLogs(t, &config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	l.lease = time.Minute
+	held, release := api.holdDeletes(t)
+	opened := make(chan error, 1)
+	go func() {
+		_, _, err := l.Since(-1, 0)
+		opened <- err
+	}()
+	require.Eventually(t, func() bool { return len(held) == 1 }, 2*time.Second, 10*time.Millisecond, "the opening reaches Caddy")
+	closed := make(chan struct{})
+	go func() {
+		defer close(closed)
+		l.Close()
+	}()
+
+	require.Eventually(t, func() bool {
+		_, _, err := l.Since(-1, 0)
+		return err != nil
+	}, time.Second, 10*time.Millisecond, "Close waits without the lock, and refuses new requests")
+	release()
+	returnsWithin(t, 5*time.Second, func() { <-closed })
+
+	require.NoError(t, <-opened)
+	assert.Equal(t, 2, api.putCount(), "the opening completes")
+	assert.Empty(t, api.snapshot(), "Close restores Caddy")
+	_, _, err := l.Since(-1, 0)
+	require.ErrorContains(t, err, "stopping")
+}
+
+func TestRemoteLogs_AFailedOpeningLetsTheNextRequestRetry(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}, logListen: "no-port", logger: slog.New(slog.DiscardHandler)}
+	l := newRemoteLogs(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+
+	for range 2 {
+		_, _, err := l.Since(-1, 0)
+		require.ErrorContains(t, err, "cannot listen on no-port")
 	}
 }

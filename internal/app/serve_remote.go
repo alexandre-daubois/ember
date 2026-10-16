@@ -112,6 +112,16 @@ func (r *statusRecorder) WriteHeader(code int) {
 
 const remoteLogsLease = 30 * time.Second
 
+// A session opens and closes outside mu, so that no request waits behind Caddy.
+type sessionState int
+
+const (
+	sessionClosed sessionState = iota
+	sessionOpening
+	sessionOpen
+	sessionClosing
+)
+
 type remoteLogs struct {
 	hf    *fetcher.HTTPFetcher
 	addr  string
@@ -121,8 +131,11 @@ type remoteLogs struct {
 	mu          sync.Mutex
 	unavailable error
 	buf         *model.LogBuffer
-	stop        func() error
-	last        time.Time
+	state       sessionState
+	// transition is closed when the current opening or closing ends.
+	transition chan struct{}
+	stop       func() error
+	last       time.Time
 }
 
 func newRemoteLogs(cfg *config, hf *fetcher.HTTPFetcher) *remoteLogs {
@@ -141,11 +154,19 @@ func newRemoteLogs(cfg *config, hf *fetcher.HTTPFetcher) *remoteLogs {
 
 func (l *remoteLogs) Since(after int64, limit int) ([]fetcher.LogEntry, int64, error) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.unavailable != nil {
-		return nil, 0, l.unavailable
+	if err := l.unavailable; err != nil {
+		l.mu.Unlock()
+		return nil, 0, err
 	}
-	if l.stop == nil {
+	opening := l.state == sessionClosed
+	if opening {
+		l.state, l.transition = sessionOpening, make(chan struct{})
+	} else if after < 0 {
+		after = l.buf.WriteCount()
+	}
+	l.last = time.Now()
+	l.mu.Unlock()
+	if opening {
 		// Clear our own sinks first: a killed daemon leaves them on a dead port, and Caddy refuses a PUT over them (409).
 		for _, name := range []string{fetcher.DaemonLogSinks.Access, fetcher.DaemonLogSinks.Runtime} {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -157,16 +178,18 @@ func (l *remoteLogs) Since(after int64, limit int) ([]fetcher.LogEntry, int64, e
 				l.buf.Append(e)
 			}
 		}, func(string) {}, l.log)
+		l.mu.Lock()
+		close(l.transition)
 		if !ok {
+			l.state = sessionClosed
+			l.mu.Unlock()
 			return nil, 0, fmt.Errorf("logs are not available: cannot listen on %s", l.addr)
 		}
-		l.stop = stop
+		l.state, l.stop = sessionOpen, stop
 		time.AfterFunc(l.lease, l.expire)
 		l.log.Info("remote logs started", "listen", addr)
-	} else if after < 0 {
-		after = l.buf.WriteCount()
+		l.mu.Unlock()
 	}
-	l.last = time.Now()
 	entries, next := l.buf.Since(after, limit)
 	return entries, next, nil
 }
@@ -174,7 +197,7 @@ func (l *remoteLogs) Since(after int64, limit int) ([]fetcher.LogEntry, int64, e
 func (l *remoteLogs) expire() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.stop == nil {
+	if l.state != sessionOpen {
 		return
 	}
 	if left := l.lease - time.Since(l.last); left > 0 {
@@ -184,10 +207,16 @@ func (l *remoteLogs) expire() {
 	l.end()
 }
 
+// end closes the open session. Called with mu held, it releases it while Caddy is restored.
 func (l *remoteLogs) end() {
-	err := l.stop()
-	l.stop = nil
+	stop := l.stop
+	l.state, l.stop, l.transition = sessionClosing, nil, make(chan struct{})
+	l.mu.Unlock()
+	err := stop()
+	l.mu.Lock()
 	l.buf.Clear()
+	l.state = sessionClosed
+	close(l.transition)
 	if err != nil {
 		l.log.Warn("remote logs stopped: Caddy not fully restored", "err", err)
 		return
@@ -198,8 +227,14 @@ func (l *remoteLogs) end() {
 func (l *remoteLogs) Close() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.stop != nil {
+	l.unavailable = errors.New("logs are not available: the daemon is stopping")
+	for l.state == sessionOpening || l.state == sessionClosing {
+		done := l.transition
+		l.mu.Unlock()
+		<-done
+		l.mu.Lock()
+	}
+	if l.state == sessionOpen {
 		l.end()
 	}
-	l.unavailable = errors.New("logs are not available: the daemon is stopping")
 }
