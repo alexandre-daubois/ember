@@ -11,8 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -61,9 +59,6 @@ func configureExposeServer(srv *http.Server, cfg *config) error {
 	if tc != nil {
 		srv.ErrorLog = slog.NewLogLogger(cfg.logger.Handler(), slog.LevelWarn)
 	}
-	if cfg.serveRemote {
-		srv.Handler = traceRemote(srv.Handler, cfg.logger)
-	}
 	return nil
 }
 
@@ -76,39 +71,35 @@ func listenMetrics(srv *http.Server) error {
 
 func traceRemote(next http.Handler, log *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		relayed := strings.HasPrefix(r.URL.Path, "/caddy/")
-		if r.URL.Path != "/logs" && r.URL.Path != "/certificates" && !relayed {
-			next.ServeHTTP(w, r)
-			return
-		}
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
-		daemonRefused := !relayed || rec.status == http.StatusForbidden || rec.status == http.StatusMethodNotAllowed
+		trace := &fetcher.RemoteTrace{}
+		next.ServeHTTP(w, r.WithContext(fetcher.WithRemoteTrace(r.Context(), trace)))
 		var cn []any
 		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 			cn = []any{"client_cn", r.TLS.PeerCertificates[0].Subject.CommonName}
 		}
-		if rec.status >= http.StatusBadRequest && rec.status < http.StatusInternalServerError && daemonRefused {
-			log.Warn("remote request refused", append([]any{"remote_addr", r.RemoteAddr, "method", r.Method, "path", r.URL.Path, "status", rec.status}, cn...)...)
+		if trace.Refused != 0 {
+			log.Warn("remote request refused", append([]any{"remote_addr", r.RemoteAddr, "method", r.Method, "path", r.URL.Path, "status", trace.Refused}, cn...)...)
 		}
-		after, err := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
-		if r.URL.Path == "/logs" && err == nil && after == -1 && rec.status != http.StatusForbidden && rec.status != http.StatusMethodNotAllowed {
+		if trace.SessionOpened {
 			log.Info("remote session opened", append([]any{"remote_addr", r.RemoteAddr, "user_agent", r.UserAgent()}, cn...)...)
 		}
-		if rec.status == http.StatusOK && strings.HasPrefix(r.URL.Path, "/caddy/config/") {
+		if trace.ConfigRead {
 			log.Info("remote config read", append([]any{"remote_addr", r.RemoteAddr, "path", r.URL.Path}, cn...)...)
 		}
 	})
 }
 
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	r.status = code
-	r.ResponseWriter.WriteHeader(code)
+// getOnly refuses other methods than GET and HEAD as a "GET /path" pattern does, but from the route, for the trace to see it.
+func getOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			fetcher.RemoteTraceOf(r.Context()).Refused = http.StatusMethodNotAllowed
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 const remoteLogsLease = 30 * time.Second

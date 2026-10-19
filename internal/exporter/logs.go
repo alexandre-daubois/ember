@@ -14,12 +14,15 @@ type LogSource interface {
 
 func LogsHandler(src LogSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		trace := fetcher.RemoteTraceOf(r.Context())
 		q := r.URL.Query()
 		after, err := strconv.ParseInt(q.Get("after"), 10, 64)
 		if err != nil || after < -1 {
+			trace.Refused = http.StatusBadRequest
 			http.Error(w, "after must be a cursor returned by /logs", http.StatusBadRequest)
 			return
 		}
+		trace.SessionOpened = after == -1
 		epoch := src.Epoch()
 		// A cursor from another daemon process: resume from the oldest entry.
 		if q.Has("epoch") && q.Get("epoch") != strconv.FormatInt(epoch, 10) {
@@ -27,6 +30,7 @@ func LogsHandler(src LogSource) http.HandlerFunc {
 		}
 		entries, next, err := src.Since(after, fetcher.MaxRemoteLogs)
 		if err != nil {
+			trace.Refused = http.StatusConflict
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}

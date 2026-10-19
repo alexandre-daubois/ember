@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,15 +24,40 @@ func tuiRead(u *url.URL) (string, bool) {
 	return u.Path, slices.Contains(tuiReads, u.Path)
 }
 
+// RemoteTrace is what a route serving remote TUIs reports of a request, for the daemon to log.
+type RemoteTrace struct {
+	// Refused is the status of a refusal by the daemon, 0 for an answer.
+	Refused       int
+	SessionOpened bool
+	ConfigRead    bool
+}
+
+type remoteTraceKey struct{}
+
+func WithRemoteTrace(ctx context.Context, t *RemoteTrace) context.Context {
+	return context.WithValue(ctx, remoteTraceKey{}, t)
+}
+
+// RemoteTraceOf returns the trace of ctx, or one that nobody reads.
+func RemoteTraceOf(ctx context.Context) *RemoteTrace {
+	if t, ok := ctx.Value(remoteTraceKey{}).(*RemoteTrace); ok {
+		return t
+	}
+	return &RemoteTrace{}
+}
+
 func (f *HTTPFetcher) Relay() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		trace := RemoteTraceOf(r.Context())
 		path, ok := tuiRead(r.URL)
 		switch {
 		case r.Method != http.MethodGet:
+			trace.Refused = http.StatusMethodNotAllowed
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "a remote session is read-only", http.StatusMethodNotAllowed)
 			return
 		case !ok:
+			trace.Refused = http.StatusForbidden
 			http.Error(w, "not a request the TUI makes", http.StatusForbidden)
 			return
 		}
@@ -46,6 +72,7 @@ func (f *HTTPFetcher) Relay() http.Handler {
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
+		trace.ConfigRead = resp.StatusCode == http.StatusOK && strings.HasPrefix(path, "/config/")
 		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 		w.WriteHeader(resp.StatusCode)
 		_, _ = io.Copy(w, resp.Body)

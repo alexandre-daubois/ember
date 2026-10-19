@@ -82,9 +82,9 @@ func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance ma
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval, perInstance))
 	mux.HandleFunc("/healthz/", exporter.InstanceHealthHandler(holder, cfg.interval, perInstance))
 	if cfg.serveRemote {
-		mux.HandleFunc("GET /logs", exporter.LogsHandler(cfg.logSource))
-		mux.HandleFunc("GET /certificates", exporter.CertificatesHandler(holder, cfg.relayed.DialTLSCertificates))
-		mux.Handle("/caddy/", http.StripPrefix("/caddy", cfg.relayed.Relay()))
+		mux.Handle("/logs", traceRemote(getOnly(exporter.LogsHandler(cfg.logSource)), cfg.logger))
+		mux.Handle("/certificates", traceRemote(getOnly(exporter.CertificatesHandler(holder, cfg.relayed.DialTLSCertificates)), cfg.logger))
+		mux.Handle("/caddy/", traceRemote(http.StripPrefix("/caddy", cfg.relayed.Relay()), cfg.logger))
 	}
 
 	var handler http.Handler = mux
