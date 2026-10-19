@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -74,7 +75,14 @@ func (f *HTTPFetcher) Relay() http.Handler {
 		defer func() { _ = resp.Body.Close() }()
 		trace.ConfigRead = resp.StatusCode == http.StatusOK && strings.HasPrefix(path, "/config/")
 		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+		var body io.Writer = w
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			defer func() { _ = gz.Close() }()
+			body = gz
+		}
 		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
+		_, _ = io.Copy(body, resp.Body)
 	})
 }
