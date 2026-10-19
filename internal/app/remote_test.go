@@ -389,7 +389,7 @@ func TestRunRemote_ExitsBeforeTheTUI(t *testing.T) {
 	closed := "https://" + ln.Addr().String()
 	require.NoError(t, ln.Close())
 	pki := writeTestPKI(t)
-	daemon, _ := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile})
+	daemon, _ := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile}, remoteRoutes{})
 
 	for _, raw := range []string{closed, daemon} {
 		u, err := url.Parse(raw)

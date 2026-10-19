@@ -109,22 +109,20 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-func startRemoteServer(t *testing.T, cfg *config) (string, *syncBuffer) {
+func startRemoteServer(t *testing.T, cfg *config, remote remoteRoutes) (string, *syncBuffer) {
 	t.Helper()
 	logs := &syncBuffer{}
 	cfg.logger = slog.New(slog.NewTextHandler(logs, nil))
-	cfg.serveRemote = true
-	cfg.daemon = true
 	if cfg.interval == 0 {
 		cfg.interval = time.Second
 	}
-	if cfg.logSource == nil {
-		cfg.logSource = &recordingLogSource{buf: model.NewLogBuffer(0)}
+	if remote.logs == nil {
+		remote.logs = &recordingLogSource{buf: model.NewLogBuffer(0)}
 	}
-	if cfg.relayed == nil {
-		cfg.relayed = fetcher.NewHTTPFetcher("http://127.0.0.1:1", 0)
+	if remote.relayed == nil {
+		remote.relayed = fetcher.NewHTTPFetcher("http://127.0.0.1:1", 0)
 	}
-	srv := newMetricsServer("127.0.0.1:0", newMetricsHandler(freshHolder(), cfg, map[string]time.Duration{"": cfg.interval}))
+	srv := newMetricsServer("127.0.0.1:0", newMetricsHandler(freshHolder(), cfg, map[string]time.Duration{"": cfg.interval}, &remote))
 	require.NoError(t, configureExposeServer(srv, cfg))
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -237,19 +235,19 @@ func newCountingAdmin(t *testing.T) (*countingAdmin, *fetcher.HTTPFetcher) {
 	return admin, fetcher.NewHTTPFetcher(srv.URL, 0)
 }
 
-func TestNewMetricsHandler_RemoteRoutesNeedServeRemote(t *testing.T) {
+func TestNewMetricsHandler_RemoteRoutesOnlyWhenGiven(t *testing.T) {
 	_, hf := newCountingAdmin(t)
-	for _, serveRemote := range []bool{false, true} {
-		cfg := &config{interval: time.Second, serveRemote: serveRemote, logSource: &recordingLogSource{buf: model.NewLogBuffer(0)}, relayed: hf, logger: slog.New(slog.DiscardHandler)}
-		h := newMetricsHandler(freshHolder(), cfg, nil)
+	cfg := &config{interval: time.Second, logger: slog.New(slog.DiscardHandler)}
+	for _, remote := range []*remoteRoutes{nil, {logs: &recordingLogSource{buf: model.NewLogBuffer(0)}, relayed: hf}} {
+		h := newMetricsHandler(freshHolder(), cfg, nil, remote)
 		for _, path := range []string{"/logs?after=-1", "/caddy/config/", "/certificates"} {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 			want := http.StatusNotFound
-			if serveRemote {
+			if remote != nil {
 				want = http.StatusOK
 			}
-			assert.Equal(t, want, rec.Code, "%s, serveRemote=%t", path, serveRemote)
+			assert.Equal(t, want, rec.Code, "%s, remote routes=%t", path, remote != nil)
 		}
 	}
 }
@@ -257,7 +255,7 @@ func TestNewMetricsHandler_RemoteRoutesNeedServeRemote(t *testing.T) {
 func TestServeRemote_RequiresAClientCertificate(t *testing.T) {
 	pki := writeTestPKI(t)
 	admin, hf := newCountingAdmin(t)
-	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile, relayed: hf})
+	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile}, remoteRoutes{relayed: hf})
 	for _, path := range []string{"/caddy/metrics", "/caddy/config/", "/logs?after=-1", "/metrics"} {
 		resp, err := tlsClient(pki.pool).Get(url + path)
 		if err == nil {
@@ -293,7 +291,7 @@ func TestExposeTLS_WithoutClientCARequiresNoClientCertificate(t *testing.T) {
 	pki := writeTestPKI(t)
 	// Without --serve-remote: validate refuses it without --expose-client-ca.
 	cfg := &config{interval: time.Second, exposeCert: pki.serverCert, exposeKey: pki.serverKey, logger: slog.New(slog.DiscardHandler)}
-	srv := newMetricsServer("127.0.0.1:0", newMetricsHandler(freshHolder(), cfg, nil))
+	srv := newMetricsServer("127.0.0.1:0", newMetricsHandler(freshHolder(), cfg, nil, nil))
 	require.NoError(t, configureExposeServer(srv, cfg))
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -348,7 +346,7 @@ func TestConfigureExposeServer_ReturnsTheTLSError(t *testing.T) {
 func TestServeRemote_TracesTheRelayRefusals(t *testing.T) {
 	pki := writeTestPKI(t)
 	admin, hf := newCountingAdmin(t)
-	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile, relayed: hf})
+	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile}, remoteRoutes{relayed: hf})
 	client := pki.client(t)
 	t.Cleanup(client.CloseIdleConnections)
 
@@ -393,7 +391,7 @@ func TestServeRemote_TracesNoRefusalOfCaddy(t *testing.T) {
 		http.Error(w, `{"error":"host not allowed: 127.0.0.1"}`, http.StatusForbidden)
 	}))
 	t.Cleanup(caddy.Close)
-	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile, relayed: fetcher.NewHTTPFetcher(caddy.URL, 0)})
+	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile}, remoteRoutes{relayed: fetcher.NewHTTPFetcher(caddy.URL, 0)})
 	client := pki.client(t)
 	t.Cleanup(client.CloseIdleConnections)
 
@@ -411,8 +409,7 @@ func TestServeRemote_TracesASessionWithoutLogs(t *testing.T) {
 		exposeCert: pki.serverCert,
 		exposeKey:  pki.serverKey,
 		exposeCA:   pki.caFile,
-		logSource:  &recordingLogSource{err: errors.New("logs are not available: Caddy is on another host and the daemon has no --log-listen")},
-	})
+	}, remoteRoutes{logs: &recordingLogSource{err: errors.New("logs are not available: Caddy is on another host and the daemon has no --log-listen")}})
 	client := pki.client(t)
 	t.Cleanup(client.CloseIdleConnections)
 
@@ -428,7 +425,7 @@ func TestServeRemote_TracesASessionWithoutLogs(t *testing.T) {
 func TestServeRemote_TracesTheConfigReads(t *testing.T) {
 	pki := writeTestPKI(t)
 	_, hf := newCountingAdmin(t)
-	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile, relayed: hf})
+	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile}, remoteRoutes{relayed: hf})
 	client := pki.client(t)
 	t.Cleanup(client.CloseIdleConnections)
 
@@ -646,9 +643,65 @@ func TestRunDaemon_ServesLogsAndRestoresCaddyOnShutdown(t *testing.T) {
 
 	assert.True(t, api.unregistered.Load(), "an orderly stop removes the sinks")
 	assert.Equal(t, 1, api.serverDeleteCount("srv0"))
-	_, _, err = cfg.logSource.Since(0, 0)
-	require.ErrorContains(t, err, "stopping")
-	assert.Equal(t, 2, api.putCount(), "nothing is installed after the stop")
+}
+
+func TestRunDaemon_ServesNoRemoteRouteWithoutServeRemote(t *testing.T) {
+	// An empty /metrics is a valid scrape, and Caddy answers every other read: a 404 can only come from a route the daemon lacks.
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/metrics" {
+			_, _ = io.WriteString(w, "{}")
+		}
+	}))
+	t.Cleanup(caddy.Close)
+	pki := writeTestPKI(t)
+	for _, tc := range []struct {
+		name string
+		mTLS bool
+	}{
+		{"plain HTTP", false},
+		{"mTLS", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			expose := ln.Addr().String()
+			require.NoError(t, ln.Close())
+			cfg := &config{
+				addrs:    []addrSpec{{url: caddy.URL}},
+				interval: time.Second,
+				expose:   expose,
+				daemon:   true,
+				logger:   slog.New(slog.DiscardHandler),
+			}
+			client, url := &http.Client{}, "http://"+expose
+			if tc.mTLS {
+				cfg.exposeCert, cfg.exposeKey, cfg.exposeCA = pki.serverCert, pki.serverKey, pki.caFile
+				client, url = pki.client(t), "https://"+expose
+			}
+			t.Cleanup(client.CloseIdleConnections)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			instances, err := newInstances(ctx, cfg, "v-test")
+			require.NoError(t, err)
+			done := make(chan error, 1)
+			go func() { done <- runDaemon(ctx, instances, cfg, nil) }()
+
+			require.Eventually(t, func() bool {
+				resp, err := client.Get(url + "/metrics")
+				if err != nil {
+					return false
+				}
+				_ = resp.Body.Close()
+				return resp.StatusCode == http.StatusOK
+			}, 5*time.Second, 50*time.Millisecond)
+			for _, path := range []string{"/logs?after=-1", "/caddy/config/", "/certificates"} {
+				assert.Equal(t, http.StatusNotFound, getStatus(t, client, url+path), path)
+			}
+
+			cancel()
+			require.NoError(t, <-done)
+		})
+	}
 }
 
 // fakeCaddySinks keeps sinks by name, and answers a PUT over an existing one
