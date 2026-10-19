@@ -1,7 +1,9 @@
 package fetcher
 
 import (
+	"compress/gzip"
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const caddyMetrics = "# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{server=\"srv0\"} 3\n"
 
 type adminRequest struct{ method, path, query, host, auth, cookie string }
 
@@ -30,7 +34,7 @@ func (a *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/metrics":
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = w.Write([]byte("# TYPE caddy_http_requests_total counter\ncaddy_http_requests_total{server=\"srv0\"} 3\n"))
+		_, _ = w.Write([]byte(caddyMetrics))
 	case "/frankenphp/threads":
 		_, _ = w.Write([]byte(`{"ThreadDebugStates":[]}`))
 	case "/config/apps/http/servers":
@@ -186,4 +190,48 @@ func TestRelay_PassesEveryRequestOfARemoteTUI(t *testing.T) {
 	}
 	assert.ElementsMatch(t, append(slices.Clone(tuiReads), "/pki/ca/local"), reached,
 		"every read of the list is used, and nothing else reaches Caddy")
+}
+
+func TestRelay_GzipsForAClientThatAcceptsIt(t *testing.T) {
+	_, _, h := newRelayTest(t)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "text/plain; version=0.0.4", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "gzip", rec.Header().Get("Content-Encoding"))
+	zr, err := gzip.NewReader(rec.Body)
+	require.NoError(t, err)
+	body, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	assert.Equal(t, caddyMetrics, string(body))
+}
+
+func TestRelay_CopiesPlainForAClientThatDoesNotAcceptGzip(t *testing.T) {
+	_, _, h := newRelayTest(t)
+
+	rec := relay(h, http.MethodGet, "/metrics")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Empty(t, rec.Header().Get("Content-Encoding"))
+	assert.Equal(t, caddyMetrics, rec.Body.String())
+}
+
+func TestRelay_TheTUIClientReadsCaddysAnswerUnchanged(t *testing.T) {
+	_, _, h := newRelayTest(t)
+	f := newRemoteTest(t, http.StripPrefix("/caddy", h))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, f.baseURL+"/metrics", nil)
+	require.NoError(t, err)
+
+	resp, err := f.httpClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.True(t, resp.Uncompressed, "the relay gzipped the answer and the TUI's client undid it")
+	assert.Equal(t, caddyMetrics, string(body))
 }
