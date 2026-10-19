@@ -26,7 +26,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPHP bool, version string, plugins []plugin.Plugin) error {
+func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPHP bool, version string, plugins []plugin.Plugin, logSetup func(*ui.Config) func()) error {
 	uiCfg := ui.Config{
 		Interval:      interval,
 		SlowThreshold: time.Duration(cfg.slowThreshold) * time.Millisecond,
@@ -47,7 +47,7 @@ func runTUI(f fetcher.Fetcher, cfg *config, interval time.Duration, hasFrankenPH
 	defer close(sigCh)
 	defer signal.Stop(sigCh)
 
-	logCleanup := setupLogSource(cfg, f, &uiCfg)
+	logCleanup := logSetup(&uiCfg)
 	defer logCleanup()
 
 	var srv *http.Server
@@ -121,15 +121,11 @@ func startMetricsServer(srv *http.Server) <-chan error {
 //     Caddy).
 //  3. Auto: when Caddy looks reachable from the same host, bind a free
 //     loopback port and ask Caddy to push logs to it.
-//  4. --remote: read the daemon's /logs; the daemon registers the sinks.
 //
 // In the two listener modes Ember hot-registers an "__ember__" sink in Caddy
 // and enables access logging on every server that did not already have a logs
 // block. The returned cleanup function reverses both changes.
 func setupLogSource(cfg *config, f fetcher.Fetcher, uiCfg *ui.Config) func() {
-	if rf, ok := f.(*fetcher.RemoteFetcher); ok {
-		return startRemoteLogs(rf, cfg.remotePage, cfg.logsRefusal, uiCfg)
-	}
 	if cfg.stdinLogs {
 		startStdinListener(uiCfg)
 		return func() {}

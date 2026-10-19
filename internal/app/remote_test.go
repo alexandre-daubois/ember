@@ -247,10 +247,9 @@ func remoteLogsAgainst(t *testing.T, h http.Handler, interval time.Duration) *ui
 	require.NoError(t, err)
 	f := fetcher.NewRemoteFetcher(u)
 	t.Cleanup(f.CloseIdleConnections)
-	cfg := &config{remoteURL: u}
-	cfg.remotePage, cfg.logsRefusal = f.FetchLogs(context.Background(), 0, -1)
+	page, refusal := f.FetchLogs(context.Background(), 0, -1)
 	uiCfg := &ui.Config{Interval: interval}
-	t.Cleanup(setupLogSource(cfg, f, uiCfg))
+	t.Cleanup(startRemoteLogs(f, page, refusal, uiCfg))
 	return uiCfg
 }
 

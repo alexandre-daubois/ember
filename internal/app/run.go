@@ -15,6 +15,7 @@ import (
 	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
+	"github.com/alexandre-daubois/ember/internal/ui"
 	"github.com/alexandre-daubois/ember/pkg/plugin"
 	"github.com/spf13/cobra"
 )
@@ -53,8 +54,6 @@ type config struct {
 	exposeCA      string
 	remote        string
 	remoteURL     *url.URL
-	remotePage    *fetcher.RemoteLogs
-	logsRefusal   error
 }
 
 func Run(args []string, version string) error {
@@ -173,7 +172,9 @@ Keybindings:
 				inst := instances[0]
 				hasFrankenPHP := inst.fetcher.DetectFrankenPHP(ctx)
 				inst.fetcher.FetchServerNames(ctx)
-				return runTUI(inst.fetcher, &cfg, inst.interval, hasFrankenPHP, cmd.Version, plugins)
+				return runTUI(inst.fetcher, &cfg, inst.interval, hasFrankenPHP, cmd.Version, plugins, func(u *ui.Config) func() {
+					return setupLogSource(&cfg, inst.fetcher, u)
+				})
 			}
 		},
 	}

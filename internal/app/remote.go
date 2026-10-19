@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/alexandre-daubois/ember/internal/fetcher"
+	"github.com/alexandre-daubois/ember/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -55,14 +56,16 @@ func runRemote(ctx context.Context, cfg *config, version string) error {
 		return err
 	}
 	defer f.CloseIdleConnections()
-	cfg.remotePage, cfg.logsRefusal = f.FetchLogs(ctx, 0, -1)
-	if remoteFatal(cfg.logsRefusal) {
-		return fmt.Errorf("remote daemon %s: %w", cfg.remoteURL.Host, cfg.logsRefusal)
+	page, refusal := f.FetchLogs(ctx, 0, -1)
+	if remoteFatal(refusal) {
+		return fmt.Errorf("remote daemon %s: %w", cfg.remoteURL.Host, refusal)
 	}
 
 	hasFrankenPHP := f.DetectFrankenPHP(ctx)
 	f.FetchServerNames(ctx)
-	return runTUI(f, cfg, cfg.interval, hasFrankenPHP, version, nil)
+	return runTUI(f, cfg, cfg.interval, hasFrankenPHP, version, nil, func(u *ui.Config) func() {
+		return startRemoteLogs(f, page, refusal, u)
+	})
 }
 
 func remoteFatal(err error) bool {
