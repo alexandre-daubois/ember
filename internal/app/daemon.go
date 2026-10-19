@@ -76,15 +76,15 @@ func metricsURL(srv *http.Server) string {
 	return scheme + "://" + addr + "/metrics"
 }
 
-func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance map[string]time.Duration) http.Handler {
+func newMetricsHandler(holder *exporter.StateHolder, cfg *config, perInstance map[string]time.Duration, remote *remoteRoutes) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", exporter.Handler(holder, cfg.metricsPrefix, cfg.recorder))
 	mux.HandleFunc("/healthz", exporter.HealthHandler(holder, cfg.interval, perInstance))
 	mux.HandleFunc("/healthz/", exporter.InstanceHealthHandler(holder, cfg.interval, perInstance))
-	if cfg.serveRemote {
-		mux.Handle("/logs", traceRemote(getOnly(exporter.LogsHandler(cfg.logSource)), cfg.logger))
-		mux.Handle("/certificates", traceRemote(getOnly(exporter.CertificatesHandler(holder, cfg.relayed.DialTLSCertificates)), cfg.logger))
-		mux.Handle("/caddy/", traceRemote(http.StripPrefix("/caddy", cfg.relayed.Relay()), cfg.logger))
+	if remote != nil {
+		mux.Handle("/logs", traceRemote(getOnly(exporter.LogsHandler(remote.logs)), cfg.logger))
+		mux.Handle("/certificates", traceRemote(getOnly(exporter.CertificatesHandler(holder, remote.relayed.DialTLSCertificates)), cfg.logger))
+		mux.Handle("/caddy/", traceRemote(http.StripPrefix("/caddy", remote.relayed.Relay()), cfg.logger))
 	}
 
 	var handler http.Handler = mux
@@ -133,13 +133,13 @@ func runDaemon(ctx context.Context, instances []*instance, cfg *config, plugins 
 
 	dPlugins := newDaemonPlugins(plugins)
 
+	var remote *remoteRoutes
 	if cfg.serveRemote {
 		logs := newRemoteLogs(cfg, instances[0].fetcher)
 		defer logs.Close()
-		cfg.logSource = logs
-		cfg.relayed = instances[0].fetcher
+		remote = &remoteRoutes{logs: logs, relayed: instances[0].fetcher}
 	}
-	srv := newMetricsServer(cfg.expose, newMetricsHandler(holder, cfg, perInstanceIntervals(instances)))
+	srv := newMetricsServer(cfg.expose, newMetricsHandler(holder, cfg, perInstanceIntervals(instances), remote))
 	if err := configureExposeServer(srv, cfg); err != nil {
 		return err
 	}

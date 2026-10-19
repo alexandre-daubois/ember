@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/model"
 )
@@ -67,6 +68,11 @@ func listenMetrics(srv *http.Server) error {
 		return srv.ListenAndServeTLS("", "")
 	}
 	return srv.ListenAndServe()
+}
+
+type remoteRoutes struct {
+	logs    exporter.LogSource
+	relayed *fetcher.HTTPFetcher
 }
 
 func traceRemote(next http.Handler, log *slog.Logger) http.Handler {

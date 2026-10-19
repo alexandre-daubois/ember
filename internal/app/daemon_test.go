@@ -565,7 +565,7 @@ func TestPollInstance_FailedFetchLeavesHealthzUnhealthy(t *testing.T) {
 	pollInstance(context.Background(), instances[0], holder, false, nil, cfg.logger)
 
 	rec := httptest.NewRecorder()
-	newMetricsHandler(holder, cfg, nil).
+	newMetricsHandler(holder, cfg, nil, nil).
 		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	assert.NotEqual(t, http.StatusOK, rec.Code,

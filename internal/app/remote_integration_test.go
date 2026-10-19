@@ -24,7 +24,7 @@ func TestIntegration_RemoteRelay(t *testing.T) {
 	require.NoError(t, err)
 
 	pki := writeTestPKI(t)
-	daemon, _ := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile, relayed: direct})
+	daemon, _ := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile}, remoteRoutes{relayed: direct})
 	u, err := url.Parse(daemon)
 	require.NoError(t, err)
 	remote := fetcher.NewRemoteFetcher(u)

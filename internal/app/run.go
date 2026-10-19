@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexandre-daubois/ember/internal/exporter"
 	"github.com/alexandre-daubois/ember/internal/fetcher"
 	"github.com/alexandre-daubois/ember/internal/instrumentation"
 	"github.com/alexandre-daubois/ember/internal/ui"
@@ -41,8 +40,6 @@ type config struct {
 	insecure      bool
 	metricsAuth   string
 	recorder      *instrumentation.Recorder
-	logSource     exporter.LogSource
-	relayed       *fetcher.HTTPFetcher
 	logListen     string
 	configPath    string
 	configDefault string
