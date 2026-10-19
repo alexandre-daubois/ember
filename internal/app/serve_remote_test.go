@@ -240,7 +240,7 @@ func newCountingAdmin(t *testing.T) (*countingAdmin, *fetcher.HTTPFetcher) {
 func TestNewMetricsHandler_RemoteRoutesNeedServeRemote(t *testing.T) {
 	_, hf := newCountingAdmin(t)
 	for _, serveRemote := range []bool{false, true} {
-		cfg := &config{interval: time.Second, serveRemote: serveRemote, logSource: &recordingLogSource{buf: model.NewLogBuffer(0)}, relayed: hf}
+		cfg := &config{interval: time.Second, serveRemote: serveRemote, logSource: &recordingLogSource{buf: model.NewLogBuffer(0)}, relayed: hf, logger: slog.New(slog.DiscardHandler)}
 		h := newMetricsHandler(freshHolder(), cfg, nil)
 		for _, path := range []string{"/logs?after=-1", "/caddy/config/", "/certificates"} {
 			rec := httptest.NewRecorder()
@@ -273,12 +273,18 @@ func TestServeRemote_RequiresAClientCertificate(t *testing.T) {
 	assert.Equal(t, http.StatusOK, getStatus(t, client, url+"/logs?after=-1"))
 	assert.Equal(t, http.StatusOK, getStatus(t, client, url+"/logs?after=0"))
 	assert.Equal(t, http.StatusOK, getStatus(t, client, url+"/metrics"))
-	client.CloseIdleConnections()
 	assert.Equal(t, []string{"GET /metrics"}, admin.requests())
+	for _, path := range []string{"/logs?after=-1", "/certificates"} {
+		resp, err := client.Head(url + path)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "HEAD %s", path)
+	}
+	client.CloseIdleConnections()
 
 	require.Eventually(t, func() bool { return strings.Contains(logs.String(), "remote session opened") }, 2*time.Second, 10*time.Millisecond)
 	out := logs.String()
-	assert.Equal(t, 1, strings.Count(out, `msg="remote session opened"`), "only the first request of a TUI opens a session")
+	assert.Equal(t, 2, strings.Count(out, `msg="remote session opened"`), "after=-1 opens a session, with HEAD as with GET, and after=0 does not")
 	assert.Contains(t, out, "user_agent=ember-test/1.0 client_cn=alice-laptop")
 	assert.NotContains(t, out, `msg="remote request refused"`)
 }
@@ -347,30 +353,56 @@ func TestServeRemote_TracesTheRelayRefusals(t *testing.T) {
 	t.Cleanup(client.CloseIdleConnections)
 
 	assert.Equal(t, http.StatusForbidden, getStatus(t, client, url+"/caddy/debug/pprof/"))
-	for _, path := range []string{"/caddy/frankenphp/workers/restart", "/logs?after=-1"} {
-		req, err := http.NewRequest(http.MethodPost, url+path, nil)
+	for _, tt := range []struct{ path, allow string }{
+		{"/caddy/frankenphp/workers/restart", http.MethodGet},
+		{"/logs?after=-1", "GET, HEAD"},
+		{"/certificates", "GET, HEAD"},
+	} {
+		req, err := http.NewRequest(http.MethodPost, url+tt.path, nil)
 		require.NoError(t, err)
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		_ = resp.Body.Close()
-		assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode, path)
+		assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode, tt.path)
+		assert.Equal(t, tt.allow, resp.Header.Get("Allow"), tt.path)
 	}
+	assert.Equal(t, http.StatusBadRequest, getStatus(t, client, url+"/logs?after=abc"))
 	assert.Equal(t, http.StatusNotFound, getStatus(t, client, url+"/caddy/frankenphp/threads"))
 	assert.Equal(t, http.StatusBadRequest, getStatus(t, client, url+"/caddy/config/apps/pki/certificate_authorities"))
 	assert.Equal(t, http.StatusUnauthorized, getStatus(t, client, url+"/caddy/pki/ca/local"))
 
 	assert.Equal(t, []string{"GET /frankenphp/threads", "GET /config/apps/pki/certificate_authorities", "GET /pki/ca/local"}, admin.requests(), "only the TUI reads reached Caddy")
 	require.Eventually(t, func() bool {
-		return strings.Count(logs.String(), `msg="remote request refused"`) == 3
+		return strings.Count(logs.String(), `msg="remote request refused"`) == 5
 	}, 2*time.Second, 10*time.Millisecond)
 	out := logs.String()
 	assert.Contains(t, out, "method=GET path=/caddy/debug/pprof/ status=403")
 	assert.Contains(t, out, "method=POST path=/caddy/frankenphp/workers/restart status=405")
 	assert.Contains(t, out, "method=POST path=/logs status=405")
+	assert.Contains(t, out, "method=POST path=/certificates status=405")
+	assert.Contains(t, out, "method=GET path=/logs status=400")
 	assert.NotContains(t, out, "remote session opened", "a refused POST opens no session")
 	assert.NotContains(t, out, "/caddy/frankenphp/threads", "Caddy's own 404 is an answer, not a refusal")
 	assert.NotContains(t, out, "/caddy/config/apps/pki", "nor is its 400 for a PKI app it does not have")
 	assert.NotContains(t, out, "/caddy/pki/ca/local", "nor a 401 from a proxy in front of Caddy")
+}
+
+func TestServeRemote_TracesNoRefusalOfCaddy(t *testing.T) {
+	pki := writeTestPKI(t)
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"host not allowed: 127.0.0.1"}`, http.StatusForbidden)
+	}))
+	t.Cleanup(caddy.Close)
+	url, logs := startRemoteServer(t, &config{exposeCert: pki.serverCert, exposeKey: pki.serverKey, exposeCA: pki.caFile, relayed: fetcher.NewHTTPFetcher(caddy.URL, 0)})
+	client := pki.client(t)
+	t.Cleanup(client.CloseIdleConnections)
+
+	assert.Equal(t, http.StatusForbidden, getStatus(t, client, url+"/caddy/config/"))
+	assert.Equal(t, http.StatusForbidden, getStatus(t, client, url+"/caddy/debug/pprof/"))
+
+	require.Eventually(t, func() bool { return strings.Contains(logs.String(), "path=/caddy/debug/pprof/ status=403") }, 2*time.Second, 10*time.Millisecond)
+	out := logs.String()
+	assert.NotContains(t, out, "path=/caddy/config/", "a 403 of Caddy's host check is an answer, not a refusal")
 }
 
 func TestServeRemote_TracesASessionWithoutLogs(t *testing.T) {
@@ -384,7 +416,7 @@ func TestServeRemote_TracesASessionWithoutLogs(t *testing.T) {
 	client := pki.client(t)
 	t.Cleanup(client.CloseIdleConnections)
 
-	// LogsHandler reads -01 as -1, and so does the trace.
+	// LogsHandler reads -01 as -1.
 	for _, after := range []string{"-1", "-01"} {
 		assert.Equal(t, http.StatusConflict, getStatus(t, client, url+"/logs?after="+after), after)
 	}
