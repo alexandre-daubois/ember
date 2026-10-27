@@ -404,7 +404,7 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 				// is empty: the sink may have been registered on a
 				// prior tick but enableAccessLogs may have failed
 				// (e.g. Caddy's server list was not ready yet).
-				if !accessExists || len(enabled) == 0 || accessLogsRemoved(hf, enabled) {
+				if !accessExists || len(enabled) == 0 || accessLogsRemoved(watchdogCtx, hf, enabled) {
 					enabled = mergeEnabled(enabled, enableAccessLogs(hf))
 				}
 			}
@@ -466,10 +466,10 @@ func enableAccessLogs(hf *fetcher.HTTPFetcher) []string {
 
 // accessLogsRemoved reports whether a server we turned access logs on for has
 // lost its logs block since, as when another Ember restores it on its way out.
-func accessLogsRemoved(hf *fetcher.HTTPFetcher, names []string) bool {
+func accessLogsRemoved(ctx context.Context, hf *fetcher.HTTPFetcher, names []string) bool {
 	for _, name := range names {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		has, err := hf.HasServerLogs(ctx, name)
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		has, err := hf.HasServerLogs(checkCtx, name)
 		cancel()
 		if err == nil && !has {
 			return true

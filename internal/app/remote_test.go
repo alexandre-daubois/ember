@@ -54,11 +54,11 @@ func TestPrepareRemote_Incompatibilities(t *testing.T) {
 
 func TestPrepareRemote_RejectsBadURL(t *testing.T) {
 	err := remotePreRun(t, "--remote", "prod:9191")
-	require.EqualError(t, err, "--remote must be an https:// URL without a query")
+	require.EqualError(t, err, "--remote must be an https:// URL without a query or a fragment")
 
-	for _, remote := range []string{"https://alice:pa^ss@prod:9191", "https://prod:9191?token=s3cret"} {
+	for _, remote := range []string{"https://alice:pa^ss@prod:9191", "https://prod:9191?token=s3cret", "https://prod:9191?", "https://prod:9191/#x"} {
 		err = remotePreRun(t, "--remote", remote)
-		require.EqualError(t, err, "--remote must be an https:// URL without a query", remote)
+		require.EqualError(t, err, "--remote must be an https:// URL without a query or a fragment", remote)
 	}
 
 	for _, remote := range []string{"https://alice@prod:9191", "https://alice:s3cret@prod:9191?instance=web1"} {
@@ -88,7 +88,7 @@ func TestPrepareRemote_RequiresHTTPSEvenOnLocalhost(t *testing.T) {
 		cfg := &config{remote: remote, interval: time.Second, logger: slog.New(slog.DiscardHandler)}
 		err := prepareRemote(cmd, cfg)
 		if refused {
-			require.EqualError(t, err, "--remote must be an https:// URL without a query", remote)
+			require.EqualError(t, err, "--remote must be an https:// URL without a query or a fragment", remote)
 		} else {
 			require.NoError(t, err, remote)
 		}
@@ -119,9 +119,12 @@ func TestPrepareRemote_ExportedAddrNeverBlocks(t *testing.T) {
 func TestPrepareRemote_TypedLocalFlagBeatsExportedRemote(t *testing.T) {
 	t.Setenv("EMBER_REMOTE", "https://prod:9191")
 
+	configFile := writeConfigFile(t, "[[endpoints]]\nname = \"staging\"\naddr = \"http://localhost:2019\"\n")
+
 	for _, args := range [][]string{
 		{"--addr", "http://localhost:2019"},
 		{"--daemon", "--expose", ":9191"},
+		{"-f", configFile},
 	} {
 		cmd := newRootCmd("test")
 		require.NoError(t, cmd.ParseFlags(args))
@@ -129,6 +132,21 @@ func TestPrepareRemote_TypedLocalFlagBeatsExportedRemote(t *testing.T) {
 
 		require.NoError(t, err, args)
 		assert.Empty(t, cmd.Flag("remote").Value.String(), args)
+	}
+}
+
+func TestPrepareRemote_TypedRemoteBeatsExportedLocalFlags(t *testing.T) {
+	t.Setenv("EMBER_EXPOSE", ":9191")
+	t.Setenv("EMBER_LOG_LISTEN", "127.0.0.1:9210")
+	t.Setenv("EMBER_SERVE_REMOTE", "true")
+	cmd := newRootCmd("test")
+	require.NoError(t, cmd.ParseFlags([]string{"--remote", "https://prod:9191"}))
+
+	require.NoError(t, cmd.PersistentPreRunE(cmd, nil))
+
+	for _, name := range []string{"expose", "log-listen", "serve-remote"} {
+		f := cmd.Flag(name)
+		assert.Equal(t, f.DefValue, f.Value.String(), name)
 	}
 }
 

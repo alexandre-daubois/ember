@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRegisterEmberRuntimeLogSink_PayloadUsesExclude(t *testing.T) {
+func TestRegisterRuntimeLogSink_PayloadUsesExclude(t *testing.T) {
 	var captured atomic.Pointer[string]
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +34,7 @@ func TestRegisterEmberRuntimeLogSink_PayloadUsesExclude(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	require.NoError(t, f.RegisterEmberRuntimeLogSink(context.Background(), "127.0.0.1:9210"))
+	require.NoError(t, f.RegisterRuntimeLogSink(context.Background(), emberRuntimeLogSinkName, "127.0.0.1:9210"))
 
 	got := captured.Load()
 	require.NotNil(t, got)
@@ -52,7 +52,7 @@ func TestRegisterEmberRuntimeLogSink_PayloadUsesExclude(t *testing.T) {
 	assert.False(t, hasInclude, "runtime sink must not constrain with include")
 }
 
-func TestUnregisterEmberRuntimeLogSink_OK(t *testing.T) {
+func TestUnregisterLogSink_RuntimeOK(t *testing.T) {
 	var path atomic.Pointer[string]
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
@@ -66,13 +66,13 @@ func TestUnregisterEmberRuntimeLogSink_OK(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	require.NoError(t, f.UnregisterEmberRuntimeLogSink(context.Background()))
+	require.NoError(t, f.UnregisterLogSink(context.Background(), emberRuntimeLogSinkName))
 
 	require.NotNil(t, path.Load())
 	assert.Contains(t, *path.Load(), emberRuntimeLogSinkName)
 }
 
-func TestCheckEmberRuntimeLogSink_Found(t *testing.T) {
+func TestCheckLogSink_RuntimeFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, emberRuntimeLogSinkName) {
 			http.NotFound(w, r)
@@ -84,10 +84,10 @@ func TestCheckEmberRuntimeLogSink_Found(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.True(t, f.CheckEmberRuntimeLogSink(context.Background()))
+	assert.True(t, f.CheckLogSink(context.Background(), emberRuntimeLogSinkName))
 }
 
-func TestRegisterEmberLogSink_PutsExpectedPayload(t *testing.T) {
+func TestRegisterAccessLogSink_PutsExpectedPayload(t *testing.T) {
 	var captured atomic.Pointer[string]
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +107,7 @@ func TestRegisterEmberLogSink_PutsExpectedPayload(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	require.NoError(t, f.RegisterEmberLogSink(context.Background(), "127.0.0.1:9210"))
+	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210"))
 
 	got := captured.Load()
 	require.NotNil(t, got)
@@ -131,7 +131,7 @@ func TestRegisterEmberLogSink_PutsExpectedPayload(t *testing.T) {
 	assert.Equal(t, "http.log.access", include[0])
 }
 
-func TestRegisterEmberLogSink_MaliciousAddressCannotInjectJSON(t *testing.T) {
+func TestRegisterAccessLogSink_MaliciousAddressCannotInjectJSON(t *testing.T) {
 	// Prove the payload is built via json.Marshal, not string interpolation:
 	// an address containing JSON metacharacters must end up escaped inside
 	// the "address" string, not breaking out into sibling fields.
@@ -146,7 +146,7 @@ func TestRegisterEmberLogSink_MaliciousAddressCannotInjectJSON(t *testing.T) {
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	evil := `127.0.0.1:1","output":"evil","x":"`
-	require.NoError(t, f.RegisterEmberLogSink(context.Background(), evil))
+	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, evil))
 
 	got := captured.Load()
 	require.NotNil(t, got)
@@ -165,7 +165,7 @@ func TestRegisterEmberLogSink_MaliciousAddressCannotInjectJSON(t *testing.T) {
 	assert.False(t, hasX, "must not allow injecting top-level keys")
 }
 
-func TestRegisterEmberLogSink_BootstrapsLoggingPath(t *testing.T) {
+func TestRegisterAccessLogSink_BootstrapsLoggingPath(t *testing.T) {
 	// Simulates a Caddy config with no logging section: the first PUT to
 	// /config/logging/logs/__ember__ fails, then the bootstrap creates the
 	// parent path, and the retry succeeds.
@@ -202,13 +202,13 @@ func TestRegisterEmberLogSink_BootstrapsLoggingPath(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	require.NoError(t, f.RegisterEmberLogSink(context.Background(), "127.0.0.1:9210"))
+	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210"))
 	assert.True(t, sinkRegistered.Load(), "sink must be registered after bootstrap")
 	assert.True(t, loggingExists, "/config/logging should have been created")
 	assert.True(t, logsExists, "/config/logging/logs should have been created")
 }
 
-func TestRegisterEmberLogSink_ServerError(t *testing.T) {
+func TestRegisterAccessLogSink_ServerError(t *testing.T) {
 	var loggingWrites atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/config/logging" || r.URL.Path == "/config/logging/logs" {
@@ -219,23 +219,23 @@ func TestRegisterEmberLogSink_ServerError(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	err := f.RegisterEmberLogSink(context.Background(), "127.0.0.1:9210")
+	err := f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
 	assert.Zero(t, loggingWrites.Load(),
 		"a server fault is no reason to write into the shared logging config")
 }
 
-func TestRegisterEmberLogSink_TransportErrorDoesNotBootstrap(t *testing.T) {
+func TestRegisterAccessLogSink_TransportErrorDoesNotBootstrap(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	require.Error(t, f.RegisterEmberLogSink(context.Background(), "127.0.0.1:9210"),
+	require.Error(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210"),
 		"an unreachable admin API must not fall through to the bootstrap PUT")
 }
 
-func TestUnregisterEmberLogSink_OK(t *testing.T) {
+func TestUnregisterLogSink_OK(t *testing.T) {
 	var got atomic.Pointer[string]
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -250,35 +250,35 @@ func TestUnregisterEmberLogSink_OK(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	require.NoError(t, f.UnregisterEmberLogSink(context.Background()))
+	require.NoError(t, f.UnregisterLogSink(context.Background(), EmberLogSinkName))
 
 	require.NotNil(t, got.Load())
 	assert.True(t, strings.HasSuffix(*got.Load(), "/"+EmberLogSinkName))
 }
 
-func TestUnregisterEmberLogSink_NotFoundIsFine(t *testing.T) {
+func TestUnregisterLogSink_NotFoundIsFine(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.NoError(t, f.UnregisterEmberLogSink(context.Background()))
+	assert.NoError(t, f.UnregisterLogSink(context.Background(), EmberLogSinkName))
 }
 
-func TestUnregisterEmberLogSink_OtherErrorPropagates(t *testing.T) {
+func TestUnregisterLogSink_OtherErrorPropagates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	err := f.UnregisterEmberLogSink(context.Background())
+	err := f.UnregisterLogSink(context.Background(), EmberLogSinkName)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "500")
 }
 
-func TestCheckEmberLogSink_ExistsReturnsTrue(t *testing.T) {
+func TestCheckLogSink_ExistsReturnsTrue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/config/logging/logs/"+EmberLogSinkName || r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -290,10 +290,10 @@ func TestCheckEmberLogSink_ExistsReturnsTrue(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.True(t, f.CheckEmberLogSink(context.Background()))
+	assert.True(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
 }
 
-func TestCheckEmberLogSink_NullReturnsFalse(t *testing.T) {
+func TestCheckLogSink_NullReturnsFalse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(w, "null")
@@ -301,25 +301,25 @@ func TestCheckEmberLogSink_NullReturnsFalse(t *testing.T) {
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.False(t, f.CheckEmberLogSink(context.Background()))
+	assert.False(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
 }
 
-func TestCheckEmberLogSink_404ReturnsFalse(t *testing.T) {
+func TestCheckLogSink_404ReturnsFalse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.False(t, f.CheckEmberLogSink(context.Background()))
+	assert.False(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
 }
 
-func TestCheckEmberLogSink_ServerErrorReturnsFalse(t *testing.T) {
+func TestCheckLogSink_ServerErrorReturnsFalse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.False(t, f.CheckEmberLogSink(context.Background()))
+	assert.False(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
 }

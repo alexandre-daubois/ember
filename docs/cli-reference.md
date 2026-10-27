@@ -30,8 +30,8 @@ ember [flags]
 | `--expose-cert`    | string | _(none)_ | TLS certificate for the daemon's `--expose` server, with `--expose-key`. Requires `--daemon`. |
 | `--expose-key`     | string | _(none)_ | TLS private key for the daemon's `--expose` server |
 | `--expose-client-ca` | string | _(none)_ | Require client certificates from this CA on the `--expose` server (mTLS). Requires `--expose-cert` and `--expose-key`. Required by `--serve-remote`. |
-| `--serve-remote`   | bool | `false` | Serve remote TUIs from the daemon. Requires `--daemon` and `--expose-client-ca`; incompatible with several `--addr` and with `--metrics-auth`. See [Remote TUI](remote.md). |
-| `--remote`         | string | _(none)_ | Run the TUI against a `--serve-remote` daemon (e.g. `https://prod:9191`). See [Remote TUI](remote.md). |
+| `--serve-remote`   | bool | `false` | Experimental. Serve remote TUIs from the daemon. Requires `--daemon` and `--expose-client-ca`; incompatible with several `--addr` and with `--metrics-auth`. See [Remote TUI](remote.md). |
+| `--remote`         | string | _(none)_ | Experimental. Run the TUI against a `--serve-remote` daemon (e.g. `https://prod:9191`). See [Remote TUI](remote.md). |
 | `--log-listen`     | string | _(auto)_ | Bind a TCP listener at this address (e.g. `:9210`) and ask Caddy to push its logs to it via two hot-registered sinks (access + runtime). Required when Caddy is on a remote host; auto-bound on a free loopback port otherwise. A `--serve-remote` daemon uses it the same way for its remote sessions. See [Logs](logs.md). |
 | `--stdin-logs`, `--from-stdin` | bool | `false` | Read Caddy logs directly from stdin instead of registering a net_writer via Caddy's Admin API. Ideal for Kubernetes / unidirectional environments. |
 | `--no-color`       | bool | `false` | Disable colors. Also enabled by the `NO_COLOR` env var (see [no-color.org](https://no-color.org/)). |
