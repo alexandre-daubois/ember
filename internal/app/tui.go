@@ -342,11 +342,11 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 	}
 	warn(ln.Addr())
 
-	// PUT on the sink endpoint is idempotent: Caddy replaces an
-	// existing sink with the new definition. A stale entry left by a prior
-	// crash (pointing at a dead port) is naturally overwritten here, so no
-	// defensive DELETE is needed. If Caddy is not yet reachable (e.g. Ember
-	// started first), the watchdog retries periodically until it succeeds.
+	// Registering replaces an existing sink with the new definition. A stale
+	// entry left by a prior crash (pointing at a dead port) is overwritten
+	// here, so no defensive DELETE is needed. If Caddy is not yet reachable
+	// (e.g. Ember started first), the watchdog retries periodically until it
+	// succeeds.
 	//
 	// Two sinks share the same TCP listener: __ember__ (access logs, via
 	// include) and __ember_runtime__ (everything else, via exclude). Caddy

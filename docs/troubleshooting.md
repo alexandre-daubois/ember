@@ -144,13 +144,7 @@ scrape_configs:
 
 **Cause:** Ember registers two log sinks in Caddy (`__ember__`, `__ember_runtime__`) pointing at a transient TCP listener. If the unregister step never runs or the admin API is busy when it does, Caddy keeps re-dialling the now-defunct listener address.
 
-**Workaround:** Restart Ember with a fixed listener port so the next launch overwrites the stale entry via PUT:
-
-```bash
-ember --log-listen 127.0.0.1:9210
-```
-
-Or set `EMBER_LOG_LISTEN=127.0.0.1:9210` in the environment.
+**Workaround:** Restart Ember: the next launch replaces the stale sinks with ones pointing at its own listener, and its next clean quit removes them.
 
 A daemon started with `--serve-remote` registers `__ember_remote__` and `__ember_remote_runtime__` instead, and removes them itself when its next remote session opens.
 

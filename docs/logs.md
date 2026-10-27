@@ -330,8 +330,9 @@ If a `SIGKILL`-class event leaves state behind, Caddy keeps the registrations
 but the writers use `soft_start: true`, so they do not block reloads or spam
 errors. To clean up:
 
-- **Run `ember` again**: Ember uses idempotent `PUT`s to register its sinks,
-  overwriting any stale entries. The next clean quit then removes everything.
+- **Run `ember` again**: Ember registers its sinks with a `PUT`, and replaces
+  a stale entry with a `POST` when Caddy answers that it already exists. The
+  next clean quit then removes everything.
 - **Or remove them manually**:
 
   ```bash
