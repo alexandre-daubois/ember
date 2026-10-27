@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -104,8 +105,13 @@ Keybindings:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			localMode := cfg.remote == "" && (cmd.Flag("addr").Changed || remoteIncompatibleFlag(&cfg) != "")
-			if err := bindEnv(cmd); err != nil {
+			// A typed flag picks the mode, over a variable that would pick the other one.
+			var skipEnv []string
+			if cfg.remote != "" {
+				skipEnv = localModeFlags
+			}
+			localMode := cfg.remote == "" && (cmd.Flag("addr").Changed || cmd.Flag("config").Changed || remoteIncompatibleFlag(cmd) != "")
+			if err := bindEnv(cmd, skipEnv...); err != nil {
 				return err
 			}
 			if localMode {
@@ -200,8 +206,8 @@ Keybindings:
 	f.StringVar(&cfg.exposeCert, "expose-cert", "", "TLS certificate for the daemon's --expose server (requires --expose-key and --daemon)")
 	f.StringVar(&cfg.exposeKey, "expose-key", "", "TLS private key for the daemon's --expose server (requires --expose-cert)")
 	f.StringVar(&cfg.exposeCA, "expose-client-ca", "", "CA that --expose clients must present a certificate from (mTLS, requires --expose-cert and --expose-key)")
-	f.StringVar(&cfg.remote, "remote", "", "Run the TUI against an Ember daemon started with --serve-remote (e.g. https://prod:9191)")
-	f.BoolVar(&cfg.serveRemote, "serve-remote", false, "Serve remote TUIs from the daemon (requires --daemon and --expose-client-ca; incompatible with several --addr and --metrics-auth)")
+	f.StringVar(&cfg.remote, "remote", "", "Experimental: run the TUI against an Ember daemon started with --serve-remote (e.g. https://prod:9191)")
+	f.BoolVar(&cfg.serveRemote, "serve-remote", false, "Experimental: serve remote TUIs from the daemon (requires --daemon and --expose-client-ca; incompatible with several --addr and --metrics-auth)")
 	f.StringVar(&cfg.logListen, "log-listen", "", "Receive logs from Caddy via TCP, e.g. ':9210' or '127.0.0.1:9210'. Required when Caddy is on a remote host; auto-bound on a local loopback port otherwise.")
 	f.BoolVar(&cfg.stdinLogs, "stdin-logs", false, "Read Caddy logs directly from stdin instead of registering a net_writer")
 	f.BoolVar(&cfg.stdinLogs, "from-stdin", false, "Read Caddy logs directly from stdin instead of registering a net_writer (alias for --stdin-logs)")
@@ -264,11 +270,11 @@ var envBindings = map[string]string{
 // to flags the user did not set on the command line. Value.Set does not flip
 // Changed, so we set it explicitly once a value lands: env-provided values
 // must win over the config file, which is skipped precisely when the addr
-// (or per-key) flag is Changed.
-func bindEnv(cmd *cobra.Command) error {
+// (or per-key) flag is Changed. Flags in skip keep their value.
+func bindEnv(cmd *cobra.Command, skip ...string) error {
 	for name, env := range envBindings {
 		f := cmd.Flag(name)
-		if f == nil {
+		if f == nil || slices.Contains(skip, name) {
 			continue
 		}
 		if name == "stdin-logs" {

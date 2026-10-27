@@ -12,33 +12,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func remoteIncompatibleFlag(cfg *config) string {
-	for _, c := range []struct {
-		flag string
-		on   bool
-	}{
-		{"--daemon", cfg.daemon}, {"--json", cfg.jsonMode}, {"--expose", cfg.expose != ""},
-		{"--stdin-logs", cfg.stdinLogs}, {"--log-listen", cfg.logListen != ""}, {"--once", cfg.once},
-		{"--metrics-auth", cfg.metricsAuth != ""}, {"--serve-remote", cfg.serveRemote}, {"--expose-cert", cfg.exposeCert != ""},
-		{"--expose-key", cfg.exposeKey != ""}, {"--expose-client-ca", cfg.exposeCA != ""},
-	} {
-		if c.on {
-			return c.flag
+// localModeFlags are the flags --remote refuses.
+var localModeFlags = []string{
+	"daemon", "json", "expose", "stdin-logs", "log-listen", "once",
+	"metrics-auth", "serve-remote", "expose-cert", "expose-key", "expose-client-ca",
+}
+
+func remoteIncompatibleFlag(cmd *cobra.Command) string {
+	for _, name := range localModeFlags {
+		if f := cmd.Flag(name); f != nil && f.Value.String() != f.DefValue {
+			return "--" + name
 		}
 	}
 	return ""
 }
 
 func prepareRemote(cmd *cobra.Command, cfg *config) error {
-	if flag := remoteIncompatibleFlag(cfg); flag != "" {
+	if flag := remoteIncompatibleFlag(cmd); flag != "" {
 		return fmt.Errorf("--remote is incompatible with %s", flag)
 	}
 	u, err := url.Parse(cfg.remote)
 	if err == nil && u.User != nil {
 		return errors.New("--remote must not carry credentials: present a client certificate with --client-cert and --client-key")
 	}
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" {
-		return errors.New("--remote must be an https:// URL without a query")
+	// The fetcher appends its paths to this URL: a query or a fragment would swallow them.
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return errors.New("--remote must be an https:// URL without a query or a fragment")
 	}
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)

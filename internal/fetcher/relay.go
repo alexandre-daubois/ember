@@ -73,7 +73,8 @@ func (f *HTTPFetcher) Relay() http.Handler {
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
-		trace.ConfigRead = resp.StatusCode == http.StatusOK && strings.HasPrefix(path, "/config/")
+		// Only the Config tab reads the whole config: the narrower reads are the TUI's periodic refreshes.
+		trace.ConfigRead = resp.StatusCode == http.StatusOK && path == "/config/"
 		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 		var body io.Writer = w
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {

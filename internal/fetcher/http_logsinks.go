@@ -32,7 +32,7 @@ var (
 	DaemonLogSinks = LogSinks{Access: "__ember_remote__", Runtime: "__ember_remote_runtime__"}
 )
 
-// RegisterEmberLogSink hot-installs a Caddy logging sink that
+// RegisterAccessLogSink hot-installs a Caddy logging sink that
 // pushes JSON access logs to the given listener address. The sink uses
 // soft_start so Caddy does not fail config load when the listener is briefly
 // unavailable.
@@ -40,25 +40,16 @@ var (
 // The address must be reachable from Caddy's process; on the same host this
 // is typically "127.0.0.1:<port>" but for remote Caddy instances you must
 // supply a routable host:port pair.
-func (f *HTTPFetcher) RegisterEmberLogSink(ctx context.Context, listenerAddr string) error {
-	return f.RegisterAccessLogSink(ctx, EmberLogSinkName, listenerAddr)
-}
-
-// RegisterAccessLogSink is RegisterEmberLogSink under the given name.
 func (f *HTTPFetcher) RegisterAccessLogSink(ctx context.Context, name, listenerAddr string) error {
 	return f.registerLogSink(ctx, name, logSinkPayload(listenerAddr, map[string]any{
 		"include": []string{"http.log.access"},
 	}))
 }
 
-// RegisterEmberRuntimeLogSink hot-installs a second logging sink that pushes
+// RegisterRuntimeLogSink hot-installs a second logging sink that pushes
 // Caddy's runtime logs (everything that is not an access log) to the given
 // listener address. Uses `exclude` so the sink is a catch-all minus access
 // logs, which are handled by the primary __ember__ sink.
-func (f *HTTPFetcher) RegisterEmberRuntimeLogSink(ctx context.Context, listenerAddr string) error {
-	return f.RegisterRuntimeLogSink(ctx, emberRuntimeLogSinkName, listenerAddr)
-}
-
 func (f *HTTPFetcher) RegisterRuntimeLogSink(ctx context.Context, name, listenerAddr string) error {
 	return f.registerLogSink(ctx, name, logSinkPayload(listenerAddr, map[string]any{
 		"exclude": []string{"http.log.access"},
@@ -171,22 +162,9 @@ func (f *HTTPFetcher) putJSON(ctx context.Context, endpoint string, body []byte)
 	return nil
 }
 
-// CheckEmberLogSink reports whether the Ember access log sink is currently
+// CheckLogSink reports whether the named sink is currently
 // registered in Caddy's configuration. Returns false on any error.
-func (f *HTTPFetcher) CheckEmberLogSink(ctx context.Context) bool {
-	return f.checkLogSink(ctx, EmberLogSinkName)
-}
-
-// CheckEmberRuntimeLogSink is the runtime-sink counterpart of CheckEmberLogSink.
-func (f *HTTPFetcher) CheckEmberRuntimeLogSink(ctx context.Context) bool {
-	return f.checkLogSink(ctx, emberRuntimeLogSinkName)
-}
-
 func (f *HTTPFetcher) CheckLogSink(ctx context.Context, name string) bool {
-	return f.checkLogSink(ctx, name)
-}
-
-func (f *HTTPFetcher) checkLogSink(ctx context.Context, name string) bool {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
@@ -213,22 +191,9 @@ func (f *HTTPFetcher) checkLogSink(ctx context.Context, name string) bool {
 	return !isEmptyOrNull(body)
 }
 
-// UnregisterEmberLogSink removes the sink installed by RegisterEmberLogSink.
+// UnregisterLogSink removes the named sink.
 // It is safe to call when no sink exists.
-func (f *HTTPFetcher) UnregisterEmberLogSink(ctx context.Context) error {
-	return f.unregisterLogSink(ctx, EmberLogSinkName)
-}
-
-// UnregisterEmberRuntimeLogSink is the runtime-sink counterpart.
-func (f *HTTPFetcher) UnregisterEmberRuntimeLogSink(ctx context.Context) error {
-	return f.unregisterLogSink(ctx, emberRuntimeLogSinkName)
-}
-
 func (f *HTTPFetcher) UnregisterLogSink(ctx context.Context, name string) error {
-	return f.unregisterLogSink(ctx, name)
-}
-
-func (f *HTTPFetcher) unregisterLogSink(ctx context.Context, name string) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 

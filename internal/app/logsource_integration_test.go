@@ -223,7 +223,7 @@ func TestSetupLogSource_AutoRegistersAndReceivesPushedLogs(t *testing.T) {
 	assert.Equal(t, 1, uiCfg.LogBuffer.Len(), "log line should reach the UI buffer")
 
 	cleanup()
-	// Cleanup runs again via defer — UnregisterEmberLogSink is idempotent.
+	// Cleanup runs again via defer — UnregisterLogSink is idempotent.
 	deadline = time.Now().Add(2 * time.Second)
 	for !api.unregistered.Load() && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
