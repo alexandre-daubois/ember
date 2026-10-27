@@ -81,8 +81,19 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 		return fmt.Errorf("marshal %s log sink payload: %w", name, err)
 	}
 
-	err = f.putLogSink(ctx, name, body)
+	err = f.sendLogSink(ctx, http.MethodPut, name, body)
 	if err == nil {
+		return nil
+	}
+
+	// Caddy refuses a PUT over an existing key (409), such as a sink left by a
+	// killed Ember, and a POST replaces it. A POST does not create the missing
+	// parents, which a PUT does.
+	var status statusError
+	if errors.As(err, &status) && status.code == http.StatusConflict {
+		if err := f.sendLogSink(ctx, http.MethodPost, name, body); err != nil {
+			return fmt.Errorf("register %s log sink: %w", name, err)
+		}
 		return nil
 	}
 
@@ -91,7 +102,6 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 	// then retry. Only a rejection means that: a timeout or a 500 says nothing
 	// about the config tree, and the bootstrap writes into the shared logging
 	// section.
-	var status statusError
 	if !errors.As(err, &status) || status.code >= http.StatusInternalServerError {
 		return fmt.Errorf("register %s log sink: %w", name, err)
 	}
@@ -99,7 +109,7 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 	if err := f.ensureLoggingPath(ctx); err != nil {
 		return fmt.Errorf("register %s log sink: %w", name, err)
 	}
-	return f.putLogSink(ctx, name, body)
+	return f.sendLogSink(ctx, http.MethodPut, name, body)
 }
 
 // statusError carries the status of an admin API answer so callers can tell a
@@ -108,9 +118,9 @@ type statusError struct{ code int }
 
 func (e statusError) Error() string { return fmt.Sprintf("HTTP %d", e.code) }
 
-func (f *HTTPFetcher) putLogSink(ctx context.Context, name string, body []byte) error {
+func (f *HTTPFetcher) sendLogSink(ctx context.Context, method, name string, body []byte) error {
 	endpoint := f.baseURL + "/config/logging/logs/" + name
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

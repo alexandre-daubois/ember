@@ -208,6 +208,54 @@ func TestRegisterAccessLogSink_BootstrapsLoggingPath(t *testing.T) {
 	assert.True(t, logsExists, "/config/logging/logs should have been created")
 }
 
+// Caddy answers a PUT over an existing key with a 409 and lets a POST replace it.
+func TestRegisterAccessLogSink_ReplacesAStaleSink(t *testing.T) {
+	var stored atomic.Pointer[string]
+	stale := `{"writer":{"output":"net","address":"tcp/127.0.0.1:1"}}`
+	stored.Store(&stale)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/config/logging/logs/"+EmberLogSinkName, r.URL.Path)
+		switch r.Method {
+		case http.MethodPut:
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, `{"error":"key already exists"}`)
+		case http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			s := string(body)
+			stored.Store(&s)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210"))
+	assert.Contains(t, *stored.Load(), `"address":"tcp/127.0.0.1:9210"`)
+}
+
+func TestRegisterAccessLogSink_FailedReplaceIsAnError(t *testing.T) {
+	var loggingWrites atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path != "/config/logging/logs/"+EmberLogSinkName:
+			loggingWrites.Add(1)
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPut:
+			w.WriteHeader(http.StatusConflict)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	err := f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+	assert.Zero(t, loggingWrites.Load(), "an existing sink is no reason to write into the shared logging config")
+}
+
 func TestRegisterAccessLogSink_ServerError(t *testing.T) {
 	var loggingWrites atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

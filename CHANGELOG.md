@@ -11,6 +11,7 @@ All notable changes to Ember are documented here.
 ### Fixed
 
 - Quitting the TUI no longer locks Caddy's admin API. Ember closed its log listener before removing its sinks, so the config reload behind each `DELETE` could block on a write Ember no longer read, which happened with Caddy in Docker Desktop and Ember on the host. The listener now keeps reading until both sinks are gone.
+- Ember now takes over the log sinks a killed Ember left in Caddy. Caddy answers a `PUT` over an existing sink with `409 key already exists`, so the stale sinks kept pointing at a dead port and the Logs tab stayed empty. Ember now replaces them with a `POST`.
 
 ## 1.6.1 - 2026-08-31
 
