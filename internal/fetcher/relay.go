@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +24,22 @@ func tuiRead(u *url.URL) (string, bool) {
 		return "/pki/ca/" + url.PathEscape(id), id != "" && id != "." && id != ".." && !strings.Contains(id, "/")
 	}
 	return u.Path, slices.Contains(tuiReads, u.Path)
+}
+
+func acceptsGzip(header string) bool {
+	for coding := range strings.SplitSeq(header, ",") {
+		name, weight, _ := strings.Cut(coding, ";")
+		if !strings.EqualFold(strings.TrimSpace(name), "gzip") {
+			continue
+		}
+		q, ok := strings.CutPrefix(strings.TrimSpace(weight), "q=")
+		if !ok {
+			return true
+		}
+		v, err := strconv.ParseFloat(q, 64)
+		return err == nil && v > 0
+	}
+	return false
 }
 
 // RemoteTrace is what a route serving remote TUIs reports of a request, for the daemon to log.
@@ -73,11 +90,11 @@ func (f *HTTPFetcher) Relay() http.Handler {
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
-		// Only the Config tab reads the whole config: the narrower reads are the TUI's periodic refreshes.
+		// The Config tab reads the whole config, and so does the Upstreams tab as soon as Caddy reports an upstream. The narrower reads are the TUI's periodic refreshes.
 		trace.ConfigRead = resp.StatusCode == http.StatusOK && path == "/config/"
 		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 		var body io.Writer = w
-		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		if acceptsGzip(r.Header.Get("Accept-Encoding")) {
 			w.Header().Set("Content-Encoding", "gzip")
 			gz := gzip.NewWriter(w)
 			defer func() { _ = gz.Close() }()

@@ -349,6 +349,9 @@ func validate(cfg *config) error {
 	if cfg.once && cfg.daemon {
 		return fmt.Errorf("--once is incompatible with --daemon")
 	}
+	if cfg.jsonMode && cfg.daemon {
+		return fmt.Errorf("--json is incompatible with --daemon")
+	}
 	if cfg.stdinLogs && cfg.daemon {
 		return fmt.Errorf("--stdin-logs / --from-stdin is incompatible with --daemon")
 	}

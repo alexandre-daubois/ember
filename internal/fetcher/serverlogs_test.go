@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -140,20 +141,55 @@ func TestEnableServerAccessLogs_ServerError(t *testing.T) {
 func TestEnableServerAccessLogs_GetNon200_PropagatesError(t *testing.T) {
 	// A non-200 GET must surface as an error instead of silently falling
 	// through to the POST, so transient admin API failures do not flip state.
+	for _, status := range []int{http.StatusBadRequest, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					w.WriteHeader(status)
+					return
+				}
+				t.Fatalf("unexpected %s after failed GET", r.Method)
+			}))
+			defer srv.Close()
+
+			f := NewHTTPFetcher(srv.URL, 0)
+			enabled, err := f.EnableServerAccessLogs(context.Background(), "srv0")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), strconv.Itoa(status))
+			assert.False(t, enabled)
+		})
+	}
+}
+
+// A 400 on the GET means the server left Caddy's config, so Restore has nothing to undo.
+func TestRestoreServerAccessLogs_ServerGoneIsFine(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected %s for a server that is gone", r.Method)
 		}
-		t.Fatalf("unexpected %s after failed GET", r.Method)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"invalid traversal path at: config/apps/http/servers/srv0/logs"}`)
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	enabled, err := f.EnableServerAccessLogs(context.Background(), "srv0")
+	require.NoError(t, f.RestoreServerAccessLogs(context.Background(), "srv0"))
+}
+
+// Any other non-200 GET still fails Restore without sending a DELETE.
+func TestRestoreServerAccessLogs_GetNon200_PropagatesError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("unexpected %s after failed GET", r.Method)
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	err := f.RestoreServerAccessLogs(context.Background(), "srv0")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "500")
-	assert.False(t, enabled)
+	assert.Contains(t, err.Error(), "503")
 }
 
 func TestRestoreServerAccessLogs_CanonicalizedEmptyObjectStillRestores(t *testing.T) {

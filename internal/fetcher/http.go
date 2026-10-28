@@ -112,9 +112,10 @@ func (f *HTTPFetcher) SetTLSConfig(tlsConfig *tls.Config) {
 		return
 	}
 	next := &http.Transport{
-		TLSClientConfig:     tlsConfig,
-		MaxIdleConns:        2,
-		MaxIdleConnsPerHost: 2,
+		TLSClientConfig: tlsConfig,
+		// A remote FrankenPHP session keeps three requests in flight: threads, metrics and /logs.
+		MaxIdleConns:        3,
+		MaxIdleConnsPerHost: 3,
 		IdleConnTimeout:     30 * time.Second,
 	}
 	if prev := f.transport.store(next); prev != nil {

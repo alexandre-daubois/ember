@@ -15,24 +15,24 @@ ember [flags]
 | `--timeout`        | duration | `0` (none) | Global timeout for the non-interactive modes and subcommands (`--json`, `--daemon`, `status`, `wait`). The interactive TUI ignores it, and `version --check` uses a fixed 10s timeout. 0 means no timeout. |
 | `--slow-threshold` | int | `500` | Slow request threshold in milliseconds. Requests above this are highlighted yellow; above 2x are red. |
 | `--frankenphp-pid` | int | `0` (auto) | FrankenPHP PID. Auto-detected if not set. |
-| `--json`           | bool | `false` | JSON output mode (streaming JSONL). See [JSON Output](json-output.md). |
+| `--json`           | bool | `false` | JSON output mode (streaming JSONL). Incompatible with `--daemon`. See [JSON Output](json-output.md). |
 | `--once`           | bool | `false` | Output a single snapshot and exit. Requires `--json`. See [JSON Output](json-output.md). |
 | `--expose`         | string | _(none)_ | Start Prometheus metrics endpoint on this address (e.g. `:9191`). See [Prometheus Export](prometheus-export.md). |
-| `--daemon`         | bool | `false` | Headless mode: no TUI. Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
+| `--daemon`         | bool | `false` | Headless mode: no TUI. Requires `--expose` and is incompatible with `--json`. See [Prometheus Export](prometheus-export.md). |
 | `--metrics-prefix` | string | _(none)_ | Prefix for exported Prometheus metric names. See [Prometheus Export](prometheus-export.md). |
 | `--log-format`     | string | `text` | Log format for daemon/json modes (`text` or `json`). JSON format is suitable for log aggregation systems. |
 | `--ca-cert`        | string | _(none)_ | Path to CA certificate for TLS verification |
 | `--client-cert`    | string | _(none)_ | Path to client certificate for mTLS; must be paired with `--client-key` |
 | `--client-key`     | string | _(none)_ | Path to client private key for mTLS |
 | `--insecure`       | bool | `false` | Skip TLS certificate verification |
-| `-f`, `--config`   | string | `.ember.toml` | Path to the Ember config file (TOML). Read only when neither `--addr` nor `EMBER_ADDR` is set. See [Config file](#config-file). |
+| `-f`, `--config`   | string | `.ember.toml` | Path to the Ember config file (TOML). Read only when neither `--addr` nor `EMBER_ADDR` is set. Ignored, with a warning, with `--remote`. See [Config file](#config-file). |
 | `--metrics-auth`   | string | _(none)_ | Basic auth for the metrics endpoint (`user:password`). Requires `--expose`. See [Prometheus Export](prometheus-export.md). |
 | `--expose-cert`    | string | _(none)_ | TLS certificate for the daemon's `--expose` server, with `--expose-key`. Requires `--daemon`. |
 | `--expose-key`     | string | _(none)_ | TLS private key for the daemon's `--expose` server |
 | `--expose-client-ca` | string | _(none)_ | Require client certificates from this CA on the `--expose` server (mTLS). Requires `--expose-cert` and `--expose-key`. Required by `--serve-remote`. |
-| `--serve-remote`   | bool | `false` | Experimental. Serve remote TUIs from the daemon. Requires `--daemon` and `--expose-client-ca`; incompatible with several `--addr` and with `--metrics-auth`. See [Remote TUI](remote.md). |
+| `--serve-remote`   | bool | `false` | Experimental. Serve remote TUIs from the daemon. Requires `--daemon` and `--expose-client-ca`, and is incompatible with several `--addr` and with `--metrics-auth`. See [Remote TUI](remote.md). |
 | `--remote`         | string | _(none)_ | Experimental. Run the TUI against a `--serve-remote` daemon (e.g. `https://prod:9191`). See [Remote TUI](remote.md). |
-| `--log-listen`     | string | _(auto)_ | Bind a TCP listener at this address (e.g. `:9210`) and ask Caddy to push its logs to it via two hot-registered sinks (access + runtime). Required when Caddy is on a remote host; auto-bound on a free loopback port otherwise. A `--serve-remote` daemon uses it the same way for its remote sessions. See [Logs](logs.md). |
+| `--log-listen`     | string | _(auto)_ | Bind a TCP listener at this address (e.g. `:9210`) and ask Caddy to push its logs to it via two hot-registered sinks (access + runtime). Required when Caddy is on a remote host, and auto-bound on a free loopback port otherwise. A `--serve-remote` daemon uses it the same way for its remote sessions. See [Logs](logs.md). |
 | `--stdin-logs`, `--from-stdin` | bool | `false` | Read Caddy logs directly from stdin instead of registering a net_writer via Caddy's Admin API. Ideal for Kubernetes / unidirectional environments. |
 | `--no-color`       | bool | `false` | Disable colors. Also enabled by the `NO_COLOR` env var (see [no-color.org](https://no-color.org/)). |
 | `--version`        | | | Print version and exit |

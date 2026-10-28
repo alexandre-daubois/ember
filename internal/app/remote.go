@@ -15,7 +15,7 @@ import (
 // localModeFlags are the flags --remote refuses.
 var localModeFlags = []string{
 	"daemon", "json", "expose", "stdin-logs", "log-listen", "once",
-	"metrics-auth", "serve-remote", "expose-cert", "expose-key", "expose-client-ca",
+	"metrics-auth", "serve-remote", "expose-cert", "expose-key", "expose-client-ca", "frankenphp-pid",
 }
 
 func remoteIncompatibleFlag(cmd *cobra.Command) string {
@@ -42,8 +42,14 @@ func prepareRemote(cmd *cobra.Command, cfg *config) error {
 	if cfg.interval < minInterval {
 		return fmt.Errorf("--interval must be at least %s", minInterval)
 	}
+	if cfg.timeout > 0 && cfg.timeout < cfg.interval {
+		return fmt.Errorf("--timeout (%s) must be at least the largest polling interval (%s)", cfg.timeout, cfg.interval)
+	}
 	if cmd.Flag("addr").Changed {
 		cfg.logger.Warn("--addr and EMBER_ADDR are ignored with --remote")
+	}
+	if cmd.Flag("config").Changed {
+		cfg.logger.Warn("-f/--config and EMBER_CONFIG are ignored with --remote")
 	}
 	cfg.remoteURL = u
 	return nil

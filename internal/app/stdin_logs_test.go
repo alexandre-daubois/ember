@@ -103,6 +103,8 @@ func TestStartStdinListener(t *testing.T) {
 	assert.Equal(t, "localhost", accessLogs[0].Host)
 	assert.Equal(t, "GET", accessLogs[0].Method)
 	assert.Equal(t, 200, accessLogs[0].Status)
+	assert.Equal(t, 1, uiCfg.RouteAggregator.BucketCount())
+	assert.Equal(t, []string{"localhost"}, uiCfg.RouteAggregator.Hosts())
 
 	// Verify runtime log content (Snapshot returns the newest entry first).
 	runtimeLogs := uiCfg.RuntimeLogBuffer.Snapshot(model.LogFilter{}, 0)

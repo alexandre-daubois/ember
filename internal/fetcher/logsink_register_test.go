@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -72,19 +73,21 @@ func TestUnregisterLogSink_RuntimeOK(t *testing.T) {
 	assert.Contains(t, *path.Load(), emberRuntimeLogSinkName)
 }
 
-func TestCheckLogSink_RuntimeFound(t *testing.T) {
+func TestLogSinkAddress_RuntimeFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, emberRuntimeLogSinkName) {
 			http.NotFound(w, r)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, `{"writer":{}}`)
+		_, _ = io.WriteString(w, sinkAt("127.0.0.1:9210"))
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.True(t, f.CheckLogSink(context.Background(), emberRuntimeLogSinkName))
+	addr, err := f.LogSinkAddress(context.Background(), emberRuntimeLogSinkName)
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:9210", addr)
 }
 
 func TestRegisterAccessLogSink_PutsExpectedPayload(t *testing.T) {
@@ -208,33 +211,121 @@ func TestRegisterAccessLogSink_BootstrapsLoggingPath(t *testing.T) {
 	assert.True(t, logsExists, "/config/logging/logs should have been created")
 }
 
-// Caddy answers a PUT over an existing key with a 409 and lets a POST replace it.
-func TestRegisterAccessLogSink_ReplacesAStaleSink(t *testing.T) {
-	var stored atomic.Pointer[string]
-	stale := `{"writer":{"output":"net","address":"tcp/127.0.0.1:1"}}`
-	stored.Store(&stale)
+// existingSinkServer fakes a Caddy that already holds the access sink: it
+// answers a PUT with a 409, serves existing on GET and records each POST body.
+func existingSinkServer(t *testing.T, existing string, getStatus int) (*httptest.Server, *atomic.Pointer[string]) {
+	t.Helper()
+	var posted atomic.Pointer[string]
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/config/logging/logs/"+EmberLogSinkName, r.URL.Path)
 		switch r.Method {
 		case http.MethodPut:
 			w.WriteHeader(http.StatusConflict)
 			_, _ = io.WriteString(w, `{"error":"key already exists"}`)
+		case http.MethodGet:
+			w.WriteHeader(getStatus)
+			_, _ = io.WriteString(w, existing)
 		case http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			s := string(body)
-			stored.Store(&s)
+			posted.Store(&s)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv, &posted
+}
+
+func sinkAt(addr string) string {
+	return `{"writer":{"output":"net","address":"tcp/` + addr + `"}}`
+}
+
+// liveAddr returns the address of a listener open for the whole test.
+func liveAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	return ln.Addr().String()
+}
+
+// deadAddr returns an address nothing listens on any more.
+func deadAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	return addr
+}
+
+func portOf(t *testing.T, addr string) string {
+	t.Helper()
+	_, p, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	return p
+}
+
+func TestRegisterAccessLogSink_ReplacesAStaleSink(t *testing.T) {
+	srv, posted := existingSinkServer(t, sinkAt(deadAddr(t)), http.StatusOK)
 
 	f := NewHTTPFetcher(srv.URL, 0)
 	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210"))
-	assert.Contains(t, *stored.Load(), `"address":"tcp/127.0.0.1:9210"`)
+	require.NotNil(t, posted.Load())
+	assert.Contains(t, *posted.Load(), `"address":"tcp/127.0.0.1:9210"`)
+}
+
+func TestRegisterAccessLogSink_ReplacesItsOwnSink(t *testing.T) {
+	own := liveAddr(t)
+	srv, posted := existingSinkServer(t, sinkAt(own), http.StatusOK)
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, own))
+	require.NotNil(t, posted.Load())
+	assert.Contains(t, *posted.Load(), `"address":"tcp/`+own+`"`)
+}
+
+func TestRegisterAccessLogSink_ReplacesAStaleUnresolvableSink(t *testing.T) {
+	srv, posted := existingSinkServer(t, sinkAt("nope.invalid:"+portOf(t, deadAddr(t))), http.StatusOK)
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210"))
+	assert.NotNil(t, posted.Load())
+}
+
+func TestRegisterAccessLogSink_KeepsALiveSink(t *testing.T) {
+	srv, posted := existingSinkServer(t, sinkAt(liveAddr(t)), http.StatusOK)
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	err := f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "in use by another Ember")
+	assert.Nil(t, posted.Load())
+}
+
+func TestRegisterAccessLogSink_KeepsALiveUnresolvableSink(t *testing.T) {
+	srv, posted := existingSinkServer(t, sinkAt("nope.invalid:"+portOf(t, liveAddr(t))), http.StatusOK)
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	err := f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "in use by another Ember")
+	assert.Nil(t, posted.Load())
+}
+
+func TestRegisterAccessLogSink_UnreadableSinkIsKept(t *testing.T) {
+	srv, posted := existingSinkServer(t, sinkAt(deadAddr(t)), http.StatusInternalServerError)
+
+	f := NewHTTPFetcher(srv.URL, 0)
+	err := f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, "127.0.0.1:9210")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 500")
+	assert.Nil(t, posted.Load())
 }
 
 func TestRegisterAccessLogSink_FailedReplaceIsAnError(t *testing.T) {
+	stale := sinkAt(deadAddr(t))
 	var loggingWrites atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -243,6 +334,8 @@ func TestRegisterAccessLogSink_FailedReplaceIsAnError(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPut:
 			w.WriteHeader(http.StatusConflict)
+		case r.Method == http.MethodGet:
+			_, _ = io.WriteString(w, stale)
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
@@ -326,48 +419,96 @@ func TestUnregisterLogSink_OtherErrorPropagates(t *testing.T) {
 	assert.Contains(t, err.Error(), "500")
 }
 
-func TestCheckLogSink_ExistsReturnsTrue(t *testing.T) {
+func TestLogSinkAddress_ReturnsTheWriterAddress(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/config/logging/logs/"+EmberLogSinkName || r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, `{"writer":{"output":"net"}}`)
+		_, _ = io.WriteString(w, sinkAt("127.0.0.1:9210"))
 	}))
 	defer srv.Close()
 
 	f := NewHTTPFetcher(srv.URL, 0)
-	assert.True(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
+	addr, err := f.LogSinkAddress(context.Background(), EmberLogSinkName)
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:9210", addr)
 }
 
-func TestCheckLogSink_NullReturnsFalse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "null")
-	}))
-	defer srv.Close()
+func TestLogSinkAddress_MissingSinkIsEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"null", http.StatusOK, "null"},
+		{"empty", http.StatusOK, ""},
+		{"404", http.StatusNotFound, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
 
-	f := NewHTTPFetcher(srv.URL, 0)
-	assert.False(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
+			f := NewHTTPFetcher(srv.URL, 0)
+			addr, err := f.LogSinkAddress(context.Background(), EmberLogSinkName)
+			require.NoError(t, err)
+			assert.Empty(t, addr)
+		})
+	}
 }
 
-func TestCheckLogSink_404ReturnsFalse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
+func TestLogSinkAddress_UnreadableSinkIsAnError(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"server error", http.StatusInternalServerError, ""},
+		{"invalid JSON", http.StatusOK, "{"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
 
-	f := NewHTTPFetcher(srv.URL, 0)
-	assert.False(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
+			f := NewHTTPFetcher(srv.URL, 0)
+			_, err := f.LogSinkAddress(context.Background(), EmberLogSinkName)
+			assert.Error(t, err)
+		})
+	}
 }
 
-func TestCheckLogSink_ServerErrorReturnsFalse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer srv.Close()
+func TestLogSinkInUse(t *testing.T) {
+	own, live := liveAddr(t), liveAddr(t)
+	for _, tc := range []struct {
+		name string
+		sink string
+		want bool
+	}{
+		{"another listener", sinkAt(live), true},
+		{"own listener", sinkAt(own), false},
+		{"dead listener", sinkAt(deadAddr(t)), false},
+		{"no sink", "null", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := existingSinkServer(t, tc.sink, http.StatusOK)
 
-	f := NewHTTPFetcher(srv.URL, 0)
-	assert.False(t, f.CheckLogSink(context.Background(), EmberLogSinkName))
+			inUse, err := NewHTTPFetcher(srv.URL, 0).LogSinkInUse(context.Background(), EmberLogSinkName, own)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, inUse)
+		})
+	}
+}
+
+func TestLogSinkInUse_UnreadableSinkIsAnError(t *testing.T) {
+	srv, _ := existingSinkServer(t, sinkAt(liveAddr(t)), http.StatusInternalServerError)
+
+	_, err := NewHTTPFetcher(srv.URL, 0).LogSinkInUse(context.Background(), EmberLogSinkName, "127.0.0.1:9210")
+	assert.Error(t, err)
 }

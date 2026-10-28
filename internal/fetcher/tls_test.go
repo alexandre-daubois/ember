@@ -5,10 +5,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,6 +123,72 @@ func TestSetTLSConfig(t *testing.T) {
 	require.NotNil(t, tr)
 	require.NotNil(t, tr.TLSClientConfig)
 	assert.True(t, tr.TLSClientConfig.InsecureSkipVerify)
+	assert.Equal(t, 3, tr.MaxIdleConns)
+	assert.Equal(t, 3, tr.MaxIdleConnsPerHost)
+}
+
+// TestSetTLSConfig_KeepsThreeOverlappingConnections pins that three overlapping
+// requests reuse their TLS connections on the next round and a fourth does not.
+func TestSetTLSConfig_KeepsThreeOverlappingConnections(t *testing.T) {
+	tests := []struct {
+		name      string
+		inFlight  int
+		wantDials int32
+	}{
+		{"three overlapping requests reuse their connections", 3, 3},
+		{"a fourth overlapping request dials a new connection", 4, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				dials   atomic.Int32
+				arrived sync.WaitGroup
+			)
+			srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				arrived.Done()
+				arrived.Wait()
+				w.WriteHeader(http.StatusOK)
+			}))
+			srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+				if state == http.StateNew {
+					dials.Add(1)
+				}
+			}
+			srv.StartTLS()
+			defer srv.Close()
+
+			pool := x509.NewCertPool()
+			pool.AddCert(srv.Certificate())
+			f := NewHTTPFetcher(srv.URL, 0)
+			f.SetTLSConfig(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12})
+			defer f.CloseIdleConnections()
+
+			for range 2 {
+				arrived.Add(tt.inFlight)
+				var clients sync.WaitGroup
+				for range tt.inFlight {
+					clients.Go(func() {
+						req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						resp, err := f.httpClient.Do(req)
+						if err != nil {
+							t.Error(err)
+							return
+						}
+						_, _ = io.Copy(io.Discard, resp.Body)
+						_ = resp.Body.Close()
+					})
+				}
+				clients.Wait()
+			}
+
+			assert.Equal(t, tt.wantDials, dials.Load())
+		})
+	}
 }
 
 // TestSetTLSConfig_ConcurrentWithFetch reproduces the SIGHUP-during-Fetch

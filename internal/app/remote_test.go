@@ -45,6 +45,7 @@ func TestPrepareRemote_Incompatibilities(t *testing.T) {
 		"--expose-cert":      {"--expose-cert", "cert.pem"},
 		"--expose-key":       {"--expose-key", "key.pem"},
 		"--expose-client-ca": {"--expose-client-ca", "ca.pem"},
+		"--frankenphp-pid":   {"--frankenphp-pid", "42"},
 	} {
 		err := remotePreRun(t, append([]string{"--remote", "https://prod:9191"}, args...)...)
 		require.Error(t, err, flag)
@@ -95,15 +96,36 @@ func TestPrepareRemote_RequiresHTTPSEvenOnLocalhost(t *testing.T) {
 	}
 }
 
-func TestPrepareRemote_IgnoresAddrWithAWarning(t *testing.T) {
-	cmd := newRootCmd("test")
-	require.NoError(t, cmd.ParseFlags([]string{"--addr", "http://elsewhere:2019"}))
-	logs := &syncBuffer{}
-	cfg := &config{remote: "https://prod:9191", interval: time.Second, logger: slog.New(slog.NewTextHandler(logs, nil))}
+func TestPrepareRemote_IgnoresAddressSourcesWithAWarning(t *testing.T) {
+	for _, args := range [][]string{
+		{"--addr", "http://elsewhere:2019"},
+		{"-f", "prod.toml"},
+		{},
+	} {
+		cmd := newRootCmd("test")
+		require.NoError(t, cmd.ParseFlags(args))
+		logs := &syncBuffer{}
+		cfg := &config{remote: "https://prod:9191", interval: time.Second, logger: slog.New(slog.NewTextHandler(logs, nil))}
 
-	require.NoError(t, prepareRemote(cmd, cfg))
+		require.NoError(t, prepareRemote(cmd, cfg), args)
 
-	assert.Contains(t, logs.String(), "ignored with --remote")
+		if len(args) == 0 {
+			assert.Empty(t, logs.String())
+			continue
+		}
+		assert.Contains(t, logs.String(), "ignored with --remote", args)
+	}
+}
+
+func TestPrepareRemote_TimeoutAtLeastInterval(t *testing.T) {
+	err := remotePreRun(t, "--remote", "https://prod:9191", "--timeout", "500ms")
+	require.EqualError(t, err, "--timeout (500ms) must be at least the largest polling interval (1s)")
+
+	err = remotePreRun(t, "--remote", "https://prod:9191", "--timeout", "5s", "--interval", "10s")
+	require.EqualError(t, err, "--timeout (5s) must be at least the largest polling interval (10s)")
+
+	require.NoError(t, remotePreRun(t, "--remote", "https://prod:9191", "--timeout", "1s"))
+	require.NoError(t, remotePreRun(t, "--remote", "https://prod:9191"))
 }
 
 func TestPrepareRemote_ExportedAddrNeverBlocks(t *testing.T) {
@@ -125,6 +147,7 @@ func TestPrepareRemote_TypedLocalFlagBeatsExportedRemote(t *testing.T) {
 		{"--addr", "http://localhost:2019"},
 		{"--daemon", "--expose", ":9191"},
 		{"-f", configFile},
+		{"--frankenphp-pid", "42"},
 	} {
 		cmd := newRootCmd("test")
 		require.NoError(t, cmd.ParseFlags(args))

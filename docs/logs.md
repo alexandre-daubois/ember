@@ -30,7 +30,12 @@ config push, etc.), so log streaming resumes without user intervention.
 
 At clean shutdown, Ember unregisters both sinks and restores the access-logs
 config only on the servers it modified (a GET check prevents clobbering
-config the user or another tool may have added in the meantime).
+config the user or another tool may have added in the meantime). When another
+running Ember, such as a daemon serving remote TUIs, still has its sinks in
+Caddy, the access-logs blocks stay for it, and whichever quits last removes
+them. A second TUI on the same Caddy leaves the first one's sinks alone, when it
+starts and when it quits, and its Logs tab stays empty until its watchdog takes
+the sinks over, within 30 seconds of the first one stopping.
 
 The end result: a stock Caddyfile with **no `log` directive** still produces
 live access and runtime logs in Ember's TUI, and Caddy's persistent config
@@ -331,8 +336,9 @@ but the writers use `soft_start: true`, so they do not block reloads or spam
 errors. To clean up:
 
 - **Run `ember` again**: Ember registers its sinks with a `PUT`, and replaces
-  a stale entry with a `POST` when Caddy answers that it already exists. The
-  next clean quit then removes everything.
+  a stale entry with a `POST` when Caddy answers that it already exists and
+  nothing accepts connections at the address it points to. The next clean quit
+  then removes everything.
 - **Or remove them manually**:
 
   ```bash

@@ -25,8 +25,9 @@ import (
 // GET /config/apps/http/servers + GET/POST/DELETE on each server's logs path
 // (auto-enabling access logs).
 type fakeCaddyLogAPI struct {
-	srv          *httptest.Server
-	mu           atomic.Pointer[string]
+	srv *httptest.Server
+	// sinks maps a sink name to the body it was registered with.
+	sinks        sync.Map
 	registered   atomic.Bool
 	unregistered atomic.Bool
 	// callOrder records "PUT" and "DELETE" requests against the ember sink
@@ -73,17 +74,16 @@ func newFakeCaddyLogAPI(t *testing.T) *fakeCaddyLogAPI {
 			if api.sinkGone.Load() {
 				_, _ = io.WriteString(w, "null")
 			} else {
-				raw := api.mu.Load()
-				if raw != nil {
-					_, _ = io.WriteString(w, *raw)
+				raw, ok := api.sinks.Load(strings.TrimPrefix(r.URL.Path, "/config/logging/logs/"))
+				if ok {
+					_, _ = io.WriteString(w, raw.(string))
 				} else {
 					_, _ = io.WriteString(w, "null")
 				}
 			}
 		case strings.HasPrefix(r.URL.Path, "/config/logging/logs/") && r.Method == http.MethodPut:
 			body, _ := io.ReadAll(r.Body)
-			s := string(body)
-			api.mu.Store(&s)
+			api.sinks.Store(strings.TrimPrefix(r.URL.Path, "/config/logging/logs/"), string(body))
 			api.registered.Store(true)
 			api.sinkGone.Store(false)
 			api.callOrderMu.Lock()
@@ -94,6 +94,7 @@ func newFakeCaddyLogAPI(t *testing.T) *fakeCaddyLogAPI {
 			if hook := api.onSinkDelete.Load(); hook != nil {
 				(*hook)()
 			}
+			api.sinks.Delete(strings.TrimPrefix(r.URL.Path, "/config/logging/logs/"))
 			api.unregistered.Store(true)
 			api.callOrderMu.Lock()
 			api.callOrder = append(api.callOrder, "DELETE")
@@ -181,10 +182,14 @@ func (a *fakeCaddyLogAPI) putCount() int {
 
 func (a *fakeCaddyLogAPI) registeredAddr(t *testing.T) string {
 	t.Helper()
-	raw := a.mu.Load()
-	require.NotNil(t, raw, "no sink registered")
+	var raw string
+	a.sinks.Range(func(_, v any) bool {
+		raw = v.(string)
+		return false
+	})
+	require.NotEmpty(t, raw, "no sink registered")
 	var parsed map[string]any
-	require.NoError(t, json.Unmarshal([]byte(*raw), &parsed))
+	require.NoError(t, json.Unmarshal([]byte(raw), &parsed))
 	writer, ok := parsed["writer"].(map[string]any)
 	require.True(t, ok)
 	addr, ok := writer["address"].(string)
@@ -309,6 +314,38 @@ func TestSetupLogSource_NoLogSourceForRemoteCaddyWithoutFlag(t *testing.T) {
 
 	assert.Nil(t, uiCfg.LogBuffer, "remote Caddy without --log-listen must not auto-register")
 	assert.Empty(t, uiCfg.LogSource)
+}
+
+func TestSetupLogSource_WarnsOnceWhenCaddyNotRestored(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		caddyFails bool
+	}{
+		{"Caddy answers", false},
+		{"Caddy fails", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newFakeCaddyLogAPI(t)
+			t.Cleanup(api.srv.Close)
+			api.addServer("srv0", "")
+			cfg := &config{addrs: []addrSpec{{name: "test", url: api.srv.URL}}}
+			logs := captureDefaultLogger(t)
+
+			cleanup := setupLogSource(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0), &ui.Config{})
+			api.unavailable.Store(tc.caddyFails)
+			cleanup()
+
+			out := logs.String()
+			if !tc.caddyFails {
+				assert.Empty(t, out)
+				return
+			}
+			assert.Equal(t, 1, strings.Count(out, "Caddy not fully restored"), out)
+			for _, name := range []string{fetcher.TUILogSinks.Access, fetcher.TUILogSinks.Runtime} {
+				assert.Equal(t, 1, strings.Count(out, "unregister "+name+" log sink: HTTP 503"), out)
+			}
+		})
+	}
 }
 
 func TestSetupLogSource_AutoEnablesAccessLogsAndRestores(t *testing.T) {

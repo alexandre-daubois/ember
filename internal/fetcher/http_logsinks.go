@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
+	"strings"
+	"time"
 )
 
 // EmberLogSinkName is the well-known name Ember uses when it auto-registers
@@ -41,9 +44,9 @@ var (
 // is typically "127.0.0.1:<port>" but for remote Caddy instances you must
 // supply a routable host:port pair.
 func (f *HTTPFetcher) RegisterAccessLogSink(ctx context.Context, name, listenerAddr string) error {
-	return f.registerLogSink(ctx, name, logSinkPayload(listenerAddr, map[string]any{
+	return f.registerLogSink(ctx, name, listenerAddr, map[string]any{
 		"include": []string{"http.log.access"},
-	}))
+	})
 }
 
 // RegisterRuntimeLogSink hot-installs a second logging sink that pushes
@@ -51,9 +54,9 @@ func (f *HTTPFetcher) RegisterAccessLogSink(ctx context.Context, name, listenerA
 // listener address. Uses `exclude` so the sink is a catch-all minus access
 // logs, which are handled by the primary __ember__ sink.
 func (f *HTTPFetcher) RegisterRuntimeLogSink(ctx context.Context, name, listenerAddr string) error {
-	return f.registerLogSink(ctx, name, logSinkPayload(listenerAddr, map[string]any{
+	return f.registerLogSink(ctx, name, listenerAddr, map[string]any{
 		"exclude": []string{"http.log.access"},
-	}))
+	})
 }
 
 // logSinkPayload builds the JSON body for a Caddy sink definition. Using
@@ -72,11 +75,11 @@ func logSinkPayload(listenerAddr string, extra map[string]any) map[string]any {
 	return p
 }
 
-func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload map[string]any) error {
+func (f *HTTPFetcher) registerLogSink(ctx context.Context, name, listenerAddr string, filter map[string]any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(logSinkPayload(listenerAddr, filter))
 	if err != nil {
 		return fmt.Errorf("marshal %s log sink payload: %w", name, err)
 	}
@@ -86,11 +89,18 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 		return nil
 	}
 
-	// Caddy refuses a PUT over an existing key (409), such as a sink left by a
-	// killed Ember, and a POST replaces it. A POST does not create the missing
-	// parents, which a PUT does.
+	// Caddy refuses a PUT over an existing key (409), and a POST replaces only
+	// one a killed Ember left. A POST does not create the missing parents, which
+	// a PUT does.
 	var status statusError
 	if errors.As(err, &status) && status.code == http.StatusConflict {
+		inUse, err := f.LogSinkInUse(ctx, name, listenerAddr)
+		if err != nil {
+			return fmt.Errorf("register %s log sink: %w", name, err)
+		}
+		if inUse {
+			return fmt.Errorf("register %s log sink: in use by another Ember", name)
+		}
 		if err := f.sendLogSink(ctx, http.MethodPost, name, body); err != nil {
 			return fmt.Errorf("register %s log sink: %w", name, err)
 		}
@@ -110,6 +120,36 @@ func (f *HTTPFetcher) registerLogSink(ctx context.Context, name string, payload 
 		return fmt.Errorf("register %s log sink: %w", name, err)
 	}
 	return f.sendLogSink(ctx, http.MethodPut, name, body)
+}
+
+// LogSinkInUse reports whether the named sink points at a listener other than
+// listenerAddr that accepts connections, as a running Ember's does. A sink a
+// killed Ember left points at an address nothing accepts connections on.
+func (f *HTTPFetcher) LogSinkInUse(ctx context.Context, name, listenerAddr string) (bool, error) {
+	addr, err := f.LogSinkAddress(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return addr != "" && addr != listenerAddr && acceptsConnections(ctx, addr), nil
+}
+
+// acceptsConnections dials addr from Ember's side. A host that does not
+// resolve here, such as host.docker.internal, is one receiveCaddyLogs bound on
+// all interfaces instead.
+func acceptsConnections(ctx context.Context, addr string) bool {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if dnsErr := (*net.DNSError)(nil); errors.As(err, &dnsErr) {
+		_, port, _ := net.SplitHostPort(addr)
+		conn, err = d.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", port))
+	}
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // statusError carries the status of an admin API answer so callers can tell a
@@ -172,33 +212,44 @@ func (f *HTTPFetcher) putJSON(ctx context.Context, endpoint string, body []byte)
 	return nil
 }
 
-// CheckLogSink reports whether the named sink is currently
-// registered in Caddy's configuration. Returns false on any error.
-func (f *HTTPFetcher) CheckLogSink(ctx context.Context, name string) bool {
+// LogSinkAddress returns the address the named sink in Caddy's configuration
+// writes to, or "" when there is no such sink.
+func (f *HTTPFetcher) LogSinkAddress(ctx context.Context, name string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
 	endpoint := f.baseURL + "/config/logging/logs/" + name
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return false
+		return "", err
 	}
 	resp, err := f.httpClient.Do(req)
 	if err != nil {
-		return false
+		return "", err
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
 	if resp.StatusCode != http.StatusOK {
-		return false
+		return "", statusError{code: resp.StatusCode}
 	}
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false
+	if err != nil || isEmptyOrNull(body) {
+		return "", err
 	}
-	return !isEmptyOrNull(body)
+	var sink struct {
+		Writer struct {
+			Address string `json:"address"`
+		} `json:"writer"`
+	}
+	if err := json.Unmarshal(body, &sink); err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(sink.Writer.Address, "tcp/"), nil
 }
 
 // UnregisterLogSink removes the named sink.

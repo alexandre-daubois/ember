@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -176,6 +177,7 @@ func TestValidate_ServeRemote(t *testing.T) {
 		{"key without cert", func(c *config) { c.exposeKey = pki.serverKey }, "--expose-cert and --expose-key must be set together"},
 		{"client CA without TLS", func(c *config) { c.exposeCA = pki.caFile }, "--expose-client-ca requires --expose-cert and --expose-key"},
 		{"mTLS", mTLS, ""},
+		{"with --json", func(c *config) { mTLS(c); c.jsonMode = true }, "--json is incompatible with --daemon"},
 		{"mTLS and basic auth", func(c *config) { mTLS(c); c.metricsAuth = "u:p" }, "--serve-remote is incompatible with --metrics-auth"},
 		{"TLS without daemon", func(c *config) { c.daemon, c.exposeCert, c.exposeKey = false, pki.serverCert, pki.serverKey }, "--expose-cert requires --daemon"},
 		{"several --addr", func(c *config) {
@@ -462,7 +464,7 @@ func TestRemoteLogs_LeaseInstallsThenRestoresCaddy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, api.putCount())
 	assert.JSONEq(t, "{}", api.serverLogs("srv0"))
-	api.unregistered.Store(false) // set by the DELETEs that open the session
+	assert.False(t, api.unregistered.Load(), "opening a session removes no sink")
 
 	conn, err := net.Dial("tcp", api.registeredAddr(t))
 	require.NoError(t, err)
@@ -561,26 +563,21 @@ func TestRemoteLogs_LogsWhetherCaddyWasRestored(t *testing.T) {
 			l.Close()
 
 			assert.Empty(t, defaultLogs.String(), "nothing through the default logger")
-			unregistered := map[string]string{}
 			var last map[string]any
 			for line := range strings.Lines(logs.String()) {
 				var entry map[string]any
 				require.NoError(t, json.Unmarshal([]byte(line), &entry), line)
-				if entry["msg"] == "failed to unregister log sink" {
-					assert.Equal(t, "WARN", entry["level"])
-					sink, _ := entry["sink"].(string)
-					unregistered[sink], _ = entry["err"].(string)
-				}
 				last = entry
 			}
-			want := map[string]string{}
-			if tc.caddyFails {
-				for _, name := range sinks {
-					want[name] = sinkFailure(name)
-				}
-			}
-			assert.Equal(t, want, unregistered, "a line for each sink left in Caddy")
 			out := logs.String()
+			assert.NotContains(t, out, "failed to unregister log sink")
+			reported := 0
+			if tc.caddyFails {
+				reported = 1
+			}
+			for _, name := range sinks {
+				assert.Equal(t, reported, strings.Count(out, sinkFailure(name)), "each failure is reported once")
+			}
 			assert.Equal(t, 1, strings.Count(out, "remote logs stopped"))
 			assert.Equal(t, tc.msg, last["msg"], "the stop line comes last")
 			assert.Equal(t, tc.level, last["level"])
@@ -636,7 +633,6 @@ func TestRunDaemon_ServesLogsAndRestoresCaddyOnShutdown(t *testing.T) {
 		return resp.StatusCode == http.StatusOK
 	}, 5*time.Second, 50*time.Millisecond)
 	assert.Equal(t, 2, api.putCount())
-	api.unregistered.Store(false) // set by the DELETEs that open the session
 
 	cancel()
 	require.NoError(t, <-done)
@@ -704,28 +700,51 @@ func TestRunDaemon_ServesNoRemoteRouteWithoutServeRemote(t *testing.T) {
 	}
 }
 
-// fakeCaddySinks keeps sinks by name, and answers a PUT over an existing one
-// with a 409, as Caddy does.
+// fakeCaddySinks keeps sinks by name, answers a PUT over an existing one with a
+// 409 and lets a POST replace it, as Caddy does.
 type fakeCaddySinks struct {
 	srv   *httptest.Server
 	mu    sync.Mutex
 	sinks map[string]string
 	puts  int
-	// onSinkDelete runs at the start of a DELETE, outside mu.
-	onSinkDelete atomic.Pointer[func()]
+	// logs maps a server name to its logs block, "" when it has none.
+	logs map[string]string
+	// onRequest runs at the start of every request, outside mu.
+	onRequest atomic.Pointer[func(method string)]
 }
 
 func newFakeCaddySinks(t *testing.T) *fakeCaddySinks {
 	t.Helper()
-	api := &fakeCaddySinks{sinks: map[string]string{}}
+	api := &fakeCaddySinks{sinks: map[string]string{}, logs: map[string]string{}}
 	api.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if hook := api.onSinkDelete.Load(); hook != nil && r.Method == http.MethodDelete {
-			(*hook)()
+		if hook := api.onRequest.Load(); hook != nil {
+			(*hook)(r.Method)
 		}
 		api.mu.Lock()
 		defer api.mu.Unlock()
 		if r.Method == http.MethodPut {
 			api.puts++
+		}
+		if r.URL.Path == "/config/apps/http/servers" {
+			servers := map[string]any{}
+			for name := range api.logs {
+				servers[name] = map[string]any{}
+			}
+			_ = json.NewEncoder(w).Encode(servers)
+			return
+		}
+		if server, ok := strings.CutPrefix(r.URL.Path, "/config/apps/http/servers/"); ok {
+			server = strings.TrimSuffix(server, "/logs")
+			switch r.Method {
+			case http.MethodGet:
+				_, _ = io.WriteString(w, cmp.Or(api.logs[server], "null"))
+			case http.MethodPost:
+				body, _ := io.ReadAll(r.Body)
+				api.logs[server] = string(body)
+			case http.MethodDelete:
+				api.logs[server] = ""
+			}
+			return
 		}
 		name, isSink := strings.CutPrefix(r.URL.Path, "/config/logging/logs/")
 		_, exists := api.sinks[name]
@@ -734,7 +753,9 @@ func newFakeCaddySinks(t *testing.T) *fakeCaddySinks {
 			http.NotFound(w, r)
 		case r.Method == http.MethodPut && exists:
 			w.WriteHeader(http.StatusConflict)
-		case r.Method == http.MethodPut:
+		case r.Method == http.MethodGet && exists:
+			_ = json.NewEncoder(w).Encode(map[string]any{"writer": map[string]string{"address": "tcp/" + api.sinks[name]}})
+		case r.Method == http.MethodPut, r.Method == http.MethodPost:
 			var sink struct{ Writer struct{ Address string } }
 			_ = json.NewDecoder(r.Body).Decode(&sink)
 			api.sinks[name] = strings.TrimPrefix(sink.Writer.Address, "tcp/")
@@ -754,26 +775,35 @@ func (a *fakeCaddySinks) snapshot() map[string]string {
 	return maps.Clone(a.sinks)
 }
 
+func (a *fakeCaddySinks) serverLogs(name string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.logs[name]
+}
+
 func (a *fakeCaddySinks) putCount() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.puts
 }
 
-// holdDeletes makes every DELETE wait for release, and fills held once one
-// does. Called after newTestRemoteLogs, its cleanup runs first and frees the
-// DELETEs that l.Close needs.
-func (a *fakeCaddySinks) holdDeletes(t *testing.T) (held <-chan struct{}, release func()) {
+// hold makes every request with method wait for release, and fills held once
+// one does. Called after newTestRemoteLogs, its cleanup runs first and frees
+// the requests that l.Close needs.
+func (a *fakeCaddySinks) hold(t *testing.T, method string) (held <-chan struct{}, release func()) {
 	t.Helper()
 	entered, gate := make(chan struct{}, 1), make(chan struct{})
-	hook := func() {
+	hook := func(m string) {
+		if m != method {
+			return
+		}
 		select {
 		case entered <- struct{}{}:
 		default:
 		}
 		<-gate
 	}
-	a.onSinkDelete.Store(&hook)
+	a.onRequest.Store(&hook)
 	release = sync.OnceFunc(func() { close(gate) })
 	t.Cleanup(release)
 	return entered, release
@@ -817,6 +847,136 @@ func TestRemoteLogs_SinksApartFromALocalTUI(t *testing.T) {
 	quitTUI()
 	maps.DeleteFunc(daemon, func(name, _ string) bool { _, ok := tui[name]; return ok })
 	assert.Equal(t, daemon, api.snapshot(), "a TUI quitting keeps the daemon's sinks")
+}
+
+func TestRemoteLogs_ASessionEndKeepsTheAccessLogsOfALocalTUI(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		tuiFirst bool
+	}{
+		{"TUI first", true},
+		{"daemon first", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newFakeCaddySinks(t)
+			api.logs["srv0"] = ""
+			cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}}
+			l := newTestRemoteLogs(t, &config{addrs: cfg.addrs}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+			l.lease = time.Minute
+			startTUI := func() func() {
+				return setupLogSource(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0), &ui.Config{})
+			}
+			openSession := func() {
+				_, _, err := l.Since(-1, 0)
+				require.NoError(t, err)
+			}
+			endSession := func() {
+				l.mu.Lock()
+				l.end()
+				l.mu.Unlock()
+			}
+
+			var quitTUI func()
+			if tc.tuiFirst {
+				quitTUI = startTUI()
+				openSession()
+			} else {
+				openSession()
+				quitTUI = startTUI()
+			}
+			firstOut, lastOut := endSession, quitTUI
+			if !tc.tuiFirst {
+				firstOut, lastOut = quitTUI, endSession
+			}
+
+			firstOut()
+			assert.JSONEq(t, "{}", api.serverLogs("srv0"), "the other Ember still uses the access logs")
+			lastOut()
+			assert.Empty(t, api.serverLogs("srv0"), "the last Ember out removes them")
+		})
+	}
+}
+
+func TestRemoteLogs_ASinkLeftByAKilledTUIDoesNotKeepTheAccessLogs(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	api.sinks[fetcher.TUILogSinks.Access] = "127.0.0.1:1"
+	api.logs["srv0"] = ""
+	l := newTestRemoteLogs(t, &config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	l.lease = time.Minute
+	_, _, err := l.Since(-1, 0)
+	require.NoError(t, err)
+
+	l.mu.Lock()
+	l.end()
+	l.mu.Unlock()
+
+	assert.Empty(t, api.serverLogs("srv0"))
+}
+
+func TestSetupLogSource_ASecondTUILeavesTheFirstOnesSinksAndAccessLogs(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	api.logs["srv0"] = ""
+	cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}}
+	quitFirst := setupLogSource(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0), &ui.Config{})
+	first := api.snapshot()
+	require.Len(t, first, 2)
+
+	setupLogSource(cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0), &ui.Config{})()
+
+	assert.Equal(t, first, api.snapshot(), "the second TUI quitting keeps the first one's sinks")
+	assert.JSONEq(t, "{}", api.serverLogs("srv0"), "the first TUI still uses the access logs")
+	quitFirst()
+	assert.Empty(t, api.snapshot())
+	assert.Empty(t, api.serverLogs("srv0"))
+}
+
+func TestRemoteLogs_ASecondDaemonLeavesTheFirstOnesSinksAndAccessLogs(t *testing.T) {
+	api := newFakeCaddySinks(t)
+	api.logs["srv0"] = ""
+	cfg := &config{addrs: []addrSpec{{url: api.srv.URL}}}
+	first := newTestRemoteLogs(t, cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	first.lease = time.Minute
+	_, _, err := first.Since(-1, 0)
+	require.NoError(t, err)
+	sinks := api.snapshot()
+	require.Len(t, sinks, 2)
+
+	second := newTestRemoteLogs(t, cfg, fetcher.NewHTTPFetcher(api.srv.URL, 0))
+	_, _, err = second.Since(-1, 0)
+	require.NoError(t, err)
+	second.Close()
+
+	assert.Equal(t, sinks, api.snapshot())
+	assert.JSONEq(t, "{}", api.serverLogs("srv0"))
+}
+
+func TestSetupLogSource_WatchdogTakesOverTheSinksOfAStoppedEmber(t *testing.T) {
+	orig := sinkWatchdogInterval
+	sinkWatchdogInterval = 50 * time.Millisecond
+	defer func() { sinkWatchdogInterval = orig }()
+
+	api := newFakeCaddySinks(t)
+	other, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	sinks := []string{fetcher.TUILogSinks.Access, fetcher.TUILogSinks.Runtime}
+	for _, name := range sinks {
+		api.sinks[name] = other.Addr().String()
+	}
+	uiCfg := &ui.Config{}
+	cleanup := setupLogSource(&config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0), uiCfg)
+	defer cleanup()
+	own := strings.TrimPrefix(uiCfg.LogSource, "net ")
+
+	time.Sleep(3 * sinkWatchdogInterval)
+	for _, name := range sinks {
+		assert.Equal(t, other.Addr().String(), api.snapshot()[name], "a live Ember keeps %s", name)
+	}
+
+	require.NoError(t, other.Close())
+	assert.Eventually(t, func() bool {
+		s := api.snapshot()
+		return s[sinks[0]] == own && s[sinks[1]] == own
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 func TestRemoteLogs_ReplacesTheSinksOfAKilledDaemon(t *testing.T) {
@@ -895,7 +1055,7 @@ func TestRemoteLogs_AnswersWhileASessionOpens(t *testing.T) {
 	api := newFakeCaddySinks(t)
 	l := newTestRemoteLogs(t, &config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
 	l.lease = time.Minute
-	held, release := api.holdDeletes(t)
+	held, release := api.hold(t, http.MethodPut)
 	opened := make(chan error, 1)
 	go func() {
 		_, _, err := l.Since(-1, 0)
@@ -918,7 +1078,7 @@ func TestRemoteLogs_AnswersWhileASessionCloses(t *testing.T) {
 	l.lease = time.Minute
 	_, _, err := l.Since(-1, 0)
 	require.NoError(t, err)
-	held, release := api.holdDeletes(t)
+	held, release := api.hold(t, http.MethodDelete)
 	ended := make(chan struct{})
 	go func() {
 		defer close(ended)
@@ -939,7 +1099,7 @@ func TestRemoteLogs_CloseWaitsForAnOpeningThenRestoresCaddy(t *testing.T) {
 	api := newFakeCaddySinks(t)
 	l := newTestRemoteLogs(t, &config{addrs: []addrSpec{{url: api.srv.URL}}}, fetcher.NewHTTPFetcher(api.srv.URL, 0))
 	l.lease = time.Minute
-	held, release := api.holdDeletes(t)
+	held, release := api.hold(t, http.MethodPut)
 	opened := make(chan error, 1)
 	go func() {
 		_, _, err := l.Since(-1, 0)

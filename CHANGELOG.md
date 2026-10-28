@@ -6,12 +6,27 @@ All notable changes to Ember are documented here.
 
 ### Added
 
-- Experimental: `ember --remote <url>` runs the TUI, read-only, against a daemon started with `--serve-remote`, which relays under `/caddy/` the `GET` requests the TUI sends to Caddy's admin API, and nothing else, behind a client certificate (mTLS). The Logs tab works too: as soon as a remote TUI connects, whatever tab it shows, the daemon registers its own log sinks in Caddy, as a local TUI does, and removes the sinks and the `logs` blocks it added 30 seconds after the last one stops, or when it shuts down cleanly; `--log-listen` applies to the daemon as to a local TUI, and is required when Caddy is not on localhost. `--expose-cert`, `--expose-key` and `--expose-client-ca` put the daemon's `--expose` server, Prometheus included, behind TLS or mTLS. See [Remote TUI](docs/remote.md).
+- Experimental: `ember --remote <url>` runs the TUI, read-only, against a daemon started with `--serve-remote`, which relays under `/caddy/` the `GET` requests the TUI sends to Caddy's admin API, and nothing else, behind a client certificate (mTLS). The Logs tab works too: as soon as a remote TUI connects, whatever tab it shows, the daemon registers its own log sinks in Caddy, as a local TUI does, and removes the sinks and the `logs` blocks it added 30 seconds after the last one stops, or when it shuts down cleanly, and leaves the `logs` blocks to a local TUI that still uses them. `--log-listen` applies to the daemon as to a local TUI, and is required when Caddy is not on localhost. `--expose-cert`, `--expose-key` and `--expose-client-ca` put the daemon's `--expose` server, Prometheus included, behind TLS or mTLS. See [Remote TUI](docs/remote.md).
+
+### Changed
+
+- **[BC BREAK]** `ember --daemon --json` now fails instead of streaming JSONL while ignoring everything `--daemon` should start, from the `--expose` metrics server to `--serve-remote` and its TLS. A script that passed both flags needs to keep only the one it relied on.
 
 ### Fixed
 
 - Quitting the TUI no longer locks Caddy's admin API. Ember closed its log listener before removing its sinks, so the config reload behind each `DELETE` could block on a write Ember no longer read, which happened with Caddy in Docker Desktop and Ember on the host. The listener now keeps reading until both sinks are gone.
-- Ember now takes over the log sinks a killed Ember left in Caddy. Caddy answers a `PUT` over an existing sink with `409 key already exists`, so the stale sinks kept pointing at a dead port and the Logs tab stayed empty. Ember now replaces them with a `POST`.
+- Ember now takes over the log sinks a killed Ember left in Caddy. Caddy answers a `PUT` over an existing sink with `409 key already exists`, so the stale sinks kept pointing at a dead port and the Logs tab stayed empty. Ember now replaces them with a `POST` when nothing answers at the address they point to. A second Ember on the same Caddy leaves the first one's sinks and `logs` blocks alone, also when it quits, and takes the sinks over within 30 seconds once the first one stops.
+
+## 1.6.2 - 2026-10-12
+
+### Changed
+
+- Dependencies are updated.
+
+### Security
+
+- Terminal control bytes in the FrankenPHP worker script path are now neutralized in the thread list and the thread detail panel, which rendered it raw unlike the in-flight method and URI next to it (CWE-150, as in 1.4.2).
+- Terminal control bytes in the health-check URI and the load-balancing policy read from Caddy's config are now neutralized in the Upstreams tab, which rendered them raw unlike the upstream address next to them.
 
 ## 1.6.1 - 2026-08-31
 

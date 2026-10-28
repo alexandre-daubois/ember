@@ -146,7 +146,7 @@ scrape_configs:
 
 **Workaround:** Restart Ember: the next launch replaces the stale sinks with ones pointing at its own listener, and its next clean quit removes them.
 
-A daemon started with `--serve-remote` registers `__ember_remote__` and `__ember_remote_runtime__` instead, and removes them itself when its next remote session opens.
+A daemon started with `--serve-remote` registers `__ember_remote__` and `__ember_remote_runtime__` instead, and replaces them when its next remote session opens.
 
 **Manual cleanup:** Remove the sinks via Caddy's admin API:
 

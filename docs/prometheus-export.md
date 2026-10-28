@@ -230,7 +230,7 @@ scrape_configs:
       - targets: ["localhost:9191"]
 ```
 
-Behind `--expose-cert`, set `scheme: https` and a `tls_config` whose `ca_file` trusts the daemon's certificate; behind `--expose-client-ca`, give that `tls_config` a client certificate too, with `cert_file` and `key_file`.
+Behind `--expose-cert`, set `scheme: https` and a `tls_config` whose `ca_file` trusts the daemon's certificate. Behind `--expose-client-ca`, give that `tls_config` a client certificate too, with `cert_file` and `key_file`.
 
 ## See Also
 

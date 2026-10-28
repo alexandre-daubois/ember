@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -170,17 +169,11 @@ func (l *remoteLogs) Since(after int64, limit int) ([]fetcher.LogEntry, int64, e
 	l.last = time.Now()
 	l.mu.Unlock()
 	if opening {
-		// Clear our own sinks first: a killed daemon leaves them on a dead port, and Caddy refuses a PUT over them (409).
-		for _, name := range []string{fetcher.DaemonLogSinks.Access, fetcher.DaemonLogSinks.Runtime} {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			_ = l.hf.UnregisterLogSink(ctx, name)
-			cancel()
-		}
 		addr, stop, ok := receiveCaddyLogs(l.addr, l.hf, fetcher.DaemonLogSinks, func(batch []fetcher.LogEntry) {
 			for _, e := range batch {
 				l.buf.Append(e)
 			}
-		}, func(string) {}, l.log)
+		}, func(string) {})
 		l.mu.Lock()
 		close(l.transition)
 		if !ok {

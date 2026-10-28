@@ -206,6 +206,13 @@ func TestValidate_OnceWithDaemon(t *testing.T) {
 	assert.Contains(t, err.Error(), "--once is incompatible with --daemon")
 }
 
+func TestValidate_JSONWithDaemon(t *testing.T) {
+	cfg := &config{jsonMode: true, daemon: true, expose: ":9191", interval: time.Second, addrsRaw: []string{"http://localhost:2019"}}
+	err := validate(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--json is incompatible with --daemon")
+}
+
 func TestValidate_OnceWithJSONOK(t *testing.T) {
 	cfg := &config{once: true, jsonMode: true, interval: 1 * time.Second, addrsRaw: []string{"http://localhost:2019"}}
 	assert.NoError(t, validate(cfg))

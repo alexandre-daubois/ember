@@ -152,12 +152,8 @@ func logListenAddr(cfg *config) (string, bool) {
 // and a blocking Scan cannot be interrupted, so the reader simply lives until
 // the process exits.
 func startStdinListener(uiCfg *ui.Config) {
-	accessBuf := model.NewLogBuffer(0)
-	runtimeBuf := model.NewLogBuffer(0)
-	routeAgg := model.NewRouteAggregator()
-	uiCfg.LogBuffer = accessBuf
-	uiCfg.RuntimeLogBuffer = runtimeBuf
-	uiCfg.RouteAggregator = routeAgg
+	accessBuf, runtimeBuf, routeAgg, store := newLogBuffers()
+	uiCfg.LogBuffer, uiCfg.RuntimeLogBuffer, uiCfg.RouteAggregator = accessBuf, runtimeBuf, routeAgg
 	uiCfg.LogSource = "stdin"
 
 	go func() {
@@ -180,13 +176,7 @@ func startStdinListener(uiCfg *ui.Config) {
 				continue
 			}
 
-			e := fetcher.ParseLogLine(trimmed)
-			if e.IsAccessLog() {
-				accessBuf.Append(e)
-				routeAgg.Track(e)
-			} else {
-				runtimeBuf.Append(e)
-			}
+			store([]fetcher.LogEntry{fetcher.ParseLogLine(trimmed)})
 		}
 
 		// Scan stops for good on the first over-long line or read error, so
@@ -240,7 +230,7 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	}
 
 	accessBuf, runtimeBuf, routeAgg, store := newLogBuffers()
-	advertiseAddr, cleanup, ok := receiveCaddyLogs(addr, hf, fetcher.TUILogSinks, store, warnIfPublicListener, slog.Default())
+	advertiseAddr, cleanup, ok := receiveCaddyLogs(addr, hf, fetcher.TUILogSinks, store, warnIfPublicListener)
 	if !ok {
 		return noop, false
 	}
@@ -248,7 +238,11 @@ func startNetListener(addr string, f fetcher.Fetcher, uiCfg *ui.Config) (func(),
 	uiCfg.RuntimeLogBuffer = runtimeBuf
 	uiCfg.RouteAggregator = routeAgg
 	uiCfg.LogSource = "net " + advertiseAddr
-	return func() { _ = cleanup() }, true
+	return func() {
+		if err := cleanup(); err != nil {
+			slog.Warn("logs stopped: Caddy not fully restored", "err", err)
+		}
+	}, true
 }
 
 func newLogBuffers() (*model.LogBuffer, *model.LogBuffer, *model.RouteAggregator, func([]fetcher.LogEntry)) {
@@ -317,7 +311,7 @@ func remoteLogsStopped(err error) fetcher.LogEntry {
 	}
 }
 
-func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSinks, onBatch func([]fetcher.LogEntry), warn func(string), log *slog.Logger) (string, func() error, bool) {
+func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSinks, onBatch func([]fetcher.LogEntry), warn func(string)) (string, func() error, bool) {
 	noop := func() error { return nil }
 
 	// Try to bind directly on the requested address. When the host part
@@ -373,6 +367,8 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 	// Watchdog: re-registers both sinks and access-logs blocks periodically.
 	// Covers both Caddy reloads (which wipe runtime config) and late Caddy
 	// starts (where the initial registration could not reach the admin API).
+	// A sink pointing at another Ember's listener is retried too: registration
+	// takes it over once nothing accepts connections there.
 	// `enabled` is only read/written by this single goroutine; the cleanup
 	// closure reads it after watchdogDone.Wait(), which provides the
 	// happens-before guarantee — no mutex needed.
@@ -387,15 +383,15 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 				return
 			case <-ticker.C:
 				checkCtx, checkCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
-				accessExists := hf.CheckLogSink(checkCtx, sinks.Access)
-				runtimeExists := hf.CheckLogSink(checkCtx, sinks.Runtime)
+				accessAddr, _ := hf.LogSinkAddress(checkCtx, sinks.Access)
+				runtimeAddr, _ := hf.LogSinkAddress(checkCtx, sinks.Runtime)
 				checkCancel()
-				if !accessExists {
+				if accessAddr != advertiseAddr {
 					reregCtx, reregCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
 					_ = hf.RegisterAccessLogSink(reregCtx, sinks.Access, advertiseAddr)
 					reregCancel()
 				}
-				if !runtimeExists {
+				if runtimeAddr != advertiseAddr {
 					reregCtx, reregCancel := context.WithTimeout(watchdogCtx, 3*time.Second)
 					_ = hf.RegisterRuntimeLogSink(reregCtx, sinks.Runtime, advertiseAddr)
 					reregCancel()
@@ -404,7 +400,7 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 				// is empty: the sink may have been registered on a
 				// prior tick but enableAccessLogs may have failed
 				// (e.g. Caddy's server list was not ready yet).
-				if !accessExists || len(enabled) == 0 || accessLogsRemoved(watchdogCtx, hf, enabled) {
+				if accessAddr == "" || len(enabled) == 0 || accessLogsRemoved(watchdogCtx, hf, enabled) {
 					enabled = mergeEnabled(enabled, enableAccessLogs(hf))
 				}
 			}
@@ -419,9 +415,21 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 		// still registered while holding the config lock: a write to a peer
 		// that stopped reading blocks it, and the admin API with it.
 		for _, name := range []string{sinks.Access, sinks.Runtime} {
-			errs = append(errs, unregisterSink(log, name, func(ctx context.Context) error { return hf.UnregisterLogSink(ctx, name) }))
+			errs = append(errs, unregisterSink(func(ctx context.Context) error {
+				// A sink pointing elsewhere is another running Ember's,
+				// which registration left in place.
+				if addr, err := hf.LogSinkAddress(ctx, name); err == nil && addr != advertiseAddr {
+					return nil
+				}
+				return hf.UnregisterLogSink(ctx, name)
+			}))
 		}
-		errs = append(errs, restoreAccessLogs(hf, enabled))
+		// Every Ember on the same Caddy claims each empty logs block, so the
+		// last one out removes it. Our own sinks are gone by now, so two
+		// Embers quitting together cannot both keep it.
+		if !otherEmberUsesAccessLogs(hf, advertiseAddr) {
+			errs = append(errs, restoreAccessLogs(hf, enabled))
+		}
 		cancel()
 		ln.Close()
 		// Start only returns once every connection handler has.
@@ -430,16 +438,12 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 	}, true
 }
 
-// unregisterSink calls fn with a fresh 3s timeout and logs any error. Each
-// sink gets its own budget so a slow first call cannot starve the second.
-func unregisterSink(log *slog.Logger, name string, fn func(context.Context) error) error {
+// unregisterSink calls fn with a fresh 3s timeout. Each sink gets its own
+// budget so a slow first call cannot starve the second.
+func unregisterSink(fn func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	if err := fn(ctx); err != nil {
-		log.Warn("failed to unregister log sink", "sink", name, "err", err)
-		return err
-	}
-	return nil
+	return fn(ctx)
 }
 
 // enableAccessLogs walks every HTTP server known to Caddy and turns on access
@@ -487,6 +491,20 @@ func mergeEnabled(existing, added []string) []string {
 		}
 	}
 	return existing
+}
+
+// otherEmberUsesAccessLogs reports whether a running Ember, other than the one
+// listening on advertiseAddr, still has an access sink in Caddy.
+func otherEmberUsesAccessLogs(hf *fetcher.HTTPFetcher, advertiseAddr string) bool {
+	for _, name := range []string{fetcher.TUILogSinks.Access, fetcher.DaemonLogSinks.Access} {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		inUse, _ := hf.LogSinkInUse(ctx, name, advertiseAddr)
+		cancel()
+		if inUse {
+			return true
+		}
+	}
+	return false
 }
 
 func restoreAccessLogs(hf *fetcher.HTTPFetcher, names []string) error {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,7 +59,8 @@ func (f *HTTPFetcher) EnableServerAccessLogs(ctx context.Context, serverName str
 // the empty object we posted does not leave our config behind.
 //
 // If the current value is not an empty object, a user or another tool
-// modified the server's logs config in the meantime: we leave it alone.
+// modified the server's logs config in the meantime, or the server left
+// Caddy's config: we leave it alone.
 func (f *HTTPFetcher) RestoreServerAccessLogs(ctx context.Context, serverName string) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -66,6 +68,9 @@ func (f *HTTPFetcher) RestoreServerAccessLogs(ctx context.Context, serverName st
 	endpoint := f.serverLogsEndpoint(serverName)
 
 	existing, err := f.getServerLogs(ctx, endpoint)
+	if errors.Is(err, errServerGone) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -107,6 +112,8 @@ func (f *HTTPFetcher) HasServerLogs(ctx context.Context, serverName string) (boo
 	return len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null")), nil
 }
 
+var errServerGone = errors.New("server not in Caddy's config")
+
 // serverLogsEndpoint returns the admin API URL for a server's logs config,
 // URL-escaping the server name so unusual but valid names (containing
 // spaces, slashes or other special characters) cannot break the path.
@@ -129,6 +136,10 @@ func (f *HTTPFetcher) getServerLogs(ctx context.Context, endpoint string) ([]byt
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode == http.StatusBadRequest {
+			// Caddy answers 400, not 404, when a key above the leaf is missing, as when a reload dropped the server.
+			return nil, fmt.Errorf("get server logs: HTTP %d: %w", resp.StatusCode, errServerGone)
+		}
 		return nil, fmt.Errorf("get server logs: HTTP %d", resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
