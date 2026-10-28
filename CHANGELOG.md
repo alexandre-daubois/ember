@@ -11,6 +11,7 @@ All notable changes to Ember are documented here.
 ### Changed
 
 - **[BC BREAK]** `ember --daemon --json` now fails instead of streaming JSONL while ignoring everything `--daemon` should start, from the `--expose` metrics server to `--serve-remote` and its TLS. A script that passed both flags needs to keep only the one it relied on.
+- Dependencies are updated.
 
 ### Fixed
 
