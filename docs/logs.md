@@ -35,7 +35,10 @@ running Ember, such as a daemon serving remote TUIs, still has its sinks in
 Caddy, the access-logs blocks stay for it, and whichever quits last removes
 them. A second TUI on the same Caddy leaves the first one's sinks alone, when it
 starts and when it quits, and its Logs tab stays empty until its watchdog takes
-the sinks over, within 30 seconds of the first one stopping.
+the sinks over, within 30 seconds of the first one stopping. It tells a running
+TUI from a dead one by connecting to the address the sinks point to, so a first
+TUI it cannot reach, such as one on another machine behind a firewall, looks
+dead and loses its sinks.
 
 The end result: a stock Caddyfile with **no `log` directive** still produces
 live access and runtime logs in Ember's TUI, and Caddy's persistent config

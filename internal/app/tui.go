@@ -427,7 +427,7 @@ func receiveCaddyLogs(addr string, hf *fetcher.HTTPFetcher, sinks fetcher.LogSin
 		// Every Ember on the same Caddy claims each empty logs block, so the
 		// last one out removes it. Our own sinks are gone by now, so two
 		// Embers quitting together cannot both keep it.
-		if !otherEmberUsesAccessLogs(hf, advertiseAddr) {
+		if len(enabled) > 0 && !otherEmberUsesAccessLogs(hf, advertiseAddr) {
 			errs = append(errs, restoreAccessLogs(hf, enabled))
 		}
 		cancel()

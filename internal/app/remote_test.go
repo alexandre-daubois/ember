@@ -46,6 +46,7 @@ func TestPrepareRemote_Incompatibilities(t *testing.T) {
 		"--expose-key":       {"--expose-key", "key.pem"},
 		"--expose-client-ca": {"--expose-client-ca", "ca.pem"},
 		"--frankenphp-pid":   {"--frankenphp-pid", "42"},
+		"--metrics-prefix":   {"--metrics-prefix", "myapp"},
 	} {
 		err := remotePreRun(t, append([]string{"--remote", "https://prod:9191"}, args...)...)
 		require.Error(t, err, flag)

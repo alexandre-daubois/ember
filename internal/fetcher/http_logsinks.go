@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -130,13 +131,21 @@ func (f *HTTPFetcher) LogSinkInUse(ctx context.Context, name, listenerAddr strin
 	if err != nil {
 		return false, err
 	}
-	return addr != "" && addr != listenerAddr && acceptsConnections(ctx, addr), nil
+	if addr == "" || addr == listenerAddr {
+		return false, nil
+	}
+	conn := dialSink(ctx, addr)
+	if conn == nil {
+		return false, nil
+	}
+	defer func() { _ = conn.Close() }()
+	return !reachesOwnListener(conn, listenerAddr), nil
 }
 
-// acceptsConnections dials addr from Ember's side. A host that does not
-// resolve here, such as host.docker.internal, is one receiveCaddyLogs bound on
-// all interfaces instead.
-func acceptsConnections(ctx context.Context, addr string) bool {
+// dialSink dials addr from Ember's side. A host that does not resolve here,
+// such as host.docker.internal, is one receiveCaddyLogs bound on all
+// interfaces instead.
+func dialSink(ctx context.Context, addr string) net.Conn {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	var d net.Dialer
@@ -146,10 +155,23 @@ func acceptsConnections(ctx context.Context, addr string) bool {
 		conn, err = d.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", port))
 	}
 	if err != nil {
+		return nil
+	}
+	return conn
+}
+
+// reachesOwnListener reports whether conn landed on this Ember's listener: a
+// stale sink can name it under another spelling (host.docker.internal,
+// 0.0.0.0, localhost), and a connection to this host has the same IP at both
+// ends.
+func reachesOwnListener(conn net.Conn, listenerAddr string) bool {
+	_, port, err := net.SplitHostPort(listenerAddr)
+	if err != nil {
 		return false
 	}
-	_ = conn.Close()
-	return true
+	remote, rok := conn.RemoteAddr().(*net.TCPAddr)
+	local, lok := conn.LocalAddr().(*net.TCPAddr)
+	return rok && lok && strconv.Itoa(remote.Port) == port && remote.IP.Equal(local.IP)
 }
 
 // statusError carries the status of an admin API answer so callers can tell a

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Only a real Caddy checks the Host header the relay presents.
+// TestIntegration_RemoteRelay pins that a remote TUI reads a real Caddy's metrics and config through the daemon, and that the relay refuses a write.
 func TestIntegration_RemoteRelay(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

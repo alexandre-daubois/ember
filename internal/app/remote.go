@@ -15,7 +15,7 @@ import (
 // localModeFlags are the flags --remote refuses.
 var localModeFlags = []string{
 	"daemon", "json", "expose", "stdin-logs", "log-listen", "once",
-	"metrics-auth", "serve-remote", "expose-cert", "expose-key", "expose-client-ca", "frankenphp-pid",
+	"metrics-auth", "serve-remote", "expose-cert", "expose-key", "expose-client-ca", "frankenphp-pid", "metrics-prefix",
 }
 
 func remoteIncompatibleFlag(cmd *cobra.Command) string {

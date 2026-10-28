@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var tuiReads = []string{
@@ -24,6 +25,24 @@ func tuiRead(u *url.URL) (string, bool) {
 		return "/pki/ca/" + url.PathEscape(id), id != "" && id != "." && id != ".." && !strings.Contains(id, "/")
 	}
 	return u.Path, slices.Contains(tuiReads, u.Path)
+}
+
+// A gzip.Writer allocates about 800 KB, and a remote TUI gets several answers a second.
+var gzipWriters = sync.Pool{New: func() any { return gzip.NewWriter(nil) }}
+
+// CompressIfAccepted returns the writer an answer to r goes through, gzipped
+// when the client accepts it, and the func that flushes it.
+func CompressIfAccepted(w http.ResponseWriter, r *http.Request) (io.Writer, func()) {
+	if !acceptsGzip(r.Header.Get("Accept-Encoding")) {
+		return w, func() {}
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	gz := gzipWriters.Get().(*gzip.Writer)
+	gz.Reset(w)
+	return gz, func() {
+		_ = gz.Close()
+		gzipWriters.Put(gz)
+	}
 }
 
 func acceptsGzip(header string) bool {
@@ -93,13 +112,8 @@ func (f *HTTPFetcher) Relay() http.Handler {
 		// The Config tab reads the whole config, and so does the Upstreams tab as soon as Caddy reports an upstream. The narrower reads are the TUI's periodic refreshes.
 		trace.ConfigRead = resp.StatusCode == http.StatusOK && path == "/config/"
 		w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-		var body io.Writer = w
-		if acceptsGzip(r.Header.Get("Accept-Encoding")) {
-			w.Header().Set("Content-Encoding", "gzip")
-			gz := gzip.NewWriter(w)
-			defer func() { _ = gz.Close() }()
-			body = gz
-		}
+		body, done := CompressIfAccepted(w, r)
+		defer done()
 		w.WriteHeader(resp.StatusCode)
 		_, _ = io.Copy(body, resp.Body)
 	})

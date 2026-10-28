@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type RemoteLogs struct {
@@ -61,6 +62,13 @@ func (f *RemoteFetcher) FetchLogs(ctx context.Context, epoch, after int64) (*Rem
 	return &page, nil
 }
 
+func dropControl(r rune) rune {
+	if unicode.IsControl(r) {
+		return -1
+	}
+	return r
+}
+
 func (f *RemoteFetcher) do(ctx context.Context, path string, params url.Values, out any) error {
 	u := f.base.JoinPath(path)
 	u.RawQuery = params.Encode()
@@ -79,7 +87,8 @@ func (f *RemoteFetcher) do(ctx context.Context, path string, params url.Values, 
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		err := fmt.Errorf("daemon answered %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		// The answer may come from any server the URL reaches, and this error ends up on stderr.
+		err := errors.New(strings.Map(dropControl, "daemon answered "+resp.Status+": "+strings.TrimSpace(string(body))))
 		if resp.StatusCode < http.StatusInternalServerError {
 			return RefusedError{err, resp.StatusCode}
 		}

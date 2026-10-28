@@ -49,6 +49,20 @@ func TestRemoteFetcher_OnlyA4xxIsARefusal(t *testing.T) {
 	}
 }
 
+// TestRemoteFetcher_RefusalDropsTerminalControlBytes pins that a refusal's
+// error carries the answer's text without its control bytes.
+func TestRemoteFetcher_RefusalDropsTerminalControlBytes(t *testing.T) {
+	f := newRemoteTest(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("no\x1b]0;pwned\x07 such\u009b2J route\x9b\n"))
+	}))
+
+	_, err := f.FetchLogs(context.Background(), 0, -1)
+
+	require.Error(t, err)
+	assert.Equal(t, "daemon answered 404 Not Found: no]0;pwned such2J route\ufffd", err.Error())
+}
+
 type recordingServer struct {
 	mu   sync.Mutex
 	seen []string

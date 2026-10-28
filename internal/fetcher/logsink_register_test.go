@@ -286,6 +286,22 @@ func TestRegisterAccessLogSink_ReplacesItsOwnSink(t *testing.T) {
 	assert.Contains(t, *posted.Load(), `"address":"tcp/`+own+`"`)
 }
 
+// TestRegisterAccessLogSink_ReplacesItsOwnListenerUnderAnotherName pins that a
+// stale sink whose address reaches this Ember's own listener is replaced.
+func TestRegisterAccessLogSink_ReplacesItsOwnListenerUnderAnotherName(t *testing.T) {
+	own := liveAddr(t)
+	for _, host := range []string{"localhost", "nope.invalid"} {
+		t.Run(host, func(t *testing.T) {
+			srv, posted := existingSinkServer(t, sinkAt(host+":"+portOf(t, own)), http.StatusOK)
+
+			f := NewHTTPFetcher(srv.URL, 0)
+			require.NoError(t, f.RegisterAccessLogSink(context.Background(), EmberLogSinkName, own))
+			require.NotNil(t, posted.Load())
+			assert.Contains(t, *posted.Load(), `"address":"tcp/`+own+`"`)
+		})
+	}
+}
+
 func TestRegisterAccessLogSink_ReplacesAStaleUnresolvableSink(t *testing.T) {
 	srv, posted := existingSinkServer(t, sinkAt("nope.invalid:"+portOf(t, deadAddr(t))), http.StatusOK)
 

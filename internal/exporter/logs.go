@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -34,7 +35,14 @@ func LogsHandler(src LogSource) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
+		page, err := json.Marshal(fetcher.RemoteLogs{Epoch: epoch, Next: next, Entries: entries})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		encodeJSON(w, fetcher.RemoteLogs{Epoch: epoch, Next: next, Entries: entries})
+		body, done := fetcher.CompressIfAccepted(w, r)
+		defer done()
+		_, _ = body.Write(page)
 	}
 }
