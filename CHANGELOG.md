@@ -2,6 +2,12 @@
 
 All notable changes to Ember are documented here.
 
+## 1.7.1 - 2026-11-16
+
+### Changed
+
+- Dependencies are updated.
+
 ## 1.7.0 - 2026-10-28
 
 ### Added
